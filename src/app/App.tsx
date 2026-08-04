@@ -1,49 +1,386 @@
-import { ArrowRight, Building2, FileStack, ShieldCheck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
-const principles = [
-  {
-    icon: Building2,
-    title: '企业资料独立归档',
-    detail: '企业证照、资质与业绩跨项目复用，自动分类并保留来源与版本。',
-  },
-  {
-    icon: FileStack,
-    title: '项目材料严格隔离',
-    detail: '当前招标材料只属于本次项目和冻结快照，不进入企业资料库。',
-  },
-  {
-    icon: ShieldCheck,
-    title: '结果可追溯、可复算',
-    detail: '外部评审、报价算法与成果版本都绑定证据、快照和明确版本。',
-  },
-];
+import { PricingCenter } from '../domains/pricing/PricingCenter';
+import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
+import { ProjectListPage } from '../domains/projects/ProjectListPage';
+import { ProjectOverviewPage } from '../domains/projects/ProjectOverviewPage';
+import { ReviewCenter } from '../domains/review/ReviewCenter';
+import type { ReviewRunView } from '../domains/review/types';
+import { getProjectSummary } from '../domains/projects/project-view-model';
+import {
+  EnterpriseAssetsPage,
+  type EnterpriseAsset,
+  type EnterpriseIngestionItem,
+} from '../features/enterprise-assets';
+import {
+  ProjectMaterialsPage,
+  type ProjectMaterial,
+  type ProjectRequirement,
+  type ProjectSnapshot,
+} from '../features/project-materials';
+import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
+import type { PublicTaskEvent } from '../shared/api/task-events';
+import { AppShell } from './AppShell';
+import {
+  defaultProjectId,
+  enterpriseAssetsDemo,
+  enterpriseIngestionDemo,
+  historyPriceSamplesDemo,
+  projectMaterialsDemo,
+  projectRequirementsDemo,
+  projectSnapshotsDemo,
+  publicTaskEventsDemo,
+  quoteCalculationDemo,
+  reviewProvidersDemo,
+  reviewRunDemo,
+} from './demo-data';
+import { AppLink, useUrlRoute } from './router';
+import { demoSession, getProjectScopeKey } from './session';
+
+type ProjectDomainState<T> = Record<string, T[]>;
 
 export function App() {
-  return (
-    <main className="starter-shell">
-      <section className="starter-hero" aria-labelledby="starter-title">
-        <div className="starter-badge">BidVolt · Web Frontend</div>
-        <h1 id="starter-title">投标工作，从材料到交付都清楚可控</h1>
-        <p>
-          独立的浏览器端投标工作台正在搭建。首个版本覆盖企业资料、项目材料、评审与报价核心闭环。
-        </p>
-        <button className="starter-action" type="button">
-          进入开发工作台
-          <ArrowRight aria-hidden="true" size={18} />
-        </button>
-      </section>
+  const session = demoSession;
+  const defaultScopeKey = getProjectScopeKey(session.enterpriseId, defaultProjectId);
+  const route = useUrlRoute();
+  const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
+  const [enterpriseAssets, setEnterpriseAssets] = useState<
+    ProjectDomainState<EnterpriseAsset>
+  >({ [session.enterpriseId]: enterpriseAssetsDemo });
+  const [enterpriseIngestion, setEnterpriseIngestion] = useState<
+    ProjectDomainState<EnterpriseIngestionItem>
+  >({ [session.enterpriseId]: enterpriseIngestionDemo });
+  const [projectMaterials, setProjectMaterials] = useState<ProjectDomainState<ProjectMaterial>>({
+    [defaultScopeKey]: projectMaterialsDemo,
+  });
+  const [projectRequirements, setProjectRequirements] = useState<
+    ProjectDomainState<ProjectRequirement>
+  >({
+    [defaultScopeKey]: projectRequirementsDemo,
+  });
+  const [projectSnapshots] = useState<ProjectDomainState<ProjectSnapshot>>({
+    [defaultScopeKey]: projectSnapshotsDemo,
+  });
+  const [reviewRuns, setReviewRuns] = useState<Record<string, ReviewRunView>>({
+    [defaultScopeKey]: reviewRunDemo,
+  });
+  const [appliedStrategyIds, setAppliedStrategyIds] = useState<Record<string, string>>({});
+  const [quoteCalculations] = useState<Record<string, QuoteCalculationView>>({
+    [defaultScopeKey]: quoteCalculationDemo,
+  });
+  const [historyPriceSamples] = useState<Record<string, HistoryPriceSample[]>>({
+    [defaultScopeKey]: historyPriceSamplesDemo,
+  });
+  const [taskEvents] = useState<Record<string, PublicTaskEvent[]>>({
+    [defaultScopeKey]: publicTaskEventsDemo,
+  });
 
-      <section className="starter-grid" aria-label="产品边界">
-        {principles.map(({ icon: Icon, title, detail }) => (
-          <article className="starter-card" key={title}>
-            <span className="starter-icon" aria-hidden="true">
-              <Icon size={22} />
-            </span>
-            <h2>{title}</h2>
-            <p>{detail}</p>
-          </article>
-        ))}
-      </section>
-    </main>
+  const routeProjectId = 'projectId' in route ? route.projectId : undefined;
+  const activeScopeKey = routeProjectId
+    ? getProjectScopeKey(session.enterpriseId, routeProjectId)
+    : undefined;
+  const activeProject = routeProjectId ? getProjectSummary(routeProjectId) : undefined;
+
+  const pageMeta = useMemo(() => {
+    switch (route.name) {
+      case 'project-overview':
+        return { eyebrow: '项目工作台', title: '项目概览' };
+      case 'project-materials':
+        return { eyebrow: '项目工作台', title: '当前招标材料' };
+      case 'enterprise-assets':
+        return { eyebrow: '企业知识中心', title: '企业资料库' };
+      case 'review-center':
+        return { eyebrow: '项目工作台', title: '外部评审中心' };
+      case 'pricing-center':
+        return { eyebrow: '项目工作台', title: '报价测算中心' };
+      case 'not-found':
+        return { eyebrow: 'BidVolt Web', title: '页面未找到' };
+      default:
+        return { eyebrow: '投标协同中心', title: '项目列表' };
+    }
+  }, [route.name]);
+
+  useEffect(() => {
+    document.title = `${pageMeta.title} · BidVolt Web`;
+    document.getElementById('main-content')?.focus();
+  }, [pageMeta.title, routeProjectId]);
+
+  const handleEnterpriseUpload = (files: File[]) => {
+    const incoming = files.map<EnterpriseIngestionItem>((file, index) => ({
+      id: `enterprise-upload-${Date.now()}-${index}`,
+      name: file.name,
+      status: 'classifying',
+      progress: 18,
+    }));
+    setEnterpriseIngestion((current) => ({
+      ...current,
+      [session.enterpriseId]: [...incoming, ...(current[session.enterpriseId] ?? [])],
+    }));
+  };
+
+  const handleEnterpriseCorrection = (assetId: string, factKey: string, value: string) => {
+    setEnterpriseAssets((current) => ({
+      ...current,
+      [session.enterpriseId]: (current[session.enterpriseId] ?? []).map((asset) => {
+        if (asset.id !== assetId) return asset;
+
+        const facts = asset.facts.map((fact) =>
+          fact.key === factKey
+            ? { ...fact, value, confidence: 1, needsReview: false }
+            : fact,
+        );
+        const nextRevisionNo = Math.max(0, ...asset.revisions.map((item) => item.revisionNo)) + 1;
+        return {
+          ...asset,
+          facts,
+          status: facts.some((fact) => fact.needsReview) ? 'needs_review' : 'ready',
+          updatedAt: '刚刚',
+          revisions: [
+            {
+              id: `${asset.id}-revision-${nextRevisionNo}`,
+              revisionNo: nextRevisionNo,
+              createdAt: '刚刚',
+              createdBy: '当前用户',
+              changeNote: `人工纠正字段：${factKey}`,
+              isCurrent: true,
+            },
+            ...asset.revisions.map((revision) => ({ ...revision, isCurrent: false })),
+          ],
+        };
+      }),
+    }));
+  };
+
+  const handleProjectUpload = (projectId: string, files: File[]) => {
+    setProjectMaterials((current) => {
+      const scopeKey = getProjectScopeKey(session.enterpriseId, projectId);
+      const existing = current[scopeKey] ?? [];
+      const incoming = files.map<ProjectMaterial>((file, index) => ({
+        id: `${projectId}-upload-${Date.now()}-${index}`,
+        name: file.name,
+        kind: 'other',
+        revisionNo: 1,
+        parseStatus: 'queued',
+        parseProgress: 0,
+        uploadedAt: '刚刚',
+      }));
+      return { ...current, [scopeKey]: [...incoming, ...existing] };
+    });
+  };
+
+  const handleConfirmRequirement = (projectId: string, requirementId: string) => {
+    const scopeKey = getProjectScopeKey(session.enterpriseId, projectId);
+    setProjectRequirements((current) => ({
+      ...current,
+      [scopeKey]: (current[scopeKey] ?? []).map((requirement) =>
+        requirement.id === requirementId
+          ? { ...requirement, confirmationStatus: 'confirmed' }
+          : requirement,
+      ),
+    }));
+  };
+
+  const activeReviewRun =
+    activeScopeKey && routeProjectId
+      ? reviewRuns[activeScopeKey] ?? createEmptyReviewRun(routeProjectId)
+      : undefined;
+  const activeQuoteCalculation =
+    activeScopeKey && routeProjectId
+      ? quoteCalculations[activeScopeKey] ?? createEmptyQuoteCalculation(routeProjectId)
+      : undefined;
+  const activeHistoryPriceSamples = activeScopeKey
+    ? historyPriceSamples[activeScopeKey] ?? []
+    : [];
+  const activeTaskEvents = activeScopeKey ? taskEvents[activeScopeKey] ?? [] : [];
+  const latestTaskEvent = activeTaskEvents.reduce<PublicTaskEvent | undefined>(
+    (latest, event) => (!latest || event.sequence > latest.sequence ? event : latest),
+    undefined,
+  );
+  const activeTaskCount = activeTaskEvents.some((event) =>
+    ['queued', 'running', 'retrying', 'waiting_user'].includes(event.status),
+  )
+    ? 1
+    : 0;
+  const selectedStrategy = activeQuoteCalculation?.strategies.find(
+    (strategy) => activeScopeKey && strategy.id === appliedStrategyIds[activeScopeKey],
+  );
+  const openTaskDrawer = () => {
+    if (routeProjectId) {
+      setTaskDrawerProjectId(routeProjectId);
+    }
+  };
+
+  return (
+    <AppShell
+      currentProjectId={routeProjectId}
+      currentRoute={route.name}
+      eyebrow={pageMeta.eyebrow}
+      enterpriseName={session.enterpriseName}
+      title={pageMeta.title}
+      onOpenTasks={openTaskDrawer}
+      taskCount={activeTaskCount}
+      user={session.user}
+    >
+      {route.name === 'projects' ? <ProjectListPage /> : null}
+      {route.name === 'project-overview' ? (
+        <ProjectOverviewPage
+          projectId={route.projectId}
+          onOpenTasks={openTaskDrawer}
+          taskSummary={
+            latestTaskEvent?.percent != null && activeTaskCount > 0
+              ? {
+                  message: latestTaskEvent.public_message,
+                  percent: latestTaskEvent.percent,
+                  title: taskPhaseLabel(latestTaskEvent.phase),
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {route.name === 'enterprise-assets' ? (
+        <EnterpriseAssetsPage
+          assets={enterpriseAssets[session.enterpriseId] ?? []}
+          enterpriseName={session.enterpriseName}
+          ingestionItems={enterpriseIngestion[session.enterpriseId] ?? []}
+          onCorrectFact={handleEnterpriseCorrection}
+          onUpload={handleEnterpriseUpload}
+        />
+      ) : null}
+      {route.name === 'project-materials' && activeProject && activeScopeKey ? (
+        <ProjectMaterialsPage
+          key={route.projectId}
+          materials={projectMaterials[activeScopeKey] ?? []}
+          projectId={route.projectId}
+          projectName={activeProject.title}
+          requirements={projectRequirements[activeScopeKey] ?? []}
+          snapshots={projectSnapshots[activeScopeKey] ?? []}
+          onConfirmRequirement={handleConfirmRequirement}
+          onUpload={handleProjectUpload}
+        />
+      ) : null}
+      {route.name === 'review-center' && activeProject && activeReviewRun && activeScopeKey ? (
+        <ReviewCenter
+          key={route.projectId}
+          providers={reviewProvidersDemo}
+          runAllowed={Boolean(reviewRuns[activeScopeKey])}
+          runBlockReason="请先冻结项目快照并生成至少一个成果版本。"
+          run={{
+            ...activeReviewRun,
+            projectSnapshotId: `${route.projectId} · ${activeReviewRun.projectSnapshotId}`,
+          }}
+          onRun={(providerId) => {
+            const provider = reviewProvidersDemo.find((item) => item.id === providerId);
+            setReviewRuns((current) => {
+              const existing = current[activeScopeKey] ?? createEmptyReviewRun(route.projectId);
+              return {
+                ...current,
+                [activeScopeKey]: {
+                  ...existing,
+                  id: `${route.projectId}-review-pending`,
+                  providerId,
+                  providerVersion: provider?.version,
+                  responseHash: undefined,
+                  finishedAt: undefined,
+                  findings: [],
+                  status: 'running',
+                },
+              };
+            });
+          }}
+        />
+      ) : null}
+      {route.name === 'pricing-center' && activeProject && activeQuoteCalculation && activeScopeKey ? (
+        <>
+          {selectedStrategy ? (
+            <div className="integration-status" role="status">
+              已确认“{selectedStrategy.name}”，系统将创建新的报价单版本；外部历史库保持只读。
+            </div>
+          ) : null}
+          <PricingCenter
+            key={route.projectId}
+            calculation={activeQuoteCalculation}
+            samples={activeHistoryPriceSamples}
+            onApply={(strategyId) =>
+              setAppliedStrategyIds((current) => ({
+                ...current,
+                [activeScopeKey]: strategyId,
+              }))
+            }
+          />
+        </>
+      ) : null}
+      {['project-materials', 'review-center', 'pricing-center'].includes(route.name) &&
+      !activeProject ? (
+        <MissingProject />
+      ) : null}
+      {route.name === 'not-found' ? <NotFoundPage /> : null}
+
+      {routeProjectId && activeProject ? (
+        <TaskProgressDrawer
+          events={activeTaskEvents}
+          isOpen={taskDrawerProjectId === routeProjectId}
+          onClose={() => setTaskDrawerProjectId(null)}
+          projectTitle={activeProject.title}
+        />
+      ) : null}
+    </AppShell>
+  );
+}
+
+function createEmptyReviewRun(projectId: string): ReviewRunView {
+  return {
+    id: `${projectId}-review-not-started`,
+    status: 'idle',
+    projectSnapshotId: '尚未创建评审快照',
+    deliverableVersions: ['暂无成果版本'],
+    findings: [],
+  };
+}
+
+function taskPhaseLabel(phase: string) {
+  const labels: Record<string, string> = {
+    checking: '技术方案检查',
+    drafting: '成果编制',
+    parsing: '材料解析',
+    queued: '任务排队',
+  };
+  return labels[phase] ?? '智能任务';
+}
+
+function createEmptyQuoteCalculation(projectId: string): QuoteCalculationView {
+  return {
+    id: `${projectId}-quote-not-started`,
+    status: 'needs_input',
+    algorithmVersion: quoteCalculationDemo.algorithmVersion,
+    sampleSnapshotId: '尚未生成样本快照',
+    querySnapshotId: '尚未查询历史数据',
+    message: '当前项目尚未查询历史样本或执行报价测算。',
+    strategies: [],
+  };
+}
+
+function MissingProject() {
+  return (
+    <section className="empty-page" aria-labelledby="missing-project-title">
+      <span className="empty-page__code">未找到</span>
+      <h1 id="missing-project-title">这个项目不存在或已被移出当前企业</h1>
+      <p>返回项目列表选择一个可访问的工作台。</p>
+      <AppLink className="button button--primary" to="/projects">
+        返回项目列表
+      </AppLink>
+    </section>
+  );
+}
+
+function NotFoundPage() {
+  return (
+    <section className="empty-page" aria-labelledby="not-found-title">
+      <span className="empty-page__code">404</span>
+      <h1 id="not-found-title">这个页面还没有接入</h1>
+      <p>请返回项目列表继续当前投标工作。</p>
+      <AppLink className="button button--primary" to="/projects">
+        返回项目列表
+      </AppLink>
+    </section>
   );
 }

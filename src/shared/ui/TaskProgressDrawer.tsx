@@ -1,0 +1,223 @@
+import { useEffect, useMemo, useRef } from 'react';
+import { Check, Clock3, FileCheck2, LoaderCircle, X } from 'lucide-react';
+
+import type { PublicTaskEvent } from '../api/task-events';
+
+type TaskProgressDrawerProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  projectTitle: string;
+  events: PublicTaskEvent[];
+};
+
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
+function StatusIcon({ status }: { status: PublicTaskEvent['status'] }) {
+  if (status === 'succeeded') {
+    return <Check aria-hidden="true" size={15} />;
+  }
+
+  if (status === 'running' || status === 'retrying' || status === 'cancel_requested') {
+    return <LoaderCircle aria-hidden="true" className="spin" size={15} />;
+  }
+
+  return <Clock3 aria-hidden="true" size={15} />;
+}
+
+function statusClass(status: PublicTaskEvent['status']) {
+  if (status === 'succeeded') return 'completed';
+  if (status === 'running' || status === 'retrying' || status === 'cancel_requested') {
+    return 'running';
+  }
+  return 'waiting';
+}
+
+export function TaskProgressDrawer({
+  isOpen,
+  onClose,
+  projectTitle,
+  events,
+}: TaskProgressDrawerProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const latestEvent = useMemo(
+    () => events.reduce<PublicTaskEvent | undefined>(
+      (latest, event) => (!latest || event.sequence > latest.sequence ? event : latest),
+      undefined,
+    ),
+    [events],
+  );
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements.at(-1)!;
+      const activeElement = document.activeElement;
+      const focusIsOutsideDialog = !dialogRef.current.contains(activeElement);
+
+      if (event.shiftKey && (activeElement === firstElement || focusIsOutsideDialog)) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || focusIsOutsideDialog)) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      const previouslyFocused = previouslyFocusedRef.current;
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const latestPercent = latestEvent?.percent ?? null;
+
+  return (
+    <div className="drawer-layer">
+      <button
+        className="drawer-backdrop"
+        type="button"
+        aria-label="关闭任务进度"
+        onClick={onClose}
+      />
+      <aside
+        ref={dialogRef}
+        className="task-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-drawer-title"
+        tabIndex={-1}
+      >
+        <header className="task-drawer__header">
+          <div>
+            <span className="eyebrow">公开进度</span>
+            <h2 id="task-drawer-title">任务进度</h2>
+          </div>
+          <button
+            ref={closeButtonRef}
+            className="icon-button"
+            type="button"
+            aria-label="关闭任务进度"
+            onClick={onClose}
+          >
+            <X aria-hidden="true" size={20} />
+          </button>
+        </header>
+
+        <section className="active-task-card" aria-labelledby="active-task-title">
+          <div className="active-task-card__heading">
+            <span className="active-task-card__icon" aria-hidden="true">
+              <FileCheck2 size={19} />
+            </span>
+            <div>
+              <span>当前工作台项目</span>
+              <h3 id="active-task-title">{projectTitle}</h3>
+            </div>
+            <strong>{latestPercent === null ? '—' : `${latestPercent}%`}</strong>
+          </div>
+          {latestPercent === null ? null : (
+            <div
+              className="progress-track progress-track--large"
+              role="progressbar"
+              aria-label={`${projectTitle}任务进度`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={latestPercent}
+            >
+              <span style={{ width: `${latestPercent}%` }} />
+            </div>
+          )}
+          <p>这里只展示后端公开事件中的说明、进度和发生时间。</p>
+        </section>
+
+        <section className="event-stream" aria-labelledby="event-stream-title" aria-live="polite">
+          <div className="event-stream__heading">
+            <h3 id="event-stream-title">最新动态</h3>
+            <span>自动更新</span>
+          </div>
+          {events.length === 0 ? (
+            <p role="status">暂无公开进度，任务开始后将在这里显示。</p>
+          ) : (
+            <ol>
+              {events.map((event) => (
+                <li key={event.event_id}>
+                  <span className={`event-status event-status--${statusClass(event.status)}`}>
+                    <StatusIcon status={event.status} />
+                  </span>
+                  <div>
+                    <p>{event.public_message}</p>
+                    <small>
+                      {event.percent === null ? '进度待更新' : `${event.percent}%`}
+                      {' · '}
+                      <time dateTime={event.occurred_at}>{event.occurred_at}</time>
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <footer className="task-drawer__footer">
+          <p>
+            <span aria-hidden="true" />
+            这里只展示可公开的任务状态，详细处理信息保留在系统审计中。
+          </p>
+        </footer>
+      </aside>
+    </div>
+  );
+}
