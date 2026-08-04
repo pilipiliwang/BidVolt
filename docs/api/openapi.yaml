@@ -20,6 +20,7 @@ paths:
   /enterprise-assets:
     get:
       tags: [EnterpriseAssets]
+      operationId: listEnterpriseAssets
       summary: List reusable enterprise assets
       parameters:
         - $ref: '#/components/parameters/Page'
@@ -27,6 +28,9 @@ paths:
         - name: category
           in: query
           schema: { $ref: '#/components/schemas/EnterpriseAssetCategory' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [ingesting, needs_review, active, expired, failed] }
       responses:
         '200':
           description: Enterprise assets only; project materials must never appear.
@@ -42,8 +46,11 @@ paths:
   /enterprise-assets/uploads:
     post:
       tags: [EnterpriseAssets]
+      operationId: uploadEnterpriseAssets
       summary: Upload reusable enterprise material for automatic classification
       description: The request intentionally has no target or project_id field.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -51,9 +58,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [files]
+              required: ['files[]']
               properties:
-                files:
+                'files[]':
                   type: array
                   minItems: 1
                   items: { type: string, format: binary }
@@ -71,9 +78,73 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/EnterpriseIngestionTask' }
         '422': { $ref: '#/components/responses/DomainViolation' }
+  /enterprise-assets/{asset_id}:
+    get:
+      tags: [EnterpriseAssets]
+      operationId: getEnterpriseAsset
+      summary: Read one reusable enterprise asset and its extracted facts
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+      responses:
+        '200':
+          description: Enterprise asset
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/EnterpriseAsset' }
+  /enterprise-assets/{asset_id}/revisions:
+    get:
+      tags: [EnterpriseAssets]
+      operationId: listEnterpriseAssetRevisions
+      summary: List immutable revisions of one enterprise asset
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+      responses:
+        '200':
+          description: Revision list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/EnterpriseAssetRevision' }
+  /enterprise-assets/{asset_id}/classification:
+    patch:
+      tags: [EnterpriseAssets]
+      operationId: correctEnterpriseAssetClassification
+      summary: Correct Agent classification with optimistic concurrency control
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CorrectEnterpriseAssetClassificationInput' }
+      responses:
+        '200':
+          description: Corrected asset
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/EnterpriseAsset' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
   /projects/{project_id}/materials:
     get:
       tags: [ProjectMaterials]
+      operationId: listProjectMaterials
       summary: List materials belonging only to the selected project
       parameters:
         - $ref: '#/components/parameters/ProjectId'
@@ -93,6 +164,7 @@ paths:
   /projects/{project_id}/materials/uploads:
     post:
       tags: [ProjectMaterials]
+      operationId: uploadProjectMaterials
       summary: Upload material to one project event
       description: The request intentionally has no target or enterprise_asset_id field.
       parameters:
@@ -105,9 +177,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [files, event_type]
+              required: ['files[]', event_type]
               properties:
-                files:
+                'files[]':
                   type: array
                   minItems: 1
                   items: { type: string, format: binary }
@@ -127,16 +199,79 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/ProjectMaterialUploadResult' }
         '422': { $ref: '#/components/responses/DomainViolation' }
-  /tasks/{task_id}/stream:
+  /project-materials/{material_id}/revisions/{revision_id}/blocks:
     get:
-      tags: [Tasks]
-      summary: Stream sanitized task progress
-      description: Only PublicTaskEvent is allowed; raw model output and tool calls are forbidden.
+      tags: [ProjectMaterials]
+      operationId: listProjectMaterialBlocks
+      summary: Read source blocks from one immutable project-material revision
       parameters:
-        - name: task_id
+        - name: material_id
           in: path
           required: true
           schema: { type: string }
+        - name: revision_id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Document block page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/DocumentBlockPage' }
+  /projects/{project_id}/requirements:
+    get:
+      tags: [ProjectMaterials]
+      operationId: listProjectRequirements
+      summary: List versioned requirements extracted only from the selected project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Requirement list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Requirement' }
+  /tasks/{task_id}:
+    get:
+      tags: [Tasks]
+      operationId: getTask
+      summary: Read sanitized task state and frozen snapshot reference
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task state
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Task' }
+  /tasks/{task_id}/stream:
+    get:
+      tags: [Tasks]
+      operationId: streamTaskEvents
+      summary: Stream sanitized task progress
+      description: Only PublicTaskEvent is allowed; raw model output and tool calls are forbidden.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
         - name: Last-Event-ID
           in: header
           required: false
@@ -150,6 +285,7 @@ paths:
   /review-providers:
     get:
       tags: [Reviews]
+      operationId: listReviewProviders
       summary: List enabled review providers
       responses:
         '200':
@@ -167,6 +303,7 @@ paths:
   /projects/{project_id}/review-runs:
     post:
       tags: [Reviews]
+      operationId: createReviewRun
       summary: Execute a provider against a frozen project snapshot
       parameters:
         - $ref: '#/components/parameters/ProjectId'
@@ -190,6 +327,7 @@ paths:
   /review-runs/{review_run_id}:
     get:
       tags: [Reviews]
+      operationId: getReviewRun
       summary: Read one immutable review run and its evidence-backed findings
       parameters:
         - name: review_run_id
@@ -210,6 +348,7 @@ paths:
   /quotes/history:
     get:
       tags: [Quotes]
+      operationId: listHistoryPrices
       summary: Query an external read-only history provider
       parameters:
         - name: material_name
@@ -224,6 +363,12 @@ paths:
         - name: region
           in: query
           schema: { type: string }
+        - name: tenderer
+          in: query
+          schema: { type: string }
+        - name: year
+          in: query
+          schema: { type: integer, minimum: 2000, maximum: 2100 }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/Size'
       responses:
@@ -240,6 +385,7 @@ paths:
   /quotes/history/{sample_id}:
     get:
       tags: [Quotes]
+      operationId: getHistoryPriceSample
       summary: Read one external history sample
       parameters:
         - name: sample_id
@@ -260,6 +406,7 @@ paths:
   /quotes/calculations:
     post:
       tags: [Quotes]
+      operationId: createQuoteCalculation
       summary: Run deterministic local QuoteEngine
       description: No LLM-generated numeric quote is permitted.
       parameters:
@@ -283,6 +430,7 @@ paths:
   /quotes/calculations/{calculation_id}:
     get:
       tags: [Quotes]
+      operationId: getQuoteCalculation
       summary: Read a deterministic calculation or its safe no-result state
       parameters:
         - name: calculation_id
@@ -303,6 +451,7 @@ paths:
   /quotes/calculations/{calculation_id}/apply:
     post:
       tags: [Quotes]
+      operationId: applyQuoteCalculation
       summary: Apply one deterministic strategy after explicit user confirmation
       parameters:
         - name: calculation_id
@@ -333,6 +482,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    AssetId:
+      name: asset_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
     ProjectId:
       name: project_id
       in: path
@@ -351,9 +505,19 @@ components:
       in: header
       required: true
       schema: { type: string, format: uuid }
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
   responses:
     DomainViolation:
       description: Request violates a data-domain boundary
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    VersionConflict:
+      description: The expected revision/version is no longer current
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ApiError' }
@@ -398,9 +562,58 @@ components:
         current_revision_id: { type: string }
         classification_confidence: { type: number, minimum: 0, maximum: 1 }
         expires_at: { type: [string, 'null'], format: date-time }
-        facts: { type: array, items: { type: object } }
+        facts: { type: array, items: { $ref: '#/components/schemas/EnterpriseFact' } }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    EvidenceRef:
+      type: object
+      additionalProperties: false
+      required: [source_type, source_revision_id, content_hash, locator]
+      properties:
+        source_type: { type: string, enum: [enterprise_asset, project_material, requirement, deliverable, search] }
+        source_revision_id: { type: string }
+        content_hash: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+        locator:
+          type: object
+          additionalProperties: false
+          properties:
+            page: { type: integer, minimum: 1 }
+            block_id: { type: string }
+            node_id: { type: string }
+            cell_range: { type: string }
+        exact_quote: { type: string }
+        claim_id: { type: string }
+    EnterpriseFact:
+      type: object
+      additionalProperties: false
+      required: [fact_id, key, label, value, confidence, status, evidence_refs]
+      properties:
+        fact_id: { type: string }
+        key: { type: string }
+        label: { type: string }
+        value: {}
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        status: { type: string, enum: [extracted, confirmed, corrected, conflict, low_confidence] }
+        evidence_refs: { type: array, minItems: 1, items: { $ref: '#/components/schemas/EvidenceRef' } }
+    EnterpriseAssetRevision:
+      type: object
+      additionalProperties: false
+      required: [revision_id, version_no, original_name, mime_type, size_bytes, sha256, created_at]
+      properties:
+        revision_id: { type: string }
+        version_no: { type: integer, minimum: 1 }
+        original_name: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+        created_at: { type: string, format: date-time }
+    CorrectEnterpriseAssetClassificationInput:
+      type: object
+      additionalProperties: false
+      required: [category, expected_revision_id]
+      properties:
+        category: { $ref: '#/components/schemas/EnterpriseAssetCategory' }
+        expected_revision_id: { type: string, minLength: 1 }
     EnterpriseAssetPage:
       type: object
       additionalProperties: false
@@ -464,6 +677,59 @@ components:
         project_id: { type: string }
         material_ids: { type: array, items: { type: string } }
         status: { const: queued }
+    DocumentBlock:
+      type: object
+      additionalProperties: false
+      required: [block_id, source_revision_id, type, page, index, text, confidence]
+      properties:
+        block_id: { type: string }
+        source_revision_id: { type: string }
+        type: { type: string, enum: [title, paragraph, table, cell, image] }
+        page: { type: [integer, 'null'], minimum: 1 }
+        index: { type: integer, minimum: 0 }
+        text: { type: string }
+        confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
+    DocumentBlockPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, size]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DocumentBlock' } }
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1 }
+    Requirement:
+      type: object
+      additionalProperties: false
+      required: [requirement_id, project_id, revision_id, type, content, structured, confidence, evidence_refs]
+      properties:
+        requirement_id: { type: string }
+        project_id: { type: string }
+        revision_id: { type: string }
+        type:
+          type: string
+          enum: [basic_info, qualification, score_rule, reject_clause, tech_requirement, quote_rule, material_checklist, attachment]
+        content: { type: string }
+        structured: { type: object, additionalProperties: true }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        evidence_refs: { type: array, minItems: 1, items: { $ref: '#/components/schemas/EvidenceRef' } }
+    Task:
+      type: object
+      additionalProperties: false
+      required: [task_id, project_id, project_snapshot_id, phase, status, percent, public_message, error_code, created_at, updated_at]
+      properties:
+        task_id: { type: string }
+        project_id: { type: string }
+        project_snapshot_id: { type: [string, 'null'] }
+        phase: { type: string, maxLength: 64 }
+        status:
+          type: string
+          enum: [queued, running, waiting_user, retrying, cancel_requested, cancelled, superseded, succeeded, failed, dead_letter]
+        percent: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        public_message: { type: string, maxLength: 500 }
+        error_code: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     PublicTaskEvent:
       type: object
       additionalProperties: false
@@ -482,6 +748,16 @@ components:
         public_message: { type: string, maxLength: 500 }
         error_code: { type: [string, 'null'] }
         occurred_at: { type: string, format: date-time }
+        result_refs:
+          type: object
+          additionalProperties: false
+          properties:
+            deliverable_ids: { type: array, items: { type: string } }
+            requirement_revision_ids: { type: array, items: { type: string } }
+            review_run_id: { type: string }
+            quote_calculation_id: { type: string }
+            check_id: { type: string }
+            export_job_id: { type: string }
     ReviewProvider:
       type: object
       additionalProperties: false
@@ -493,7 +769,9 @@ components:
         version: { type: string }
         status: { type: string, enum: [available, degraded, unavailable] }
         capabilities: { type: array, items: { type: string, enum: [score, risk, evidence, suggestion] } }
-        allowed_data_scope: { type: array, items: { type: string } }
+        allowed_data_scope:
+          type: array
+          items: { type: string, enum: [requirements, deliverables, enterprise_facts, quote_snapshot] }
         can_execute: { type: boolean }
     CreateReviewRunInput:
       type: object
@@ -526,7 +804,7 @@ components:
         confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
         message: { type: string }
         suggestion: { type: [string, 'null'] }
-        evidence_refs: { type: array, items: { type: object } }
+        evidence_refs: { type: array, items: { $ref: '#/components/schemas/EvidenceRef' } }
     ReviewRun:
       type: object
       additionalProperties: false
@@ -546,7 +824,7 @@ components:
     HistoryPriceSample:
       type: object
       additionalProperties: false
-      required: [sample_id, material_name, win_price, currency, tax_included, unit, win_date, source_ref]
+      required: [sample_id, material_name, material_code, spec, tenderer, region, win_price, currency, tax_included, unit, win_date, supplier, source_ref]
       properties:
         sample_id: { type: string }
         material_name: { type: string }

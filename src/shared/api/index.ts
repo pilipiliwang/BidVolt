@@ -6,3 +6,4 @@ export * from './quotes';
 export * from './review';
 export * from './schema';
 export * from './task-events';
+export * from './tasks';

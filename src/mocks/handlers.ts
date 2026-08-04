@@ -12,6 +12,7 @@ import {
   requirementFixture,
   reviewProvidersFixture,
   reviewRunFixture,
+  taskFixture,
 } from './fixtures';
 
 const apiPath = (path: string) => `*/api/v1${path}`;
@@ -33,6 +34,17 @@ const forbiddenScope = () =>
     { status: 422 },
   );
 
+const missingIdempotencyKey = () =>
+  HttpResponse.json(
+    {
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: '写接口必须携带 Idempotency-Key',
+      request_id: crypto.randomUUID(),
+      retryable: false,
+    },
+    { status: 409 },
+  );
+
 export const handlers = [
   http.get(apiPath('/enterprise-assets'), () =>
     HttpResponse.json(
@@ -49,7 +61,23 @@ export const handlers = [
   ),
 
   http.patch(apiPath('/enterprise-assets/:assetId/classification'), async ({ request }) => {
-    const body = (await request.json()) as { category?: typeof enterpriseAssetFixture.category };
+    if (!request.headers.get('Idempotency-Key')) return missingIdempotencyKey();
+    const body = (await request.json()) as {
+      category?: typeof enterpriseAssetFixture.category;
+      expected_revision_id?: string;
+    };
+    if (body.expected_revision_id !== enterpriseAssetFixture.current_revision_id) {
+      return HttpResponse.json(
+        {
+          code: 'VERSION_CONFLICT',
+          message: '企业资料已产生新版本，请刷新后重试',
+          details: { current_revision_id: enterpriseAssetFixture.current_revision_id },
+          request_id: crypto.randomUUID(),
+          retryable: false,
+        },
+        { status: 409 },
+      );
+    }
     return HttpResponse.json(
       success({ ...enterpriseAssetFixture, category: body.category ?? enterpriseAssetFixture.category }),
     );
@@ -58,6 +86,7 @@ export const handlers = [
   http.post(apiPath('/enterprise-assets/uploads'), async ({ request }) => {
     const form = await request.formData();
     if (form.has('target') || form.has('project_id')) return forbiddenScope();
+    if (!request.headers.get('Idempotency-Key')) return missingIdempotencyKey();
     return HttpResponse.json(
       success({
         task_id: 'enterprise_ingestion_001',
@@ -83,6 +112,7 @@ export const handlers = [
   http.post(apiPath('/projects/:projectId/materials/uploads'), async ({ request, params }) => {
     const form = await request.formData();
     if (form.has('target') || form.has('enterprise_asset_id')) return forbiddenScope();
+    if (!request.headers.get('Idempotency-Key')) return missingIdempotencyKey();
     return HttpResponse.json(
       success({
         task_id: 'project_material_ingestion_001',
@@ -110,12 +140,7 @@ export const handlers = [
 
   http.get(apiPath('/tasks/:taskId'), ({ params }) =>
     HttpResponse.json(
-      success({
-        task_id: String(params.taskId),
-        project_id: 'project_001',
-        status: 'running',
-        percent: 48,
-      }),
+      success({ ...taskFixture, task_id: String(params.taskId) }),
     ),
   ),
 
@@ -141,6 +166,7 @@ export const handlers = [
   ),
 
   http.post(apiPath('/projects/:projectId/review-runs'), async ({ request }) => {
+    if (!request.headers.get('Idempotency-Key')) return missingIdempotencyKey();
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json(
       success({
@@ -176,6 +202,7 @@ export const handlers = [
   }),
 
   http.post(apiPath('/quotes/calculations'), async ({ request }) => {
+    if (!request.headers.get('Idempotency-Key')) return missingIdempotencyKey();
     const body = (await request.json()) as { material_ref?: string };
     const result = body.material_ref?.includes('insufficient')
       ? insufficientQuoteFixture
@@ -193,14 +220,27 @@ export const handlers = [
     ),
   ),
 
-  http.post(apiPath('/quotes/calculations/:calculationId/apply'), () =>
-    HttpResponse.json(
+  http.post(apiPath('/quotes/calculations/:calculationId/apply'), async ({ request }) => {
+    if (!request.headers.get('Idempotency-Key')) return missingIdempotencyKey();
+    const body = (await request.json()) as { expected_version_id?: string; confirmed?: boolean };
+    if (!body.expected_version_id || body.confirmed !== true) {
+      return HttpResponse.json(
+        {
+          code: 'VERSION_CONFLICT',
+          message: '应用报价必须确认并指定 expected_version_id',
+          request_id: crypto.randomUUID(),
+          retryable: false,
+        },
+        { status: 409 },
+      );
+    }
+    return HttpResponse.json(
       success({
         deliverable_id: 'deliverable_quote_001',
         new_version_id: 'dv_quote_002',
         audit_log_id: 'audit_quote_001',
       }),
       { status: 201 },
-    ),
-  ),
+    );
+  }),
 ];

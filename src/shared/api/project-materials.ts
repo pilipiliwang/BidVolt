@@ -138,10 +138,20 @@ export const createProjectMaterialsApi = (client: ApiClient = apiClient) => ({
     });
   },
 
-  listBlocks: (materialId: string, revisionId: string) =>
-    client.request(`/project-materials/${materialId}/revisions/${revisionId}/blocks`, {
+  listBlocks: (
+    materialId: string,
+    revisionId: string,
+    query: { page?: number; size?: number } = {},
+  ) => {
+    const search = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined) search.set(key, String(value));
+    });
+    const suffix = search.size > 0 ? `?${search.toString()}` : '';
+    return client.request(`/project-materials/${materialId}/revisions/${revisionId}/blocks${suffix}`, {
       schema: createPageSchema(documentBlockSchema),
-    }),
+    });
+  },
 
   listRequirements: (projectId: string) =>
     client.request(`/projects/${projectId}/requirements`, {

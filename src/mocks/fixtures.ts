@@ -10,6 +10,7 @@ import {
   requirementSchema,
   reviewProviderSchema,
   reviewRunSchema,
+  taskSchema,
 } from '../shared/api';
 
 const timestamp = '2026-08-05T01:20:00Z';
@@ -118,6 +119,19 @@ export const publicTaskEventFixture = publicTaskEventSchema.parse({
   public_message: '正在匹配企业资质材料',
   error_code: null,
   occurred_at: timestamp,
+});
+
+export const taskFixture = taskSchema.parse({
+  task_id: 'task_001',
+  project_id: 'project_001',
+  project_snapshot_id: 'snapshot_001',
+  phase: 'material_match',
+  status: 'running',
+  percent: 48,
+  public_message: '正在匹配企业资质材料',
+  error_code: null,
+  created_at: timestamp,
+  updated_at: timestamp,
 });
 
 export const reviewProvidersFixture = reviewProviderSchema.array().parse([
