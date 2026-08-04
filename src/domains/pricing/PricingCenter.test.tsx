@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PricingCenter } from './PricingCenter';
@@ -70,6 +71,43 @@ describe('PricingCenter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '确认生成新版本' }));
     expect(onApply).toHaveBeenCalledWith('balanced');
+  });
+
+  it('traps focus in the confirmation dialog and restores it after Escape or cancel', async () => {
+    const user = userEvent.setup();
+    render(<PricingCenter calculation={calculated} samples={samples} />);
+
+    const trigger = screen.getByRole('button', { name: '应用到报价单并生成新版本' });
+    await user.click(trigger);
+
+    let dialog = screen.getByRole('dialog', { name: '确认应用“均衡策略”' });
+    const closeButton = within(dialog).getByRole('button', { name: '关闭确认' });
+    const confirmButton = within(dialog).getByRole('button', { name: '确认生成新版本' });
+    expect(closeButton).toHaveFocus();
+
+    await user.tab({ shift: true });
+    expect(confirmButton).toHaveFocus();
+    await user.tab();
+    expect(closeButton).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    dialog = screen.getByRole('dialog', { name: '确认应用“均衡策略”' });
+    await user.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('filters the read-only sample list without mutating it', () => {
+    render(<PricingCenter calculation={calculated} samples={samples} />);
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'IP42' } });
+
+    expect(screen.getByText('IP42 / 380V')).toBeInTheDocument();
+    expect(screen.queryByText('IP55 / 400V')).not.toBeInTheDocument();
   });
 
   it('does not render a price when reliable calculation is impossible', () => {

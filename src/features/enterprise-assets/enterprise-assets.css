@@ -33,7 +33,7 @@
   text-transform: uppercase;
 }
 
-.enterprise-page__hero h1 {
+.enterprise-page__hero h2 {
   margin: 0;
   font-size: clamp(30px, 4vw, 46px);
   letter-spacing: -0.04em;
@@ -668,6 +668,10 @@
 .enterprise-revision--current {
   border-color: #a9d3ce;
   background: #f4fbfa;
+}
+
+.enterprise-revision--static {
+  cursor: default;
 }
 
 .enterprise-revision__marker {

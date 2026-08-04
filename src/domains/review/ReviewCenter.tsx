@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Ban,
   Braces,
   CheckCircle2,
   CircleHelp,
+  CircleX,
   CloudCog,
   FileCheck2,
   Play,
@@ -32,27 +34,38 @@ const outcomeMeta: Record<
   ReviewFindingOutcome,
   { label: string; icon: typeof CheckCircle2; className: string }
 > = {
+  fail: { label: '未通过', icon: CircleX, className: styles.fail },
   risk: { label: '风险', icon: AlertTriangle, className: styles.risk },
   pass: { label: '通过', icon: CheckCircle2, className: styles.pass },
   unknown: { label: '待确认', icon: CircleHelp, className: styles.unknown },
+  abstain: { label: '未给出结论', icon: Ban, className: styles.abstain },
 };
 
 type ReviewCenterProps = {
   providers: ReviewProvider[];
   run: ReviewRunView;
   onRun?: (providerId: string) => void;
+  runAllowed?: boolean;
+  runBlockReason?: string;
 };
 
-export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
+export function ReviewCenter({
+  providers,
+  run,
+  onRun,
+  runAllowed = true,
+  runBlockReason,
+}: ReviewCenterProps) {
   const firstAvailable = providers.find((provider) => provider.available)?.id ?? '';
   const [selectedProviderId, setSelectedProviderId] = useState(firstAvailable);
   const selectedProvider = providers.find((provider) => provider.id === selectedProviderId);
+  const actualProvider = providers.find((provider) => provider.id === run.providerId);
 
   const counts = useMemo(
     () =>
       run.findings.reduce(
         (summary, finding) => ({ ...summary, [finding.outcome]: summary[finding.outcome] + 1 }),
-        { risk: 0, pass: 0, unknown: 0 },
+        { fail: 0, risk: 0, pass: 0, unknown: 0, abstain: 0 },
       ),
     [run.findings],
   );
@@ -62,7 +75,7 @@ export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
       <header className={styles.header}>
         <div>
           <span className={styles.eyebrow}>ReviewProvider</span>
-          <h1 id="review-title">外部评审中心</h1>
+          <h2 id="review-title">外部评审中心</h2>
           <p>统一接入 API、受限代码与规则引擎。所有结果都绑定冻结快照和证据。</p>
         </div>
         <div className={styles.snapshot}>
@@ -123,13 +136,16 @@ export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
 
           <button
             className={styles.runButton}
-            disabled={!selectedProvider || run.status === 'running'}
+            disabled={!selectedProvider || !runAllowed || run.status === 'running'}
             onClick={() => selectedProvider && onRun?.(selectedProvider.id)}
             type="button"
           >
             <Play aria-hidden="true" size={17} />
             {run.status === 'running' ? '评审执行中' : '基于冻结快照运行评审'}
           </button>
+          {!runAllowed && runBlockReason ? (
+            <p className={styles.runBlocked}>{runBlockReason}</p>
+          ) : null}
         </aside>
 
         <div className={styles.results}>
@@ -141,10 +157,23 @@ export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
             <span className={`${styles.status} ${styles[run.status]}`}>{statusLabel(run.status)}</span>
           </div>
 
+          <div className={styles.runContext} aria-label="实际评审执行信息">
+            <span>
+              实际 Provider
+              <strong>{actualProvider?.name ?? '尚未运行'}</strong>
+            </span>
+            <span>
+              Provider 版本
+              <strong>{run.providerVersion ?? actualProvider?.version ?? '—'}</strong>
+            </span>
+          </div>
+
           <div className={styles.metrics} aria-label="评审结果汇总">
+            <Metric label="未通过" tone="fail" value={counts.fail} />
             <Metric label="风险" tone="risk" value={counts.risk} />
             <Metric label="通过" tone="pass" value={counts.pass} />
             <Metric label="待确认" tone="unknown" value={counts.unknown} />
+            <Metric label="未给出结论" tone="abstain" value={counts.abstain} />
             <div className={styles.versionMetric}>
               <span>成果版本</span>
               <strong>{run.deliverableVersions.join(' · ')}</strong>
@@ -155,6 +184,7 @@ export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
             {run.findings.map((finding) => {
               const meta = outcomeMeta[finding.outcome];
               const OutcomeIcon = meta.icon;
+              const evidenceVerification = finding.evidence.verification;
               return (
                 <article className={styles.finding} key={finding.id}>
                   <div className={`${styles.outcomeIcon} ${meta.className}`}>
@@ -169,7 +199,15 @@ export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
                     <div className={styles.evidence}>
                       <span>{finding.evidence.sourceLabel}</span>
                       <strong>{finding.evidence.locator}</strong>
-                      {finding.evidence.exactQuote ? <q>{finding.evidence.exactQuote}</q> : null}
+                      {evidenceVerification === 'verified' && finding.evidence.exactQuote ? (
+                        <q>{finding.evidence.exactQuote}</q>
+                      ) : null}
+                      {evidenceVerification === 'hidden_unverified' ? (
+                        <em className={styles.evidenceNotice}>未验证，引用内容已隐藏</em>
+                      ) : null}
+                      {evidenceVerification === 'missing' ? (
+                        <em className={styles.evidenceNotice}>未提供可核验的证据</em>
+                      ) : null}
                     </div>
                     <div className={styles.findingMeta}>
                       <span>规则 {finding.ruleVersion}</span>
@@ -181,6 +219,13 @@ export function ReviewCenter({ providers, run, onRun }: ReviewCenterProps) {
                 </article>
               );
             })}
+            {run.findings.length === 0 ? (
+              <div className={styles.emptyFindings} role="status">
+                {run.status === 'running'
+                  ? 'Provider 正在处理冻结快照，旧评审结果已从当前视图移除。'
+                  : '当前项目还没有可展示的评审结果。'}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -204,6 +249,8 @@ function statusLabel(status: ReviewRunView['status']) {
     running: '运行中',
     succeeded: '已完成',
     failed: '失败',
+    invalid_response: '响应无效',
+    timed_out: '已超时',
   };
   return labels[status];
 }

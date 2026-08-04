@@ -1086,13 +1086,14 @@ components:
     CalculatedQuote:
       type: object
       additionalProperties: false
-      required: [calc_id, project_snapshot_id, algorithm_version, created_at, status, sample_snapshot_id, confidence_interval, normalized_input, excluded_sample_count, strategies]
+      required: [calc_id, project_snapshot_id, algorithm_version, created_at, status, query_snapshot_id, sample_snapshot_id, confidence_interval, normalized_input, excluded_sample_count, strategies]
       properties:
         calc_id: { type: string }
         project_snapshot_id: { type: string }
         algorithm_version: { type: string }
         created_at: { type: string, format: date-time }
         status: { const: calculated }
+        query_snapshot_id: { type: string }
         sample_snapshot_id: { type: string }
         confidence_interval:
           type: object
@@ -1142,13 +1143,14 @@ components:
     InsufficientQuote:
       type: object
       additionalProperties: false
-      required: [calc_id, project_snapshot_id, algorithm_version, created_at, status, observed_sample_count, required_sample_count, message]
+      required: [calc_id, project_snapshot_id, algorithm_version, created_at, status, query_snapshot_id, observed_sample_count, required_sample_count, message]
       properties:
         calc_id: { type: string }
         project_snapshot_id: { type: string }
         algorithm_version: { type: string }
         created_at: { type: string, format: date-time }
         status: { const: insufficient_data }
+        query_snapshot_id: { type: string }
         observed_sample_count: { type: integer, minimum: 0 }
         required_sample_count: { type: integer, minimum: 1 }
         message: { type: string }

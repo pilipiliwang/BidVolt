@@ -18,7 +18,7 @@
   text-transform: uppercase;
 }
 
-.header h1 {
+.header h2 {
   margin: 7px 0 8px;
   font-size: clamp(26px, 3vw, 36px);
   letter-spacing: -0.03em;
@@ -127,6 +127,15 @@
 .strategyList {
   display: grid;
   gap: 10px;
+}
+
+.emptySamples {
+  margin: 0;
+  padding: 26px 18px;
+  border: 1px dashed #cbd8db;
+  border-radius: 12px;
+  color: #71868b;
+  text-align: center;
 }
 
 .sample {

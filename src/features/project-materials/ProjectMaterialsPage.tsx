@@ -68,11 +68,11 @@ export function ProjectMaterialsPage({
   ).length;
 
   return (
-    <main className="project-material-page">
+    <section className="project-material-page">
       <header className="project-material-page__hero">
         <div>
           <p className="project-material-eyebrow">Current project materials</p>
-          <h1>当前招标材料</h1>
+          <h2>当前招标材料</h2>
           <p className="project-material-page__lead">
             {projectName} · 所有材料、Requirement 与快照均绑定当前工作台任务。
           </p>
@@ -225,7 +225,7 @@ export function ProjectMaterialsPage({
           />
         )}
       </div>
-    </main>
+    </section>
   );
 }
 

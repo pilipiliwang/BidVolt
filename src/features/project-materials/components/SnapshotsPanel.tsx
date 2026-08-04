@@ -24,13 +24,9 @@ export function SnapshotsPanel({ projectId, snapshots, onOpenSnapshot }: Snapsho
       </header>
 
       <ol className="project-snapshot-list">
-        {snapshots.map((snapshot) => (
-          <li key={snapshot.id}>
-            <button
-              className={snapshot.isCurrent ? 'project-snapshot project-snapshot--current' : 'project-snapshot'}
-              type="button"
-              onClick={() => onOpenSnapshot?.(projectId, snapshot.id)}
-            >
+        {snapshots.map((snapshot) => {
+          const snapshotContent = (
+            <>
               <span className="project-snapshot__icon" aria-hidden="true">
                 <Layers3 size={19} />
               </span>
@@ -48,9 +44,29 @@ export function SnapshotsPanel({ projectId, snapshots, onOpenSnapshot }: Snapsho
                   当前工作快照
                 </em>
               )}
-            </button>
-          </li>
-        ))}
+            </>
+          );
+
+          return (
+            <li key={snapshot.id}>
+              {onOpenSnapshot ? (
+                <button
+                  className={snapshot.isCurrent ? 'project-snapshot project-snapshot--current' : 'project-snapshot'}
+                  type="button"
+                  onClick={() => onOpenSnapshot(projectId, snapshot.id)}
+                >
+                  {snapshotContent}
+                </button>
+              ) : (
+                <div
+                  className={snapshot.isCurrent ? 'project-snapshot project-snapshot--current project-snapshot--static' : 'project-snapshot project-snapshot--static'}
+                >
+                  {snapshotContent}
+                </div>
+              )}
+            </li>
+          );
+        })}
         {snapshots.length === 0 && (
           <li className="project-empty-state">
             <Camera aria-hidden="true" size={28} />

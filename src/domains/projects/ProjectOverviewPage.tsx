@@ -21,24 +21,29 @@ import { getProjectSummary } from './project-view-model';
 type ProjectOverviewPageProps = {
   onOpenTasks: () => void;
   projectId: string;
+  taskSummary?: {
+    message: string;
+    percent: number;
+    title: string;
+  };
 };
 
 const workflowSteps = [
   {
     title: '项目材料',
-    detail: '24 份文件已完成隔离入库',
+    detail: '材料绑定当前项目事件',
     status: 'complete',
     icon: FileStack,
   },
   {
     title: '需求清单',
-    detail: '86 条需求已定位来源',
+    detail: '需求保留原文定位',
     status: 'complete',
     icon: ListChecks,
   },
   {
     title: '成果编制',
-    detail: '技术方案正在检查引用',
+    detail: '成果读取冻结快照',
     status: 'active',
     icon: FilePenLine,
   },
@@ -56,28 +61,31 @@ const workflowSteps = [
   },
 ] as const;
 
-const attentionItems = [
+const demoAttentionItems = [
   {
     level: 'high',
     title: '技术参数存在 2 处待确认项',
     detail: '配电柜防护等级与招标正文、附件表述不一致。',
     action: '查看需求',
+    target: 'materials',
   },
   {
     level: 'medium',
     title: '3 条业绩要求尚未匹配企业资料',
     detail: '需要选择可复用的企业业绩记录，项目材料不会自动沉淀。',
     action: '处理匹配',
+    target: 'enterprise',
   },
   {
     level: 'low',
     title: '报价样本口径等待确认',
     detail: '历史价格只读查询已完成，需确认税率和运输范围。',
     action: '查看报价',
+    target: 'pricing',
   },
 ] as const;
 
-export function ProjectOverviewPage({ onOpenTasks, projectId }: ProjectOverviewPageProps) {
+export function ProjectOverviewPage({ onOpenTasks, projectId, taskSummary }: ProjectOverviewPageProps) {
   const project = getProjectSummary(projectId);
 
   if (!project) {
@@ -92,6 +100,22 @@ export function ProjectOverviewPage({ onOpenTasks, projectId }: ProjectOverviewP
       </section>
     );
   }
+
+  const attentionItems =
+    project.id === 'BV-2026-018'
+      ? demoAttentionItems
+      : [
+          {
+            level: project.riskCount > 0 ? ('medium' as const) : ('low' as const),
+            title:
+              project.riskCount > 0
+                ? `当前项目有 ${project.riskCount} 项待处理风险`
+                : '当前项目暂无待处理风险',
+            detail: '进入当前项目材料查看本项目的 Requirement、证据和处理状态。',
+            action: '查看材料',
+            target: 'materials' as const,
+          },
+        ];
 
   return (
     <div className="page-stack page-stack--overview">
@@ -118,6 +142,18 @@ export function ProjectOverviewPage({ onOpenTasks, projectId }: ProjectOverviewP
               <ShieldCheck aria-hidden="true" size={16} />
               当前项目快照已启用
             </span>
+          </div>
+          <div className="workbench-hero__actions" aria-label="项目快捷入口">
+            <AppLink className="button button--primary" to={`/projects/${projectId}/materials`}>
+              打开项目材料
+              <ArrowRight aria-hidden="true" size={16} />
+            </AppLink>
+            <AppLink className="button button--light" to={`/projects/${projectId}/review`}>
+              启动模拟评审
+            </AppLink>
+            <AppLink className="button button--light" to={`/projects/${projectId}/pricing`}>
+              查看报价测算
+            </AppLink>
           </div>
         </div>
         <div className="workbench-score">
@@ -160,7 +196,13 @@ export function ProjectOverviewPage({ onOpenTasks, projectId }: ProjectOverviewP
                   <span className="workflow-step__number">0{index + 1}</span>
                 </div>
                 <h3>{step.title}</h3>
-                <p>{step.detail}</p>
+                <p>
+                  {step.title === '项目材料'
+                    ? `${project.materialCount} 份材料绑定当前项目事件`
+                    : step.title === '成果编制'
+                      ? `当前阶段：${project.stage}`
+                      : step.detail}
+                </p>
                 <span className="workflow-step__state">
                   {step.status === 'complete' ? <Check aria-hidden="true" size={14} /> : null}
                   {step.status === 'active' ? <Activity aria-hidden="true" size={14} /> : null}
@@ -184,22 +226,30 @@ export function ProjectOverviewPage({ onOpenTasks, projectId }: ProjectOverviewP
               <span className="eyebrow">需要处理</span>
               <h2 id="attention-title">风险与待办</h2>
             </div>
-            <span className="count-chip">3 项</span>
+            <span className="count-chip">{attentionItems.length} 项</span>
           </div>
           <div className="attention-list">
-            {attentionItems.map((item) => (
-              <article className="attention-item" key={item.title}>
-                <span className={`risk-dot risk-dot--${item.level}`} aria-hidden="true" />
-                <div>
-                  <h3>{item.title}</h3>
-                  <p>{item.detail}</p>
-                </div>
-                <button className="text-button" type="button">
-                  {item.action}
-                  <ArrowRight aria-hidden="true" size={15} />
-                </button>
-              </article>
-            ))}
+            {attentionItems.map((item) => {
+              const projectPath = `/projects/${encodeURIComponent(projectId)}`;
+              const actionHref =
+                item.target === 'enterprise'
+                  ? '/enterprise-assets'
+                  : `${projectPath}/${item.target}`;
+
+              return (
+                <article className="attention-item" key={item.title}>
+                  <span className={`risk-dot risk-dot--${item.level}`} aria-hidden="true" />
+                  <div>
+                    <h3>{item.title}</h3>
+                    <p>{item.detail}</p>
+                  </div>
+                  <AppLink className="text-button" to={actionHref}>
+                    {item.action}
+                    <ArrowRight aria-hidden="true" size={15} />
+                  </AppLink>
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -209,26 +259,33 @@ export function ProjectOverviewPage({ onOpenTasks, projectId }: ProjectOverviewP
             <Sparkles size={25} />
           </div>
           <span className="eyebrow">智能任务</span>
-          <h2 id="task-card-title">技术方案正在检查</h2>
-          <p>当前正在核验引用位置与需求覆盖情况，只展示可公开的阶段进度。</p>
-          <div className="task-card__progress">
-            <div>
-              <span>完成进度</span>
-              <strong>72%</strong>
+          <h2 id="task-card-title">{taskSummary?.title ?? '暂无运行中的智能任务'}</h2>
+          <p>{taskSummary?.message ?? '当前项目没有可展示的公开任务进度。'}</p>
+          {taskSummary ? (
+            <div className="task-card__progress">
+              <div>
+                <span>完成进度</span>
+                <strong>{taskSummary.percent}%</strong>
+              </div>
+              <div
+                className="progress-track progress-track--large"
+                role="progressbar"
+                aria-label={`${taskSummary.title}进度`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={taskSummary.percent}
+              >
+                <span style={{ width: `${taskSummary.percent}%` }} />
+              </div>
             </div>
-            <div
-              className="progress-track progress-track--large"
-              role="progressbar"
-              aria-label="技术方案检查进度"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={72}
-            >
-              <span style={{ width: '72%' }} />
-            </div>
-          </div>
-          <button className="button button--light button--full" type="button" onClick={onOpenTasks}>
-            查看公开任务进度
+          ) : null}
+          <button
+            className="button button--light button--full"
+            type="button"
+            disabled={!taskSummary}
+            onClick={onOpenTasks}
+          >
+            {taskSummary ? '查看公开任务进度' : '当前无公开任务'}
             <ArrowRight aria-hidden="true" size={16} />
           </button>
         </aside>

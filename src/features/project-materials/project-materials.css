@@ -33,7 +33,7 @@
   text-transform: uppercase;
 }
 
-.project-material-page__hero h1 {
+.project-material-page__hero h2 {
   margin: 0;
   font-size: clamp(30px, 4vw, 46px);
   letter-spacing: -0.04em;
@@ -542,6 +542,20 @@
 .project-snapshot--current {
   border-color: #b9cbe3;
   background: #f7faff;
+}
+
+.project-snapshot--static {
+  cursor: default;
+}
+
+.project-snapshot--static:hover {
+  border-color: #dce7ec;
+  background: #fff;
+}
+
+.project-snapshot--static.project-snapshot--current:hover {
+  border-color: #a9d3ce;
+  background: #f4fbfa;
 }
 
 .project-snapshot__icon {

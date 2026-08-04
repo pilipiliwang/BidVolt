@@ -50,6 +50,38 @@ Agent 抽取结果。项目快照通过 `/projects/{project_id}/snapshots` 查�
 以及不属于当前上下文的 review run 或 quote calculation 一律返回 `404 RESOURCE_NOT_FOUND`，不得返回默认对象、
 空壳对象或泄露资源是否存在。
 
+## 公开句柄与服务端安全边界
+
+- `task_id`、`project_id` 以及 `PublicTaskEvent.result_refs` 中的各类 ID 都是面向网页端的**不透明公开句柄**，
+  不是内部数据库主键、表名编码、租户编码或可推导的序列号。前端只能原样保存和回传，不得解析、递增、拼接、
+  猜测或据此推断企业、项目及内部服务拓扑。
+- `result_refs` 只能包含公开事件 Schema 白名单中声明的资源句柄，例如成果、Requirement revision、评审运行、
+  报价测算、终检或导出任务句柄；不得放入数据库 ID、对象存储 key、Agent Profile/Session、工具调用 ID、凭据或
+  模型内部标识。
+- 句柄不构成授权。服务端必须对每次 REST/SSE 请求重新执行身份认证、权限检查、企业归属、项目归属和完整资源关系
+  校验，包括 `project → material → revision`、`project → snapshot`、`project → task/review run` 以及报价测算归属。
+  不得依赖前端隐藏按钮、路由守卫、Mock 数据或句柄不可猜测性作为安全边界。
+- 外部 ReviewProvider 返回的每条 `evidence_ref` 必须在服务端与本次冻结快照白名单逐项匹配
+  `source_type + source_revision_id + content_hash`。未匹配的引用、原文摘录与定位信息必须丢弃或标记为未验证，
+  不能直接透传给普通用户；网页端会再次执行同样的失败关闭校验。
+- 未知句柄、跨企业句柄、跨项目引用或资源关系不匹配统一返回 `404 RESOURCE_NOT_FOUND`；服务端不得返回默认对象、
+  空壳对象，也不得通过差异化错误泄露资源是否存在。SSE 建连和断线重连同样必须鉴权并校验 `task_id` 所属关系。
+
+## 可修改事实、冻结快照与报价边界
+
+- 企业资料事实纠正必须调用服务端 fact correction 接口，携带 `Idempotency-Key` 和 `expected_revision_id`，成功后形成
+  新的企业资料 revision 并保留原值、纠正值及证据。前端不得只修改本地状态，也不得改变资料所属域。
+- Requirement 的确认与更新必须绑定路径中的 `project_id`，携带 `Idempotency-Key` 和 `expected_revision_id`，由服务端
+  创建新的 Requirement revision。确认表示认可当前抽取结果；更新表示提交经用户修订的完整内容和结构化字段，二者都
+  不得覆盖历史 revision。
+- 项目快照是服务端冻结的不可变输入清单。前端只通过项目作用域下的 list/detail 接口读取，不能创建、修改或拼装快照。
+  生成、评审、终检、导出和报价测算必须绑定同一个经归属校验的 `project_snapshot_id`，快照中的材料、Requirement、
+  企业资料、成果版本和报价样本引用均不可在任务执行中漂移。
+- 外部历史报价库严格只读，网页端仅查询不可变查询快照，不提供历史报价新增、修改或删除能力。报价数字只能由受控的
+  确定性 QuoteEngine 基于冻结样本和显式输入计算；`insufficient_data` 不得返回建议价或价格区间，也不得回退到 LLM
+  猜价。计算结果必须分别保留外部查询的 `query_snapshot_id` 与算法冻结样本的 `sample_snapshot_id`，不得复制或混用
+  两类血缘标识。应用策略必须由用户明确确认，并携带 `expected_version_id` 形成报价单新版本和审计记录。
+
 ## Mock 模式
 
 在 `.env.local` 中设置：

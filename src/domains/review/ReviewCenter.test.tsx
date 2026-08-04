@@ -42,6 +42,7 @@ const run: ReviewRunView = {
         sourceLabel: '招标文件',
         locator: '第 12 页 · 资格条件 3.1',
         exactQuote: '证书有效期须覆盖合同履行期。',
+        verification: 'verified',
       },
     },
   ],
@@ -66,5 +67,27 @@ describe('ReviewCenter', () => {
     fireEvent.click(screen.getByRole('button', { name: '基于冻结快照运行评审' }));
 
     expect(onRun).toHaveBeenCalledWith('provider-code');
+  });
+
+  it('blocks execution until a frozen snapshot and deliverable versions exist', () => {
+    render(
+      <ReviewCenter
+        providers={providers}
+        run={{
+          ...run,
+          id: 'not-started',
+          status: 'idle',
+          projectSnapshotId: '尚未创建评审快照',
+          deliverableVersions: ['暂无成果版本'],
+          findings: [],
+        }}
+        runAllowed={false}
+        runBlockReason="请先冻结项目快照并生成至少一个成果版本。"
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeDisabled();
+    expect(screen.getByText('请先冻结项目快照并生成至少一个成果版本。')).toBeInTheDocument();
+    expect(screen.getByText('当前项目还没有可展示的评审结果。')).toBeInTheDocument();
   });
 });

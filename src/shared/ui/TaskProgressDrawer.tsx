@@ -1,84 +1,129 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Check, Clock3, FileCheck2, LoaderCircle, X } from 'lucide-react';
 
-export type PublicTaskEvent = {
-  phase: 'queued' | 'parsing' | 'drafting' | 'checking';
-  progress: number;
-  publicMessage: string;
-  status: 'completed' | 'running' | 'waiting';
-  timestamp: string;
-};
-
-const publicEvents: PublicTaskEvent[] = [
-  {
-    phase: 'checking',
-    progress: 72,
-    publicMessage: '正在核验技术方案中的引用位置',
-    status: 'running',
-    timestamp: '刚刚',
-  },
-  {
-    phase: 'drafting',
-    progress: 64,
-    publicMessage: '技术方案初稿已生成，可继续编辑',
-    status: 'completed',
-    timestamp: '14:32',
-  },
-  {
-    phase: 'parsing',
-    progress: 38,
-    publicMessage: '已整理 86 条招标需求并完成来源定位',
-    status: 'completed',
-    timestamp: '14:27',
-  },
-  {
-    phase: 'queued',
-    progress: 8,
-    publicMessage: '项目材料已进入本次工作台处理队列',
-    status: 'completed',
-    timestamp: '14:20',
-  },
-];
+import type { PublicTaskEvent } from '../api/task-events';
 
 type TaskProgressDrawerProps = {
   isOpen: boolean;
   onClose: () => void;
+  projectTitle: string;
+  events: PublicTaskEvent[];
 };
 
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
 function StatusIcon({ status }: { status: PublicTaskEvent['status'] }) {
-  if (status === 'completed') {
+  if (status === 'succeeded') {
     return <Check aria-hidden="true" size={15} />;
   }
 
-  if (status === 'running') {
+  if (status === 'running' || status === 'retrying' || status === 'cancel_requested') {
     return <LoaderCircle aria-hidden="true" className="spin" size={15} />;
   }
 
   return <Clock3 aria-hidden="true" size={15} />;
 }
 
-export function TaskProgressDrawer({ isOpen, onClose }: TaskProgressDrawerProps) {
+function statusClass(status: PublicTaskEvent['status']) {
+  if (status === 'succeeded') return 'completed';
+  if (status === 'running' || status === 'retrying' || status === 'cancel_requested') {
+    return 'running';
+  }
+  return 'waiting';
+}
+
+export function TaskProgressDrawer({
+  isOpen,
+  onClose,
+  projectTitle,
+  events,
+}: TaskProgressDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const latestEvent = useMemo(
+    () => events.reduce<PublicTaskEvent | undefined>(
+      (latest, event) => (!latest || event.sequence > latest.sequence ? event : latest),
+      undefined,
+    ),
+    [events],
+  );
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
 
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButtonRef.current?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose();
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements.at(-1)!;
+      const activeElement = document.activeElement;
+      const focusIsOutsideDialog = !dialogRef.current.contains(activeElement);
+
+      if (event.shiftKey && (activeElement === firstElement || focusIsOutsideDialog)) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || focusIsOutsideDialog)) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      const previouslyFocused = previouslyFocusedRef.current;
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
   }
+
+  const latestPercent = latestEvent?.percent ?? null;
 
   return (
     <div className="drawer-layer">
@@ -89,10 +134,12 @@ export function TaskProgressDrawer({ isOpen, onClose }: TaskProgressDrawerProps)
         onClick={onClose}
       />
       <aside
+        ref={dialogRef}
         className="task-drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-drawer-title"
+        tabIndex={-1}
       >
         <header className="task-drawer__header">
           <div>
@@ -116,22 +163,24 @@ export function TaskProgressDrawer({ isOpen, onClose }: TaskProgressDrawerProps)
               <FileCheck2 size={19} />
             </span>
             <div>
-              <span>海上平台电气设备采购项目</span>
-              <h3 id="active-task-title">技术方案检查</h3>
+              <span>当前工作台项目</span>
+              <h3 id="active-task-title">{projectTitle}</h3>
             </div>
-            <strong>72%</strong>
+            <strong>{latestPercent === null ? '—' : `${latestPercent}%`}</strong>
           </div>
-          <div
-            className="progress-track progress-track--large"
-            role="progressbar"
-            aria-label="技术方案检查进度"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={72}
-          >
-            <span style={{ width: '72%' }} />
-          </div>
-          <p>当前只展示阶段、状态和可公开说明，处理完成后会自动保留结果版本。</p>
+          {latestPercent === null ? null : (
+            <div
+              className="progress-track progress-track--large"
+              role="progressbar"
+              aria-label={`${projectTitle}任务进度`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={latestPercent}
+            >
+              <span style={{ width: `${latestPercent}%` }} />
+            </div>
+          )}
+          <p>这里只展示后端公开事件中的说明、进度和发生时间。</p>
         </section>
 
         <section className="event-stream" aria-labelledby="event-stream-title" aria-live="polite">
@@ -139,19 +188,27 @@ export function TaskProgressDrawer({ isOpen, onClose }: TaskProgressDrawerProps)
             <h3 id="event-stream-title">最新动态</h3>
             <span>自动更新</span>
           </div>
-          <ol>
-            {publicEvents.map((event) => (
-              <li key={`${event.phase}-${event.timestamp}`}>
-                <span className={`event-status event-status--${event.status}`}>
-                  <StatusIcon status={event.status} />
-                </span>
-                <div>
-                  <p>{event.publicMessage}</p>
-                  <small>{event.timestamp}</small>
-                </div>
-              </li>
-            ))}
-          </ol>
+          {events.length === 0 ? (
+            <p role="status">暂无公开进度，任务开始后将在这里显示。</p>
+          ) : (
+            <ol>
+              {events.map((event) => (
+                <li key={event.event_id}>
+                  <span className={`event-status event-status--${statusClass(event.status)}`}>
+                    <StatusIcon status={event.status} />
+                  </span>
+                  <div>
+                    <p>{event.public_message}</p>
+                    <small>
+                      {event.percent === null ? '进度待更新' : `${event.percent}%`}
+                      {' · '}
+                      <time dateTime={event.occurred_at}>{event.occurred_at}</time>
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </section>
 
         <footer className="task-drawer__footer">

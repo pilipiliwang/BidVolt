@@ -84,6 +84,7 @@ export const calculatedQuoteSchema = z
   .object({
     ...quoteCalculationBase,
     status: z.literal('calculated'),
+    query_snapshot_id: entityIdSchema,
     sample_snapshot_id: entityIdSchema,
     confidence_interval: z
       .object({ min: decimalStringSchema, max: decimalStringSchema })
@@ -113,6 +114,7 @@ export const quoteInsufficientDataSchema = z
   .object({
     ...quoteCalculationBase,
     status: z.literal('insufficient_data'),
+    query_snapshot_id: entityIdSchema,
     observed_sample_count: z.number().int().nonnegative(),
     required_sample_count: z.number().int().positive(),
     message: z.string().min(1),

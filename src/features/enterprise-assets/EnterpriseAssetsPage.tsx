@@ -42,11 +42,11 @@ export function EnterpriseAssetsPage({
   const readyCount = assets.filter((asset) => asset.status === 'ready').length;
 
   return (
-    <main className="enterprise-page">
+    <section className="enterprise-page">
       <header className="enterprise-page__hero">
         <div>
           <p className="enterprise-eyebrow">Enterprise knowledge base</p>
-          <h1>企业资料库</h1>
+          <h2>企业资料库</h2>
           <p className="enterprise-page__lead">
             管理 {enterpriseName} 长期有效、跨项目复用的证照、资质、业绩与产品事实。
           </p>
@@ -139,7 +139,7 @@ export function EnterpriseAssetsPage({
           </section>
         )}
       </section>
-    </main>
+    </section>
   );
 }
 

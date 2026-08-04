@@ -175,13 +175,9 @@ export function EnterpriseAssetDetail({
             </div>
           </div>
           <ol className="enterprise-revisions">
-            {asset.revisions.map((revision) => (
-              <li key={revision.id}>
-                <button
-                  type="button"
-                  className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current' : 'enterprise-revision'}
-                  onClick={() => onSelectRevision?.(asset.id, revision.id)}
-                >
+            {asset.revisions.map((revision) => {
+              const revisionContent = (
+                <>
                   <span className="enterprise-revision__marker" aria-hidden="true">
                     {revision.isCurrent ? <Check size={14} /> : revision.revisionNo}
                   </span>
@@ -191,9 +187,29 @@ export function EnterpriseAssetDetail({
                     <small>{revision.createdAt} · {revision.createdBy}</small>
                   </span>
                   {revision.isCurrent && <em>当前版本</em>}
-                </button>
-              </li>
-            ))}
+                </>
+              );
+
+              return (
+                <li key={revision.id}>
+                  {onSelectRevision ? (
+                    <button
+                      type="button"
+                      className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current' : 'enterprise-revision'}
+                      onClick={() => onSelectRevision(asset.id, revision.id)}
+                    >
+                      {revisionContent}
+                    </button>
+                  ) : (
+                    <div
+                      className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current enterprise-revision--static' : 'enterprise-revision enterprise-revision--static'}
+                    >
+                      {revisionContent}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </section>
       </div>

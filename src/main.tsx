@@ -26,10 +26,16 @@ const enableMocking = async () => {
   if (import.meta.env.VITE_API_MODE !== 'mock') return;
 
   const { worker } = await import('./mocks/browser');
-  await worker.start({ onUnhandledRequest: 'bypass' });
+  await worker.start({
+    onUnhandledRequest(request, print) {
+      if (new URL(request.url).pathname.startsWith('/api/')) {
+        print.error();
+      }
+    },
+  });
 };
 
-enableMocking().then(renderApp).catch((error: unknown) => {
-  console.error('BidVolt mock service worker failed to start', error);
+enableMocking().then(renderApp).catch(() => {
+  console.error('BIDVOLT_MOCK_BOOTSTRAP_FAILED');
   renderApp();
 });

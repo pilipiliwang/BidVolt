@@ -8,6 +8,10 @@ import {
 export type AppRoute =
   | { name: 'projects' }
   | { name: 'project-overview'; projectId: string }
+  | { name: 'project-materials'; projectId: string }
+  | { name: 'enterprise-assets' }
+  | { name: 'review-center'; projectId: string }
+  | { name: 'pricing-center'; projectId: string }
   | { name: 'not-found' };
 
 const NAVIGATION_EVENT = 'bidvolt:navigation';
@@ -30,6 +34,26 @@ export function matchRoute(pathname: string): AppRoute {
 
   if (path === '/' || path === '/projects') {
     return { name: 'projects' };
+  }
+
+  if (path === '/enterprise-assets') {
+    return { name: 'enterprise-assets' };
+  }
+
+  const projectSectionMatch = path.match(
+    /^\/projects\/([^/]+)\/(materials|review|pricing)$/,
+  );
+  if (projectSectionMatch) {
+    const sectionNames = {
+      materials: 'project-materials',
+      review: 'review-center',
+      pricing: 'pricing-center',
+    } as const;
+    const section = projectSectionMatch[2] as keyof typeof sectionNames;
+    return {
+      name: sectionNames[section],
+      projectId: decodePathPart(projectSectionMatch[1]),
+    };
   }
 
   const overviewMatch = path.match(/^\/projects\/([^/]+)(?:\/overview)?$/);

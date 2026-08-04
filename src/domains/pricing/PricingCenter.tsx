@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BadgeCheck,
@@ -20,13 +20,97 @@ type PricingCenterProps = {
   onApply?: (strategyId: string) => void;
 };
 
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
 export function PricingCenter({ samples, calculation, onApply }: PricingCenterProps) {
   const defaultStrategy = calculation.strategies.find((strategy) => strategy.recommended)?.id ?? '';
   const [selectedStrategyId, setSelectedStrategyId] = useState(defaultStrategy);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sampleQuery, setSampleQuery] = useState('');
+  const applyButtonRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const modalCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   const usableCount = useMemo(() => samples.filter((sample) => sample.usable).length, [samples]);
+  const visibleSamples = useMemo(() => {
+    const normalizedQuery = sampleQuery.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return samples;
+    return samples.filter((sample) =>
+      `${sample.materialName} ${sample.specification} ${sample.sourceLabel}`
+        .toLocaleLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [sampleQuery, samples]);
   const selectedStrategy = calculation.strategies.find((strategy) => strategy.id === selectedStrategyId);
+
+  useEffect(() => {
+    if (!confirmOpen) {
+      return undefined;
+    }
+
+    modalCloseButtonRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setConfirmOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab' || !modalRef.current) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(modalRef.current);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        modalRef.current.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements.at(-1)!;
+      const activeElement = document.activeElement;
+      const focusIsOutsideModal = !modalRef.current.contains(activeElement);
+
+      if (event.shiftKey && (activeElement === firstElement || focusIsOutsideModal)) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || focusIsOutsideModal)) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      const previouslyFocused = previouslyFocusedRef.current;
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+      previouslyFocusedRef.current = null;
+    };
+  }, [confirmOpen]);
+
+  const openConfirm = () => {
+    previouslyFocusedRef.current = applyButtonRef.current;
+    setConfirmOpen(true);
+  };
 
   const confirmApply = () => {
     if (!selectedStrategy) return;
@@ -39,7 +123,7 @@ export function PricingCenter({ samples, calculation, onApply }: PricingCenterPr
       <header className={styles.header}>
         <div>
           <span className={styles.eyebrow}>HistoryPriceProvider + QuoteEngine</span>
-          <h1 id="pricing-title">报价测算中心</h1>
+          <h2 id="pricing-title">报价测算中心</h2>
           <p>历史价格只读查询，标准化、样本剔除和三类策略均由确定性算法完成。</p>
         </div>
         <div className={styles.readOnlyBadge}>
@@ -67,11 +151,16 @@ export function PricingCenter({ samples, calculation, onApply }: PricingCenterPr
           <label className={styles.searchBox}>
             <Search aria-hidden="true" size={17} />
             <span className={styles.srOnly}>筛选历史样本</span>
-            <input placeholder="筛选物料、规格或来源" type="search" />
+            <input
+              placeholder="筛选物料、规格或来源"
+              type="search"
+              value={sampleQuery}
+              onChange={(event) => setSampleQuery(event.currentTarget.value)}
+            />
           </label>
 
           <div className={styles.sampleList}>
-            {samples.map((sample) => (
+            {visibleSamples.map((sample) => (
               <article className={`${styles.sample} ${!sample.usable ? styles.excluded : ''}`} key={sample.id}>
                 <div className={styles.sampleMain}>
                   <span className={styles.databaseIcon}>
@@ -98,6 +187,9 @@ export function PricingCenter({ samples, calculation, onApply }: PricingCenterPr
                 </div>
               </article>
             ))}
+            {visibleSamples.length === 0 ? (
+              <p className={styles.emptySamples}>没有匹配的历史样本，请调整筛选条件。</p>
+            ) : null}
           </div>
         </section>
 
@@ -148,9 +240,10 @@ export function PricingCenter({ samples, calculation, onApply }: PricingCenterPr
               </div>
 
               <button
+                ref={applyButtonRef}
                 className={styles.applyButton}
                 disabled={!selectedStrategy}
-                onClick={() => setConfirmOpen(true)}
+                onClick={openConfirm}
                 type="button"
               >
                 <Check aria-hidden="true" size={18} />
@@ -165,8 +258,14 @@ export function PricingCenter({ samples, calculation, onApply }: PricingCenterPr
 
       {confirmOpen && selectedStrategy ? (
         <div aria-labelledby="quote-confirm-title" aria-modal="true" className={styles.modalBackdrop} role="dialog">
-          <div className={styles.modal}>
-            <button aria-label="关闭确认" className={styles.modalClose} onClick={() => setConfirmOpen(false)} type="button">
+          <div ref={modalRef} className={styles.modal} tabIndex={-1}>
+            <button
+              ref={modalCloseButtonRef}
+              aria-label="关闭确认"
+              className={styles.modalClose}
+              onClick={() => setConfirmOpen(false)}
+              type="button"
+            >
               <X aria-hidden="true" size={18} />
             </button>
             <span className={styles.modalIcon}>
