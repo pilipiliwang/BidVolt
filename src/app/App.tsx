@@ -1,49 +1,65 @@
-import { ArrowRight, Building2, FileStack, ShieldCheck } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
-const principles = [
-  {
-    icon: Building2,
-    title: '企业资料独立归档',
-    detail: '企业证照、资质与业绩跨项目复用，自动分类并保留来源与版本。',
-  },
-  {
-    icon: FileStack,
-    title: '项目材料严格隔离',
-    detail: '当前招标材料只属于本次项目和冻结快照，不进入企业资料库。',
-  },
-  {
-    icon: ShieldCheck,
-    title: '结果可追溯、可复算',
-    detail: '外部评审、报价算法与成果版本都绑定证据、快照和明确版本。',
-  },
-];
+import { ProjectListPage } from '../domains/projects/ProjectListPage';
+import { ProjectOverviewPage } from '../domains/projects/ProjectOverviewPage';
+import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
+import { AppShell } from './AppShell';
+import { AppLink, useUrlRoute } from './router';
 
 export function App() {
-  return (
-    <main className="starter-shell">
-      <section className="starter-hero" aria-labelledby="starter-title">
-        <div className="starter-badge">BidVolt · Web Frontend</div>
-        <h1 id="starter-title">投标工作，从材料到交付都清楚可控</h1>
-        <p>
-          独立的浏览器端投标工作台正在搭建。首个版本覆盖企业资料、项目材料、评审与报价核心闭环。
-        </p>
-        <button className="starter-action" type="button">
-          进入开发工作台
-          <ArrowRight aria-hidden="true" size={18} />
-        </button>
-      </section>
+  const route = useUrlRoute();
+  const [isTaskDrawerOpen, setTaskDrawerOpen] = useState(false);
 
-      <section className="starter-grid" aria-label="产品边界">
-        {principles.map(({ icon: Icon, title, detail }) => (
-          <article className="starter-card" key={title}>
-            <span className="starter-icon" aria-hidden="true">
-              <Icon size={22} />
-            </span>
-            <h2>{title}</h2>
-            <p>{detail}</p>
-          </article>
-        ))}
-      </section>
-    </main>
+  const pageMeta = useMemo(() => {
+    if (route.name === 'project-overview') {
+      return {
+        eyebrow: '项目工作台',
+        title: '项目概览',
+      };
+    }
+
+    if (route.name === 'not-found') {
+      return {
+        eyebrow: 'BidVolt Web',
+        title: '页面未找到',
+      };
+    }
+
+    return {
+      eyebrow: '投标协同中心',
+      title: '项目列表',
+    };
+  }, [route]);
+
+  return (
+    <AppShell
+      eyebrow={pageMeta.eyebrow}
+      title={pageMeta.title}
+      currentRoute={route.name}
+      onOpenTasks={() => setTaskDrawerOpen(true)}
+    >
+      {route.name === 'projects' ? <ProjectListPage /> : null}
+      {route.name === 'project-overview' ? (
+        <ProjectOverviewPage
+          projectId={route.projectId}
+          onOpenTasks={() => setTaskDrawerOpen(true)}
+        />
+      ) : null}
+      {route.name === 'not-found' ? (
+        <section className="empty-page" aria-labelledby="not-found-title">
+          <span className="empty-page__code">404</span>
+          <h1 id="not-found-title">这个页面还没有接入</h1>
+          <p>请返回项目列表继续当前投标工作。</p>
+          <AppLink className="button button--primary" to="/projects">
+            返回项目列表
+          </AppLink>
+        </section>
+      ) : null}
+
+      <TaskProgressDrawer
+        isOpen={isTaskDrawerOpen}
+        onClose={() => setTaskDrawerOpen(false)}
+      />
+    </AppShell>
   );
 }
