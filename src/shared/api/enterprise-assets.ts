@@ -72,6 +72,13 @@ export const enterpriseAssetUploadMetadataSchema = z
   })
   .strict();
 
+export const correctEnterpriseAssetClassificationInputSchema = z
+  .object({
+    category: enterpriseAssetCategorySchema,
+    expected_revision_id: entityIdSchema,
+  })
+  .strict();
+
 export const enterpriseIngestionTaskSchema = z
   .object({
     task_id: entityIdSchema,
@@ -99,7 +106,11 @@ export const createEnterpriseAssetsApi = (client: ApiClient = apiClient) => ({
   get: (assetId: string) =>
     client.request(`/enterprise-assets/${assetId}`, { schema: enterpriseAssetSchema }),
 
-  upload: (files: readonly File[], metadata: EnterpriseAssetUploadMetadata = {}) => {
+  upload: (
+    files: readonly File[],
+    idempotencyKey: string,
+    metadata: EnterpriseAssetUploadMetadata = {},
+  ) => {
     const parsedMetadata = enterpriseAssetUploadMetadataSchema.parse(metadata);
     const body = new FormData();
     files.forEach((file) => body.append('files[]', file));
@@ -107,6 +118,7 @@ export const createEnterpriseAssetsApi = (client: ApiClient = apiClient) => ({
     return client.request('/enterprise-assets/uploads', {
       method: 'POST',
       body,
+      idempotencyKey,
       schema: enterpriseIngestionTaskSchema,
     });
   },
@@ -118,11 +130,13 @@ export const createEnterpriseAssetsApi = (client: ApiClient = apiClient) => ({
 
   correctClassification: (
     assetId: string,
-    input: { category: z.infer<typeof enterpriseAssetCategorySchema> },
+    input: z.infer<typeof correctEnterpriseAssetClassificationInputSchema>,
+    idempotencyKey: string,
   ) =>
     client.request(`/enterprise-assets/${assetId}/classification`, {
       method: 'PATCH',
-      body: z.object({ category: enterpriseAssetCategorySchema }).strict().parse(input),
+      body: correctEnterpriseAssetClassificationInputSchema.parse(input),
+      idempotencyKey,
       schema: enterpriseAssetSchema,
     }),
 });

@@ -29,7 +29,19 @@
 - 时间使用带时区的 ISO 8601 字符串。
 - 前端不传 `enterprise_id`；租户只能由后端认证上下文确定。
 - POST/PUT/PATCH 等可重试写请求使用 `Idempotency-Key`。
+- 每个 OpenAPI 操作使用稳定且唯一的 `operationId`；生成 SDK、Mock 和查询键时不得另造名称。
 - 跨租户对象统一返回 404，避免泄露对象是否存在。
+
+写接口并发约束：
+
+| 操作 | 幂等键 | 并发/快照约束 |
+|---|---|---|
+| 企业资料上传 | 必须 | 上传入口固定为企业域 |
+| 企业资料分类纠正 | 必须 | `expected_revision_id` |
+| 项目材料上传 | 必须 | 路径固定 `project_id`，形成项目事件与新 revision |
+| 发起外部评审 | 必须 | `project_snapshot_id` + 固定成果版本 |
+| 报价测算 | 必须 | `project_snapshot_id` + 历史查询快照 |
+| 应用报价策略 | 必须 | `expected_version_id` + `confirmed=true` |
 
 ## Mock 模式
 
