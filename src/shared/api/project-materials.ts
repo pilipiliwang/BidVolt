@@ -89,9 +89,31 @@ export const requirementSchema = z
     content: z.string().min(1),
     structured: z.record(z.string(), z.unknown()),
     confidence: z.number().min(0).max(1),
+    status: z.enum(['extracted', 'needs_review', 'confirmed', 'corrected']),
     evidence_refs: z.array(evidenceRefSchema).min(1),
   })
   .strict();
+
+export const confirmRequirementInputSchema = z
+  .object({
+    action: z.literal('confirm'),
+    expected_revision_id: entityIdSchema,
+  })
+  .strict();
+
+export const updateRequirementInputSchema = z
+  .object({
+    action: z.literal('update'),
+    expected_revision_id: entityIdSchema,
+    content: z.string().min(1),
+    structured: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+export const requirementMutationInputSchema = z.discriminatedUnion('action', [
+  confirmRequirementInputSchema,
+  updateRequirementInputSchema,
+]);
 
 export const projectMaterialUploadResultSchema = z
   .object({
@@ -156,6 +178,35 @@ export const createProjectMaterialsApi = (client: ApiClient = apiClient) => ({
   listRequirements: (projectId: string) =>
     client.request(`/projects/${projectId}/requirements`, {
       schema: z.array(requirementSchema),
+    }),
+
+  confirmRequirement: (
+    projectId: string,
+    requirementId: string,
+    expectedRevisionId: string,
+    idempotencyKey: string,
+  ) =>
+    client.request(`/projects/${projectId}/requirements/${requirementId}`, {
+      method: 'PATCH',
+      body: confirmRequirementInputSchema.parse({
+        action: 'confirm',
+        expected_revision_id: expectedRevisionId,
+      }),
+      idempotencyKey,
+      schema: requirementSchema,
+    }),
+
+  updateRequirement: (
+    projectId: string,
+    requirementId: string,
+    input: Omit<z.infer<typeof updateRequirementInputSchema>, 'action'>,
+    idempotencyKey: string,
+  ) =>
+    client.request(`/projects/${projectId}/requirements/${requirementId}`, {
+      method: 'PATCH',
+      body: updateRequirementInputSchema.parse({ action: 'update', ...input }),
+      idempotencyKey,
+      schema: requirementSchema,
     }),
 });
 

@@ -43,6 +43,13 @@
 | 报价测算 | 必须 | `project_snapshot_id` + 历史查询快照 |
 | 应用报价策略 | 必须 | `expected_version_id` + `confirmed=true` |
 
+企业资料事实纠正与 Requirement 确认/更新都是服务端写操作，必须形成新 revision；前端不得只在本地覆盖
+Agent 抽取结果。项目快照通过 `/projects/{project_id}/snapshots` 查询，快照 ID 必须与路径中的项目完全匹配。
+
+所有对象详情接口都要验证完整所属关系。未知 ID、其他企业的 ID、其他项目的 material/revision/snapshot，
+以及不属于当前上下文的 review run 或 quote calculation 一律返回 `404 RESOURCE_NOT_FOUND`，不得返回默认对象、
+空壳对象或泄露资源是否存在。
+
 ## Mock 模式
 
 在 `.env.local` 中设置：

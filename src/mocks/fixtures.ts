@@ -5,6 +5,7 @@ import {
   enterpriseAssetRevisionSchema,
   historyQuerySnapshotSchema,
   projectMaterialSchema,
+  projectSnapshotSchema,
   publicTaskEventSchema,
   quoteInsufficientDataSchema,
   requirementSchema,
@@ -96,6 +97,7 @@ export const requirementFixture = requirementSchema.parse({
   content: '项目经理应至少具有两个同类项目业绩',
   structured: { minimum_project_count: 2 },
   confidence: 0.96,
+  status: 'needs_review',
   evidence_refs: [
     {
       source_type: 'project_material',
@@ -105,6 +107,22 @@ export const requirementFixture = requirementSchema.parse({
       exact_quote: '项目经理应至少具有两个同类项目业绩',
     },
   ],
+});
+
+export const projectSnapshotFixture = projectSnapshotSchema.parse({
+  snapshot_id: 'snapshot_001',
+  project_id: 'project_001',
+  status: 'frozen',
+  reason: 'review',
+  manifest: {
+    project_material_revision_ids: ['pmr_001'],
+    requirement_revision_ids: ['req_rev_001'],
+    enterprise_asset_revision_ids: ['ear_001'],
+    deliverable_version_ids: ['dv_biz_001', 'dv_tech_001', 'dv_quote_001'],
+    quote_sample_snapshot_id: 'history_snapshot_001',
+  },
+  content_hash: 'e'.repeat(64),
+  created_at: timestamp,
 });
 
 export const publicTaskEventFixture = publicTaskEventSchema.parse({

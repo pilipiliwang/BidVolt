@@ -96,6 +96,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/EnterpriseAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /enterprise-assets/{asset_id}/revisions:
     get:
       tags: [EnterpriseAssets]
@@ -116,6 +117,7 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/EnterpriseAssetRevision' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /enterprise-assets/{asset_id}/classification:
     patch:
       tags: [EnterpriseAssets]
@@ -140,6 +142,37 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/EnterpriseAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+  /enterprise-assets/{asset_id}/facts/{fact_id}:
+    patch:
+      tags: [EnterpriseAssets]
+      operationId: correctEnterpriseFact
+      summary: Correct one extracted fact and create a new enterprise-asset revision
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - name: fact_id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CorrectEnterpriseFactInput' }
+      responses:
+        '200':
+          description: Corrected fact and the newly created revision id
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/EnterpriseFactCorrectionResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/VersionConflict' }
   /projects/{project_id}/materials:
     get:
@@ -161,6 +194,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/ProjectMaterialPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /projects/{project_id}/materials/uploads:
     post:
       tags: [ProjectMaterials]
@@ -198,6 +232,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/ProjectMaterialUploadResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/DomainViolation' }
   /project-materials/{material_id}/revisions/{revision_id}/blocks:
     get:
@@ -226,6 +261,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/DocumentBlockPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /projects/{project_id}/requirements:
     get:
       tags: [ProjectMaterials]
@@ -246,6 +282,81 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Requirement' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{project_id}/requirements/{requirement_id}:
+    patch:
+      tags: [ProjectMaterials]
+      operationId: mutateProjectRequirement
+      summary: Confirm or correct one versioned project requirement
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: requirement_id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RequirementMutationInput' }
+      responses:
+        '200':
+          description: New confirmed or corrected requirement revision
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Requirement' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+  /projects/{project_id}/snapshots:
+    get:
+      tags: [ProjectMaterials]
+      operationId: listProjectSnapshots
+      summary: List immutable snapshots belonging to one project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Project snapshot page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ProjectSnapshotPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{project_id}/snapshots/{snapshot_id}:
+    get:
+      tags: [ProjectMaterials]
+      operationId: getProjectSnapshot
+      summary: Read one immutable snapshot only when it belongs to the path project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: snapshot_id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Project snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ProjectSnapshot' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /tasks/{task_id}:
     get:
       tags: [Tasks]
@@ -264,6 +375,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/Task' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /tasks/{task_id}/stream:
     get:
       tags: [Tasks]
@@ -282,6 +394,7 @@ paths:
           content:
             text/event-stream:
               schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
   /review-providers:
     get:
       tags: [Reviews]
@@ -324,6 +437,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/CreateReviewRunResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /review-runs/{review_run_id}:
     get:
       tags: [Reviews]
@@ -345,6 +459,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/ReviewRun' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /quotes/history:
     get:
       tags: [Quotes]
@@ -403,6 +518,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/HistoryPriceSample' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /quotes/calculations:
     post:
       tags: [Quotes]
@@ -427,6 +543,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/QuoteCalculation' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /quotes/calculations/{calculation_id}:
     get:
       tags: [Quotes]
@@ -448,6 +565,7 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/QuoteCalculation' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /quotes/calculations/{calculation_id}/apply:
     post:
       tags: [Quotes]
@@ -475,6 +593,8 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/ApplyQuoteResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
 components:
   securitySchemes:
     bearerAuth:
@@ -518,6 +638,11 @@ components:
           schema: { $ref: '#/components/schemas/ApiError' }
     VersionConflict:
       description: The expected revision/version is no longer current
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    NotFound:
+      description: Resource is unknown or does not belong to the requested project/tenant
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ApiError' }
@@ -614,6 +739,28 @@ components:
       properties:
         category: { $ref: '#/components/schemas/EnterpriseAssetCategory' }
         expected_revision_id: { type: string, minLength: 1 }
+    CorrectEnterpriseFactInput:
+      type: object
+      additionalProperties: false
+      required: [value, expected_revision_id]
+      properties:
+        value:
+          oneOf:
+            - { type: string }
+            - { type: number }
+            - { type: boolean }
+            - { type: 'null' }
+            - { type: array }
+            - { type: object, additionalProperties: true }
+        expected_revision_id: { type: string, minLength: 1 }
+    EnterpriseFactCorrectionResult:
+      type: object
+      additionalProperties: false
+      required: [asset_id, new_revision_id, fact]
+      properties:
+        asset_id: { type: string }
+        new_revision_id: { type: string }
+        fact: { $ref: '#/components/schemas/EnterpriseFact' }
     EnterpriseAssetPage:
       type: object
       additionalProperties: false
@@ -701,7 +848,7 @@ components:
     Requirement:
       type: object
       additionalProperties: false
-      required: [requirement_id, project_id, revision_id, type, content, structured, confidence, evidence_refs]
+      required: [requirement_id, project_id, revision_id, type, content, structured, confidence, status, evidence_refs]
       properties:
         requirement_id: { type: string }
         project_id: { type: string }
@@ -712,7 +859,64 @@ components:
         content: { type: string }
         structured: { type: object, additionalProperties: true }
         confidence: { type: number, minimum: 0, maximum: 1 }
+        status: { type: string, enum: [extracted, needs_review, confirmed, corrected] }
         evidence_refs: { type: array, minItems: 1, items: { $ref: '#/components/schemas/EvidenceRef' } }
+    ConfirmRequirementInput:
+      type: object
+      additionalProperties: false
+      required: [action, expected_revision_id]
+      properties:
+        action: { const: confirm }
+        expected_revision_id: { type: string, minLength: 1 }
+    UpdateRequirementInput:
+      type: object
+      additionalProperties: false
+      required: [action, expected_revision_id, content, structured]
+      properties:
+        action: { const: update }
+        expected_revision_id: { type: string, minLength: 1 }
+        content: { type: string, minLength: 1 }
+        structured: { type: object, additionalProperties: true }
+    RequirementMutationInput:
+      oneOf:
+        - $ref: '#/components/schemas/ConfirmRequirementInput'
+        - $ref: '#/components/schemas/UpdateRequirementInput'
+      discriminator:
+        propertyName: action
+        mapping:
+          confirm: '#/components/schemas/ConfirmRequirementInput'
+          update: '#/components/schemas/UpdateRequirementInput'
+    ProjectSnapshotManifest:
+      type: object
+      additionalProperties: false
+      required: [project_material_revision_ids, requirement_revision_ids, enterprise_asset_revision_ids, deliverable_version_ids, quote_sample_snapshot_id]
+      properties:
+        project_material_revision_ids: { type: array, items: { type: string } }
+        requirement_revision_ids: { type: array, items: { type: string } }
+        enterprise_asset_revision_ids: { type: array, items: { type: string } }
+        deliverable_version_ids: { type: array, items: { type: string } }
+        quote_sample_snapshot_id: { type: [string, 'null'] }
+    ProjectSnapshot:
+      type: object
+      additionalProperties: false
+      required: [snapshot_id, project_id, status, reason, manifest, content_hash, created_at]
+      properties:
+        snapshot_id: { type: string }
+        project_id: { type: string }
+        status: { const: frozen }
+        reason: { type: string, enum: [task, review, check, export, manual] }
+        manifest: { $ref: '#/components/schemas/ProjectSnapshotManifest' }
+        content_hash: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+        created_at: { type: string, format: date-time }
+    ProjectSnapshotPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, size]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ProjectSnapshot' } }
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1 }
     Task:
       type: object
       additionalProperties: false
@@ -874,6 +1078,11 @@ components:
         - $ref: '#/components/schemas/QuoteConstraintViolation'
       discriminator:
         propertyName: status
+        mapping:
+          calculated: '#/components/schemas/CalculatedQuote'
+          needs_input: '#/components/schemas/QuoteNeedsInput'
+          insufficient_data: '#/components/schemas/InsufficientQuote'
+          constraint_violation: '#/components/schemas/QuoteConstraintViolation'
     CalculatedQuote:
       type: object
       additionalProperties: false

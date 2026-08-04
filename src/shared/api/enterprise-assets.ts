@@ -79,6 +79,30 @@ export const correctEnterpriseAssetClassificationInputSchema = z
   })
   .strict();
 
+const enterpriseFactValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+]);
+
+export const correctEnterpriseFactInputSchema = z
+  .object({
+    value: enterpriseFactValueSchema,
+    expected_revision_id: entityIdSchema,
+  })
+  .strict();
+
+export const enterpriseFactCorrectionResultSchema = z
+  .object({
+    asset_id: entityIdSchema,
+    new_revision_id: entityIdSchema,
+    fact: enterpriseFactSchema,
+  })
+  .strict();
+
 export const enterpriseIngestionTaskSchema = z
   .object({
     task_id: entityIdSchema,
@@ -138,6 +162,19 @@ export const createEnterpriseAssetsApi = (client: ApiClient = apiClient) => ({
       body: correctEnterpriseAssetClassificationInputSchema.parse(input),
       idempotencyKey,
       schema: enterpriseAssetSchema,
+    }),
+
+  correctFact: (
+    assetId: string,
+    factId: string,
+    input: z.infer<typeof correctEnterpriseFactInputSchema>,
+    idempotencyKey: string,
+  ) =>
+    client.request(`/enterprise-assets/${assetId}/facts/${factId}`, {
+      method: 'PATCH',
+      body: correctEnterpriseFactInputSchema.parse(input),
+      idempotencyKey,
+      schema: enterpriseFactCorrectionResultSchema,
     }),
 });
 
