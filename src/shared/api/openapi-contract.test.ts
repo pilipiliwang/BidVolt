@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import openapiTS, { astToString } from 'openapi-typescript';
 
 import openApiSource from '../../../docs/api/openapi.yaml?raw';
 
@@ -14,6 +15,7 @@ const operations = [
     'patch',
     'correctEnterpriseAssetClassification',
   ],
+  ['/enterprise-assets/{asset_id}/facts/{fact_id}', 'patch', 'correctEnterpriseFact'],
   ['/projects/{project_id}/materials', 'get', 'listProjectMaterials'],
   ['/projects/{project_id}/materials/uploads', 'post', 'uploadProjectMaterials'],
   [
@@ -22,6 +24,13 @@ const operations = [
     'listProjectMaterialBlocks',
   ],
   ['/projects/{project_id}/requirements', 'get', 'listProjectRequirements'],
+  [
+    '/projects/{project_id}/requirements/{requirement_id}',
+    'patch',
+    'mutateProjectRequirement',
+  ],
+  ['/projects/{project_id}/snapshots', 'get', 'listProjectSnapshots'],
+  ['/projects/{project_id}/snapshots/{snapshot_id}', 'get', 'getProjectSnapshot'],
   ['/tasks/{task_id}', 'get', 'getTask'],
   ['/tasks/{task_id}/stream', 'get', 'streamTaskEvents'],
   ['/review-providers', 'get', 'listReviewProviders'],
@@ -70,6 +79,10 @@ describe('OpenAPI and TypeScript contract parity', () => {
     expect(correction).toContain("#/components/parameters/IdempotencyKey");
     expect(correction).toContain('CorrectEnterpriseAssetClassificationInput');
     expect(openApi).toContain('required: [category, expected_revision_id]');
+
+    const factCorrection = getPathSection('/enterprise-assets/{asset_id}/facts/{fact_id}');
+    expect(factCorrection).toContain("#/components/parameters/IdempotencyKey");
+    expect(openApi).toContain('required: [value, expected_revision_id]');
   });
 
   it('requires idempotency, frozen snapshots, and version CAS on workflow writes', () => {
@@ -93,6 +106,12 @@ describe('OpenAPI and TypeScript contract parity', () => {
     const apply = getPathSection('/quotes/calculations/{calculation_id}/apply');
     expect(apply).toContain("#/components/parameters/IdempotencyKey");
     expect(openApi).toContain('required: [strategy_id, expected_version_id, confirmed]');
+
+    const requirement = getPathSection(
+      '/projects/{project_id}/requirements/{requirement_id}',
+    );
+    expect(requirement).toContain("#/components/parameters/IdempotencyKey");
+    expect(openApi).toContain('required: [action, expected_revision_id]');
   });
 
   it('does not document generic target upload, AI pricing, or history mutations', () => {
@@ -102,5 +121,16 @@ describe('OpenAPI and TypeScript contract parity', () => {
     const history = getPathSection('/quotes/history');
     expect(history).toContain('    get:\n');
     expect(history).not.toMatch(/^\s{4}(post|put|patch|delete):/m);
+  });
+
+  it('generates the same four quote status literals used by runtime Zod schemas', async () => {
+    const generated = astToString(await openapiTS(openApi, { silent: true }));
+
+    expect(generated).toContain('status: "calculated";');
+    expect(generated).toContain('status: "needs_input";');
+    expect(generated).toContain('status: "insufficient_data";');
+    expect(generated).toContain('status: "constraint_violation";');
+    expect(generated).not.toContain('status: "CalculatedQuote";');
+    expect(generated).not.toContain('status: "QuoteNeedsInput";');
   });
 });
