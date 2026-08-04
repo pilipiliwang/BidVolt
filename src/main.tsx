@@ -12,10 +12,24 @@ if (!root) {
   throw new Error('BidVolt root element is missing');
 }
 
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+const renderApp = () => {
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+};
+
+const enableMocking = async () => {
+  if (import.meta.env.VITE_API_MODE !== 'mock') return;
+
+  const { worker } = await import('./mocks/browser');
+  await worker.start({ onUnhandledRequest: 'bypass' });
+};
+
+enableMocking().then(renderApp).catch((error: unknown) => {
+  console.error('BidVolt mock service worker failed to start', error);
+  renderApp();
+});
