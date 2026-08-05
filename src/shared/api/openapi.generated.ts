@@ -701,6 +701,24 @@ export interface components {
             suggestion: string | null;
             evidence_refs: components["schemas"]["EvidenceRef"][];
         };
+        ReviewCategoryCount: {
+            category_key: string;
+            label: string;
+            count: number;
+        };
+        ReviewSectionLifts: {
+            business: number;
+            technical: number;
+            pricing: number;
+        };
+        ReviewSummary: {
+            total_finding_count: number;
+            category_counts: components["schemas"]["ReviewCategoryCount"][];
+            current_score: number;
+            predicted_score: number;
+            total_lift: number;
+            section_lifts: components["schemas"]["ReviewSectionLifts"];
+        };
         ReviewRun: {
             review_run_id: string;
             project_id: string;
@@ -712,6 +730,7 @@ export interface components {
             status: "queued" | "running" | "succeeded" | "failed" | "invalid_response" | "timed_out";
             raw_response_hash: string | null;
             findings: components["schemas"]["ReviewFinding"][];
+            review_summary?: components["schemas"]["ReviewSummary"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */

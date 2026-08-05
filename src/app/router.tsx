@@ -6,12 +6,14 @@ import {
 } from 'react';
 
 export type AppRoute =
+  | { name: 'login' }
   | { name: 'projects' }
   | { name: 'project-overview'; projectId: string }
   | { name: 'project-materials'; projectId: string }
   | { name: 'enterprise-assets' }
   | { name: 'review-center'; projectId: string }
   | { name: 'pricing-center'; projectId: string }
+  | { name: 'history-prices' }
   | { name: 'not-found' };
 
 const NAVIGATION_EVENT = 'bidvolt:navigation';
@@ -32,12 +34,20 @@ function decodePathPart(value: string) {
 export function matchRoute(pathname: string): AppRoute {
   const path = normalisePath(pathname);
 
+  if (path === '/login') {
+    return { name: 'login' };
+  }
+
   if (path === '/' || path === '/projects') {
     return { name: 'projects' };
   }
 
   if (path === '/enterprise-assets') {
     return { name: 'enterprise-assets' };
+  }
+
+  if (path === '/history-prices' || path === '/history') {
+    return { name: 'history-prices' };
   }
 
   const projectSectionMatch = path.match(

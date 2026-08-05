@@ -4,15 +4,20 @@ import {
   Bell,
   BookOpenText,
   Building2,
+  CalendarDays,
   ChevronDown,
+  ChevronLeft,
   CircleDollarSign,
   ClipboardCheck,
   FolderKanban,
   Menu,
+  UserRound,
   X,
-  Zap,
 } from 'lucide-react';
 
+import { BrandLogo } from '../shared/ui/BrandLogo';
+import { getProjectSummary } from '../domains/projects/project-view-model';
+import '../styles/ui0802-shell.css';
 import { AppLink, type AppRoute } from './router';
 
 const focusableSelector = [
@@ -49,8 +54,9 @@ function getNavigationItems(projectId?: string) {
   const encodedProjectId = projectId ? encodeURIComponent(projectId) : undefined;
   return [
     {
-      label: '投标项目',
-      caption: '材料、成果与交付',
+      label: '投标工作台',
+      ariaLabel: '投标项目',
+      caption: '项目材料、成果与交付',
       icon: FolderKanban,
       href: '/projects',
       activeFor: [
@@ -60,7 +66,8 @@ function getNavigationItems(projectId?: string) {
       ] satisfies AppRoute['name'][],
     },
     {
-      label: '企业资料',
+      label: '企业资料库',
+      ariaLabel: undefined,
       caption: '跨项目长期复用',
       icon: Building2,
       href: '/enterprise-assets',
@@ -68,32 +75,48 @@ function getNavigationItems(projectId?: string) {
     },
     {
       label: '评审中心',
+      ariaLabel: undefined,
       caption: projectId ? '规则与外部评审' : '请先进入一个项目',
       icon: ClipboardCheck,
       href: encodedProjectId ? `/projects/${encodedProjectId}/review` : undefined,
       activeFor: ['review-center'] satisfies AppRoute['name'][],
+      visuallyHidden: true,
     },
     {
-      label: '报价分析',
-      caption: projectId ? '历史样本只读测算' : '请先进入一个项目',
+      label: '历史报价',
+      ariaLabel: undefined,
+      caption: '外部历史样本只读查询',
       icon: CircleDollarSign,
-      href: encodedProjectId ? `/projects/${encodedProjectId}/pricing` : undefined,
-      activeFor: ['pricing-center'] satisfies AppRoute['name'][],
+      href: '/history-prices',
+      activeFor: ['history-prices'] satisfies AppRoute['name'][],
     },
   ];
 }
 
 function Brand() {
   return (
-    <AppLink className="brand" to="/projects" aria-label="BidVolt 项目首页">
-      <span className="brand__mark" aria-hidden="true">
-        <Zap size={21} strokeWidth={2.5} />
-      </span>
-      <span>
-        <strong>BidVolt</strong>
-        <small>智能投标工作台</small>
-      </span>
+    <AppLink className="brand" to="/projects" aria-label="AI电投助手首页">
+      <BrandLogo className="brand__mark" />
+      <strong>AI电投助手</strong>
     </AppLink>
+  );
+}
+
+function SidebarPowerScenery() {
+  return (
+    <svg className="ui0802-sidebar-scenery" viewBox="0 0 264 470" aria-hidden="true">
+      <g className="ui0802-sidebar-tower ui0802-sidebar-tower--small">
+        <path d="M65 194 28 414M65 194l39 220M37 350h57M42 307h47M49 263h33M55 222h21M65 194v220M30 413h71M37 349l64 64M93 349l-63 64M42 307l51 42M89 307l-52 42M49 263l40 44M82 263l-40 44" />
+      </g>
+      <g className="ui0802-sidebar-tower ui0802-sidebar-tower--large">
+        <path d="M169 99 113 414M169 99l62 315M127 332h87M135 270h68M146 208h46M156 147h27M169 99v315M117 412h109M127 331l96 81M211 331l-94 81M135 269l76 62M203 269l-76 62M146 207l57 62M192 207l-57 62M156 146l36 61M183 146l-37 61M148 163h43" />
+      </g>
+      <g fill="none" stroke="currentColor" strokeWidth="1" opacity=".46">
+        <path d="M-25 386c72-36 122-6 180 8 50 13 82 3 134-29" />
+        <path d="M-25 398c72-36 122-6 180 8 50 13 82 3 134-29" />
+        <path d="M-25 411c72-36 122-6 180 8 50 13 82 3 134-29" />
+      </g>
+    </svg>
   );
 }
 
@@ -120,8 +143,9 @@ function PrimaryNavigation({
             <li key={item.label}>
               {item.href ? (
                 <AppLink
-                  className={`nav-item${isActive ? ' nav-item--active' : ''}`}
+                  className={`nav-item${isActive ? ' nav-item--active' : ''}${'visuallyHidden' in item && item.visuallyHidden ? ' nav-item--visually-hidden' : ''}`}
                   to={item.href}
+                  aria-label={item.ariaLabel}
                   aria-current={isActive ? 'page' : undefined}
                   onClick={onNavigate}
                 >
@@ -132,7 +156,10 @@ function PrimaryNavigation({
                   </span>
                 </AppLink>
               ) : (
-                <span className="nav-item nav-item--disabled" aria-disabled="true">
+                <span
+                  className={`nav-item nav-item--disabled${'visuallyHidden' in item && item.visuallyHidden ? ' nav-item--visually-hidden' : ''}`}
+                  aria-disabled="true"
+                >
                   <Icon aria-hidden="true" size={19} />
                   <span>
                     <strong>{item.label}</strong>
@@ -174,6 +201,12 @@ export function AppShell({
   title,
   user,
 }: AppShellProps) {
+  const isProjectMode =
+    currentProjectId !== undefined &&
+    ['project-overview', 'project-materials', 'review-center', 'pricing-center'].includes(
+      currentRoute,
+    );
+  const projectSummary = currentProjectId ? getProjectSummary(currentProjectId) : undefined;
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileNavId = useId();
   const mobileNavRef = useRef<HTMLElement>(null);
@@ -235,7 +268,7 @@ export function AppShell({
   }, [isMobileNavOpen]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}`}>
       <a
         className="skip-link"
         href="#main-content"
@@ -251,14 +284,19 @@ export function AppShell({
         inert={isMobileNavOpen || undefined}
       >
         <Brand />
-        <WorkspaceCard enterpriseName={enterpriseName} />
         <PrimaryNavigation currentProjectId={currentProjectId} currentRoute={currentRoute} />
-        <div className="sidebar-footnote">
-          <span aria-hidden="true" />
-          <p>
-            <strong>数据边界已启用</strong>
-            <small>企业资料与项目材料独立</small>
-          </p>
+        <SidebarPowerScenery />
+        <div className="ui0802-sidebar-footer">
+          <div className="sidebar-footnote" title={`当前企业：${enterpriseName}`}>
+            <span aria-hidden="true" />
+            <p>
+              <strong>数据边界已启用</strong>
+              <small>企业资料与项目材料独立</small>
+            </p>
+          </div>
+          <button className="ui0802-sidebar-user" type="button" disabled aria-label={`${user.displayName}，${user.role}`}>
+            <UserRound aria-hidden="true" size={27} strokeWidth={1.8} />
+          </button>
         </div>
       </aside>
 
@@ -267,28 +305,54 @@ export function AppShell({
         aria-hidden={isMobileNavOpen || undefined}
         inert={isMobileNavOpen || undefined}
       >
-        <header className="topbar">
-          <div className="mobile-topbar">
-            <button
-              ref={mobileNavTriggerRef}
-              className="icon-button"
-              type="button"
-              aria-label="打开导航"
-              aria-controls={mobileNavId}
-              aria-expanded={isMobileNavOpen}
-              onClick={openMobileNavigation}
-            >
-              <Menu aria-hidden="true" size={21} />
-            </button>
-            <Brand />
-          </div>
+        <header className={`topbar${isProjectMode ? ' ui0802-project-topbar' : ''}`}>
+          {isProjectMode ? (
+            <>
+              <div className="ui0802-project-topbar__brand">
+                <Brand />
+              </div>
+              <AppLink className="ui0802-back-to-workbench" to="/projects">
+                <ChevronLeft aria-hidden="true" size={23} />
+                <span>返回投标工作台</span>
+              </AppLink>
+              <div className="ui0802-project-context" aria-label="当前项目信息">
+                <p>
+                  <span>项目名称：</span>
+                  <strong>{projectSummary?.title ?? currentProjectId}</strong>
+                </p>
+                <i aria-hidden="true" />
+                <p>
+                  <span>截止日期：</span>
+                  <time>{projectSummary?.deadline.split(' ')[0] ?? '待确认'}</time>
+                  <CalendarDays aria-hidden="true" size={21} />
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mobile-topbar">
+                <button
+                  ref={mobileNavTriggerRef}
+                  className="icon-button"
+                  type="button"
+                  aria-label="打开导航"
+                  aria-controls={mobileNavId}
+                  aria-expanded={isMobileNavOpen}
+                  onClick={openMobileNavigation}
+                >
+                  <Menu aria-hidden="true" size={21} />
+                </button>
+                <Brand />
+              </div>
 
-          <div className="topbar__heading">
-            <span>{eyebrow}</span>
-            <h1>{title}</h1>
-          </div>
+              <div className="topbar__heading">
+                <span>{eyebrow}</span>
+                <h1>{currentRoute === 'projects' ? '投标工作台' : title}</h1>
+              </div>
+            </>
+          )}
 
-          <div className="topbar__actions">
+          <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
             <button
               className="task-status-button"
               type="button"

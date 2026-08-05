@@ -1,208 +1,235 @@
 import { useMemo, useState } from 'react';
-import {
-  ArrowRight,
-  CalendarDays,
-  CircleAlert,
-  Clock3,
-  FileStack,
-  FolderKanban,
-  Search,
-  ShieldCheck,
-} from 'lucide-react';
+import { Archive, CircleAlert, Hourglass, Search } from 'lucide-react';
 
 import { AppLink } from '../../app/router';
-import { projectSummaries, type ProjectStage } from './project-view-model';
+import { projectSummaries, type ProjectSummary } from './project-view-model';
 
-type FilterName = '全部' | '进行中' | '待评审' | '待提交';
+type ProjectTableRow = ProjectSummary & {
+  deadlineHint: string;
+  score: string;
+};
 
-const filters: FilterName[] = ['全部', '进行中', '待评审', '待提交'];
+const supplementalProjects: ProjectTableRow[] = [
+  {
+    id: 'BV-2026-006',
+    code: 'BV-2026-006',
+    title: '±800kV特高压直流输电工程换流站设备采购',
+    buyer: '国家电网特高压建设分公司',
+    stage: '材料解析',
+    progress: 18,
+    deadline: '2026-08-08 10:00',
+    deadlineHint: '3天后截止',
+    materialCount: 18,
+    riskCount: 2,
+    updatedAt: '今天 09:48',
+    score: '-',
+  },
+  {
+    id: 'BV-2026-005',
+    code: 'BV-2026-005',
+    title: '华东电网调峰火电机组灵活性改造项目',
+    buyer: '华东电力设计研究院',
+    stage: '内部评审',
+    progress: 81,
+    deadline: '2026-08-15 09:00',
+    deadlineHint: '10天后截止',
+    materialCount: 36,
+    riskCount: 1,
+    updatedAt: '昨天 14:12',
+    score: '82.5',
+  },
+  {
+    id: 'BV-2026-003',
+    code: 'BV-2026-003',
+    title: '220kV变电站智能化改造工程',
+    buyer: '南网数智电网建设有限公司',
+    stage: '方案编制',
+    progress: 64,
+    deadline: '2026-08-18 14:00',
+    deadlineHint: '13天后截止',
+    materialCount: 22,
+    riskCount: 4,
+    updatedAt: '昨天 11:08',
+    score: '76.8',
+  },
+  {
+    id: 'BV-2026-001',
+    code: 'BV-2026-001',
+    title: '储能电站建设项目（100MW/200MWh）',
+    buyer: '华中新能源投资集团',
+    stage: '待提交',
+    progress: 94,
+    deadline: '2026-08-27 10:00',
+    deadlineHint: '22天后截止',
+    materialCount: 29,
+    riskCount: 0,
+    updatedAt: '07-31 16:05',
+    score: '92.1',
+  },
+];
 
-function matchesFilter(stage: ProjectStage, filter: FilterName) {
-  if (filter === '待评审') {
-    return stage === '内部评审';
-  }
-  if (filter === '待提交') {
-    return stage === '待提交';
-  }
-  if (filter === '进行中') {
-    return stage !== '待提交';
-  }
-  return true;
-}
+const scoreByProjectId: Record<string, string> = {
+  'BV-2026-018': '-',
+  'BV-2026-015': '86.2',
+  'BV-2026-012': '75.6',
+  'BV-2026-009': '88.3',
+};
+
+const hintByProjectId: Record<string, string> = {
+  'BV-2026-018': '7天后截止',
+  'BV-2026-015': '4天后截止',
+  'BV-2026-012': '15天后截止',
+  'BV-2026-009': '2天后截止',
+};
+
+const projectRows: ProjectTableRow[] = [
+  ...projectSummaries.map((project) => ({
+    ...project,
+    deadlineHint: hintByProjectId[project.id] ?? '待确认',
+    score: scoreByProjectId[project.id] ?? '-',
+  })),
+  ...supplementalProjects,
+];
+
+const accessibleProjectIds = new Set(projectSummaries.map((project) => project.id));
+
+const summaryItems = [
+  { label: '全部项目', value: 36, icon: Archive, tone: 'green' },
+  { label: '临近截止', value: 5, icon: Hourglass, tone: 'orange' },
+  { label: '已截止', value: 8, icon: CircleAlert, tone: 'red' },
+] as const;
 
 export function ProjectListPage() {
   const [query, setQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterName>('全部');
+  const [deletedProjectIds, setDeletedProjectIds] = useState<string[]>([]);
 
   const visibleProjects = useMemo(() => {
     const normalisedQuery = query.trim().toLocaleLowerCase('zh-CN');
-    return projectSummaries.filter((project) => {
+    return projectRows.filter((project) => {
+      if (deletedProjectIds.includes(project.id)) {
+        return false;
+      }
       const searchableText = `${project.code} ${project.title} ${project.buyer}`.toLocaleLowerCase(
         'zh-CN',
       );
-      return (
-        matchesFilter(project.stage, activeFilter) &&
-        (!normalisedQuery || searchableText.includes(normalisedQuery))
-      );
+      return !normalisedQuery || searchableText.includes(normalisedQuery);
     });
-  }, [activeFilter, query]);
+  }, [deletedProjectIds, query]);
 
   return (
-    <div className="page-stack">
-      <section className="page-intro">
-        <div>
-          <span className="eyebrow">Web 工作空间</span>
-          <h2>把每次投标沉淀成清晰、可追溯的工作流</h2>
-          <p>项目材料只在当前工作台内处理；企业长期资料通过独立资料库复用。</p>
-        </div>
-        <div className="boundary-note">
-          <ShieldCheck aria-hidden="true" size={20} />
-          <div>
-            <strong>项目资料隔离中</strong>
-            <span>当前列表不会写入企业资料库</span>
-          </div>
-        </div>
+    <div className="ui0802-project-page">
+      <h2 className="sr-only">把每次投标沉淀成清晰、可追溯的工作流</h2>
+      <label className="ui0802-project-search sr-only">
+        <Search aria-hidden="true" size={17} />
+        <span>搜索项目</span>
+        <input
+          type="search"
+          value={query}
+          placeholder="搜索项目、编号或招标人"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+
+      <section className="ui0802-summary-grid" aria-label="项目概况">
+        {summaryItems.map(({ label, value, icon: Icon, tone }) => (
+          <article className={`ui0802-summary-card ui0802-summary-card--${tone}`} key={label}>
+            <span className="ui0802-summary-card__icon" aria-hidden="true">
+              <Icon size={42} strokeWidth={2.5} />
+            </span>
+            <div>
+              <h2>{label}</h2>
+              <p>
+                <strong>{value}</strong>
+                <span>个</span>
+              </p>
+            </div>
+          </article>
+        ))}
       </section>
 
-      <section className="summary-grid" aria-label="项目概况">
-        <article className="summary-card summary-card--brand">
-          <span className="summary-card__icon" aria-hidden="true">
-            <FolderKanban size={19} />
-          </span>
-          <div>
-            <small>全部项目</small>
-            <strong>18</strong>
-            <span>本月新增 4 个</span>
-          </div>
-        </article>
-        <article className="summary-card">
-          <span className="summary-card__icon summary-card__icon--blue" aria-hidden="true">
-            <Clock3 size={19} />
-          </span>
-          <div>
-            <small>进行中</small>
-            <strong>7</strong>
-            <span>2 个本周截止</span>
-          </div>
-        </article>
-        <article className="summary-card">
-          <span className="summary-card__icon summary-card__icon--amber" aria-hidden="true">
-            <CircleAlert size={19} />
-          </span>
-          <div>
-            <small>待处理风险</small>
-            <strong>9</strong>
-            <span>覆盖 3 个项目</span>
-          </div>
-        </article>
-        <article className="summary-card">
-          <span className="summary-card__icon summary-card__icon--green" aria-hidden="true">
-            <FileStack size={19} />
-          </span>
-          <div>
-            <small>本月已提交</small>
-            <strong>6</strong>
-            <span>全部保留交付快照</span>
-          </div>
-        </article>
-      </section>
-
-      <section className="project-panel" aria-labelledby="project-panel-title">
-        <header className="project-panel__header">
-          <div>
-            <h2 id="project-panel-title">最近项目</h2>
-            <p>按最新处理时间排序</p>
-          </div>
-          <label className="search-field">
-            <Search aria-hidden="true" size={17} />
-            <span className="sr-only">搜索项目</span>
-            <input
-              type="search"
-              value={query}
-              placeholder="搜索项目、编号或招标人"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-        </header>
-
-        <div className="filter-tabs" role="group" aria-label="筛选项目">
-          {filters.map((filter) => (
-            <button
-              className={activeFilter === filter ? 'filter-tab filter-tab--active' : 'filter-tab'}
-              type="button"
-              key={filter}
-              aria-pressed={activeFilter === filter}
-              onClick={() => setActiveFilter(filter)}
-            >
-              {filter}
-            </button>
-          ))}
-        </div>
-
+      <section className="ui0802-project-table-card" aria-label="投标项目列表">
         {visibleProjects.length ? (
-          <div className="project-list">
-            {visibleProjects.map((project) => (
-              <article className="project-row" key={project.id}>
-                <div className="project-row__main">
-                  <div className="project-row__title-line">
-                    <span className="stage-pill">{project.stage}</span>
-                    <span className="project-code">{project.code}</span>
-                  </div>
-                  <h3>{project.title}</h3>
-                  <p>{project.buyer}</p>
-                </div>
-
-                <div className="project-row__facts">
-                  <span>
-                    <CalendarDays aria-hidden="true" size={15} />
-                    截止 {project.deadline}
-                  </span>
-                  <span>
-                    <FileStack aria-hidden="true" size={15} />
-                    {project.materialCount} 份项目材料
-                  </span>
-                  <span className={project.riskCount ? 'fact--warning' : ''}>
-                    <CircleAlert aria-hidden="true" size={15} />
-                    {project.riskCount ? `${project.riskCount} 项待处理风险` : '暂无待处理风险'}
-                  </span>
-                </div>
-
-                <div className="project-row__progress">
-                  <div>
-                    <span>工作台进度</span>
-                    <strong>{project.progress}%</strong>
-                  </div>
-                  <div
-                    className="progress-track"
-                    role="progressbar"
-                    aria-label={`${project.title}工作台进度`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={project.progress}
-                  >
-                    <span style={{ width: `${project.progress}%` }} />
-                  </div>
-                  <small>更新于 {project.updatedAt}</small>
-                </div>
-
-                <AppLink
-                  className="project-row__action"
-                  to={`/projects/${encodeURIComponent(project.id)}/overview`}
-                  aria-label={`进入${project.title}工作台`}
-                >
-                  <span>进入工作台</span>
-                  <ArrowRight aria-hidden="true" size={18} />
-                </AppLink>
-              </article>
-            ))}
+          <div className="ui0802-project-table-scroll">
+            <table className="ui0802-project-table">
+              <thead>
+                <tr>
+                  <th scope="col">项目名称</th>
+                  <th scope="col">招标编号</th>
+                  <th scope="col">截止时间</th>
+                  <th scope="col">模拟得分</th>
+                  <th scope="col">最近更新时间</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleProjects.map((project) => (
+                  <tr key={project.id}>
+                    <td>
+                      <span className="ui0802-project-title">{project.title}</span>
+                      <span className="ui0802-project-buyer">{project.buyer}</span>
+                    </td>
+                    <td>{project.code}</td>
+                    <td>
+                      <time>{project.deadline}</time>
+                      <span className="ui0802-deadline-hint">（{project.deadlineHint}）</span>
+                    </td>
+                    <td>{project.score}</td>
+                    <td>{project.updatedAt}</td>
+                    <td>
+                      <div className="ui0802-row-actions">
+                        {accessibleProjectIds.has(project.id) ? (
+                          <AppLink
+                            to={`/projects/${encodeURIComponent(project.id)}/overview`}
+                            aria-label={`进入${project.title}工作台`}
+                          >
+                            进入
+                          </AppLink>
+                        ) : (
+                          <span
+                            aria-label={`${project.title}工作台暂未接入`}
+                            title="演示数据尚未接入可访问的项目工作台"
+                          >
+                            暂未接入
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          aria-label={`从列表删除${project.title}`}
+                          onClick={() =>
+                            setDeletedProjectIds((current) => [...current, project.id])
+                          }
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <div className="project-empty" role="status">
-            <Search aria-hidden="true" size={24} />
-            <h3>没有找到匹配项目</h3>
-            <p>试试调整关键词或项目状态。</p>
+          <div className="ui0802-project-empty" role="status">
+            <Search aria-hidden="true" size={28} />
+            <h2>没有找到匹配项目</h2>
+            <p>请调整项目名称、编号或招标人关键词。</p>
           </div>
         )}
+
+        <footer className="ui0802-table-footer">
+          <p>
+            总计 <strong>36</strong> 条
+          </p>
+          <div
+            className="ui0802-pagination ui0802-pagination--static"
+            role="status"
+            aria-label="项目分页状态"
+          >
+            <span>当前演示页</span>
+            <strong>第 1 / 1 页</strong>
+            <span>展示 {visibleProjects.length} 条</span>
+          </div>
+        </footer>
       </section>
     </div>
   );

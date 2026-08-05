@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { PricingCenter } from '../domains/pricing/PricingCenter';
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
+import { LoginPage } from '../domains/auth/LoginPage';
+import { HistoryPricesPage } from '../domains/history';
 import { ProjectListPage } from '../domains/projects/ProjectListPage';
 import { ProjectOverviewPage } from '../domains/projects/ProjectOverviewPage';
+import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
 import { ReviewCenter } from '../domains/review/ReviewCenter';
 import type { ReviewRunView } from '../domains/review/types';
 import { getProjectSummary } from '../domains/projects/project-view-model';
@@ -27,14 +30,16 @@ import {
   enterpriseIngestionDemo,
   historyPriceSamplesDemo,
   projectMaterialsDemo,
+  projectOverviewDemoByProjectId,
   projectRequirementsDemo,
   projectSnapshotsDemo,
+  projectWorkspaceMaterialsDemoByProjectId,
   publicTaskEventsDemo,
   quoteCalculationDemo,
   reviewProvidersDemo,
   reviewRunDemo,
 } from './demo-data';
-import { AppLink, useUrlRoute } from './router';
+import { AppLink, navigate, useUrlRoute } from './router';
 import { demoSession, getProjectScopeKey } from './session';
 
 type ProjectDomainState<T> = Record<string, T[]>;
@@ -71,7 +76,7 @@ export function App() {
   const [historyPriceSamples] = useState<Record<string, HistoryPriceSample[]>>({
     [defaultScopeKey]: historyPriceSamplesDemo,
   });
-  const [taskEvents] = useState<Record<string, PublicTaskEvent[]>>({
+  const [taskEvents, setTaskEvents] = useState<Record<string, PublicTaskEvent[]>>({
     [defaultScopeKey]: publicTaskEventsDemo,
   });
 
@@ -80,9 +85,30 @@ export function App() {
     ? getProjectScopeKey(session.enterpriseId, routeProjectId)
     : undefined;
   const activeProject = routeProjectId ? getProjectSummary(routeProjectId) : undefined;
+  const activeProjectMaterials = activeScopeKey ? projectMaterials[activeScopeKey] ?? [] : [];
+  const demoWorkspaceMaterials = routeProjectId
+    ? projectWorkspaceMaterialsDemoByProjectId[routeProjectId]
+    : undefined;
+  const activeWorkspaceMaterials = routeProjectId
+    ? demoWorkspaceMaterials
+      ? [
+          ...demoWorkspaceMaterials,
+          ...toWorkspaceMaterials(
+            activeProjectMaterials.filter((material) =>
+              isProjectUpload(material, routeProjectId),
+            ),
+          ),
+        ]
+      : toWorkspaceMaterials(activeProjectMaterials)
+    : [];
+  const activeOverview = routeProjectId
+    ? projectOverviewDemoByProjectId[routeProjectId]
+    : undefined;
 
   const pageMeta = useMemo(() => {
     switch (route.name) {
+      case 'login':
+        return { eyebrow: 'AI电投助手', title: '登录' };
       case 'project-overview':
         return { eyebrow: '项目工作台', title: '项目概览' };
       case 'project-materials':
@@ -93,6 +119,8 @@ export function App() {
         return { eyebrow: '项目工作台', title: '外部评审中心' };
       case 'pricing-center':
         return { eyebrow: '项目工作台', title: '报价测算中心' };
+      case 'history-prices':
+        return { eyebrow: '报价数据中心', title: '历史报价' };
       case 'not-found':
         return { eyebrow: 'BidVolt Web', title: '页面未找到' };
       default:
@@ -180,6 +208,42 @@ export function App() {
     }));
   };
 
+  const handleStartProjectTask = (
+    projectId: string,
+    mode: 'generate' | 'validate',
+  ) => {
+    const scopeKey = getProjectScopeKey(session.enterpriseId, projectId);
+    const createdAt = new Date();
+    const taskId = `${projectId}-${mode}-task-${createdAt.getTime()}`;
+
+    setTaskEvents((current) => {
+      const existing = current[scopeKey] ?? [];
+      const sequence = existing.reduce(
+        (highest, event) => Math.max(highest, event.sequence),
+        0,
+      ) + 1;
+      const event: PublicTaskEvent = {
+        schema_version: '1',
+        event_id: `${taskId}-queued`,
+        sequence,
+        task_id: taskId,
+        project_id: projectId,
+        phase: mode === 'validate' ? 'checking' : 'drafting',
+        status: 'queued',
+        percent: 0,
+        public_message:
+          mode === 'validate'
+            ? '校核任务已创建，正在等待处理。'
+            : '生成任务已创建，正在等待处理。',
+        error_code: null,
+        occurred_at: createdAt.toISOString(),
+      };
+
+      return { ...current, [scopeKey]: [event, ...existing] };
+    });
+    setTaskDrawerProjectId(projectId);
+  };
+
   const activeReviewRun =
     activeScopeKey && routeProjectId
       ? reviewRuns[activeScopeKey] ?? createEmptyReviewRun(routeProjectId)
@@ -210,6 +274,10 @@ export function App() {
     }
   };
 
+  if (route.name === 'login') {
+    return <LoginPage onLogin={() => navigate('/projects')} />;
+  }
+
   return (
     <AppShell
       currentProjectId={routeProjectId}
@@ -224,6 +292,8 @@ export function App() {
       {route.name === 'projects' ? <ProjectListPage /> : null}
       {route.name === 'project-overview' ? (
         <ProjectOverviewPage
+          materials={activeWorkspaceMaterials}
+          overview={activeOverview}
           projectId={route.projectId}
           onOpenTasks={openTaskDrawer}
           taskSummary={
@@ -246,6 +316,7 @@ export function App() {
           onUpload={handleEnterpriseUpload}
         />
       ) : null}
+      {route.name === 'history-prices' ? <HistoryPricesPage /> : null}
       {route.name === 'project-materials' && activeProject && activeScopeKey ? (
         <ProjectMaterialsPage
           key={route.projectId}
@@ -255,12 +326,15 @@ export function App() {
           requirements={projectRequirements[activeScopeKey] ?? []}
           snapshots={projectSnapshots[activeScopeKey] ?? []}
           onConfirmRequirement={handleConfirmRequirement}
+          onStartTask={handleStartProjectTask}
           onUpload={handleProjectUpload}
         />
       ) : null}
       {route.name === 'review-center' && activeProject && activeReviewRun && activeScopeKey ? (
         <ReviewCenter
           key={route.projectId}
+          materials={activeWorkspaceMaterials}
+          projectId={route.projectId}
           providers={reviewProvidersDemo}
           runAllowed={Boolean(reviewRuns[activeScopeKey])}
           runBlockReason="请先冻结项目快照并生成至少一个成果版本。"
@@ -299,6 +373,7 @@ export function App() {
           <PricingCenter
             key={route.projectId}
             calculation={activeQuoteCalculation}
+            materials={activeWorkspaceMaterials}
             samples={activeHistoryPriceSamples}
             onApply={(strategyId) =>
               setAppliedStrategyIds((current) => ({
@@ -335,6 +410,27 @@ function createEmptyReviewRun(projectId: string): ReviewRunView {
     deliverableVersions: ['暂无成果版本'],
     findings: [],
   };
+}
+
+function toWorkspaceMaterials(materials: ProjectMaterial[]): WorkspaceMaterial[] {
+  const statusLabels: Record<ProjectMaterial['parseStatus'], string> = {
+    failed: '解析失败',
+    needs_confirmation: '待确认',
+    parsed: '已识别',
+    parsing: '解析中',
+    queued: '待解析',
+  };
+
+  return materials.map((material) => ({
+    id: material.id,
+    name: material.name,
+    status: statusLabels[material.parseStatus],
+    tone: material.kind === 'quote_template' ? 'red' : 'blue',
+  }));
+}
+
+function isProjectUpload(material: ProjectMaterial, projectId: string) {
+  return material.id.startsWith(`${projectId}-upload-`);
 }
 
 function taskPhaseLabel(phase: string) {

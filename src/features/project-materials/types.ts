@@ -76,4 +76,5 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   snapshots: ProjectSnapshot[];
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
+  onStartTask: (projectId: string, mode: 'generate' | 'validate') => void;
 }

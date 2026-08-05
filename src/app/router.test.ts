@@ -19,6 +19,12 @@ describe('matchRoute', () => {
     });
   });
 
+  it('routes login and global read-only history outside project scope', () => {
+    expect(matchRoute('/login')).toEqual({ name: 'login' });
+    expect(matchRoute('/history-prices')).toEqual({ name: 'history-prices' });
+    expect(matchRoute('/history')).toEqual({ name: 'history-prices' });
+  });
+
   it('does not treat unknown subpaths as a project overview', () => {
     expect(matchRoute('/projects/BV-2026-018/enterprise-assets')).toEqual({
       name: 'not-found',

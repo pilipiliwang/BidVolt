@@ -39,6 +39,31 @@ export const reviewFindingSchema = z
   })
   .strict();
 
+export const reviewSummarySchema = z
+  .object({
+    total_finding_count: z.number().int().nonnegative(),
+    category_counts: z.array(
+      z
+        .object({
+          category_key: z.string().min(1),
+          label: z.string().min(1),
+          count: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    current_score: z.number().min(0).max(100),
+    predicted_score: z.number().min(0).max(100),
+    total_lift: z.number().nonnegative(),
+    section_lifts: z
+      .object({
+        business: z.number().nonnegative(),
+        technical: z.number().nonnegative(),
+        pricing: z.number().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const reviewRunSchema = z
   .object({
     review_run_id: entityIdSchema,
@@ -50,6 +75,7 @@ export const reviewRunSchema = z
     status: z.enum(['queued', 'running', 'succeeded', 'failed', 'invalid_response', 'timed_out']),
     raw_response_hash: z.string().regex(/^[a-f0-9]{64}$/i).nullable(),
     findings: z.array(reviewFindingSchema),
+    review_summary: reviewSummarySchema.optional(),
     created_at: isoDateTimeSchema,
     finished_at: isoDateTimeSchema.nullable(),
   })

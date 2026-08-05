@@ -1,4 +1,6 @@
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
+import type { ProjectOverviewView } from '../domains/projects/ProjectOverviewPage';
+import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
 import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
 import type {
   EnterpriseAsset,
@@ -13,6 +15,42 @@ import { publicTaskEventSchema, type PublicTaskEvent } from '../shared/api/task-
 
 export const defaultProjectId = 'BV-2026-018';
 export const defaultProjectName = '海上平台电气设备采购项目';
+
+export const projectWorkspaceMaterialsDemoByProjectId: Record<string, WorkspaceMaterial[]> = {
+  [defaultProjectId]: [
+    { id: 'tender', name: '招标文件', status: '已识别', tone: 'blue' },
+    { id: 'notice', name: '招标公告', status: '已识别', tone: 'blue' },
+    { id: 'spec', name: '技术规范书', status: '已识别', tone: 'blue' },
+    { id: 'tech', name: '技术要求', status: '已识别', tone: 'blue' },
+    { id: 'quote', name: '报价模板', status: '已识别', tone: 'red' },
+    { id: 'clarification', name: '澄清补遗', status: '已识别', tone: 'blue' },
+    { id: 'qualification', name: '资格审查文件', status: '已识别', tone: 'blue' },
+    { id: 'review', name: '评标办法', status: '已识别', tone: 'orange' },
+    { id: 'contract', name: '合同条款', status: '已识别', tone: 'blue' },
+    { id: 'drawing', name: '图纸（电气部分）', status: '已识别', tone: 'blue' },
+    { id: 'bill', name: '工程量清单', status: '已识别', tone: 'green' },
+    { id: 'other', name: '其他附件', status: '已识别', tone: 'orange' },
+  ],
+};
+
+export const projectOverviewDemoByProjectId: Record<string, ProjectOverviewView> = {
+  [defaultProjectId]: {
+    deliverables: [
+      { id: 'business', title: '商务标文件', pages: 128, words: '28.6 万', score: '28.6 / 30', lift: '6.2 分', missing: 2, tone: 'business' },
+      { id: 'technical', title: '技术标文件', pages: 186, words: '42.3 万', score: '45.3 / 50', lift: '6.8 分', missing: 1, tone: 'technical' },
+      { id: 'quote', title: '报价单', pages: 32, words: '8.7 万', score: '17.5 / 20', lift: '2.6 分', missing: 0, tone: 'quote' },
+    ],
+    score: {
+      business: 28.6,
+      estimatedLift: 6.2,
+      missingMaterials: 3,
+      pricing: 17.5,
+      rejectionRisks: 0,
+      technical: 45.3,
+      total: 91.4,
+    },
+  },
+};
 
 export const enterpriseAssetsDemo: EnterpriseAsset[] = [
   {
@@ -361,6 +399,21 @@ export const reviewRunDemo: ReviewRunView = {
   providerVersion: '2026.08',
   responseHash: 'sha256:c8fa…90e4',
   finishedAt: '2026-08-05 10:18',
+  validatedSummary: {
+    totalFindingCount: 18,
+    categoryCounts: [
+      { key: 'business-bid-letter', label: '商务标-投标函', count: 4 },
+      { key: 'business-document', label: '商务标文件', count: 4 },
+    ],
+    currentScore: 76,
+    predictedScore: 91.6,
+    totalLift: 15.6,
+    sectionLifts: {
+      business: 6.2,
+      technical: 6.8,
+      pricing: 2.6,
+    },
+  },
   findings: [
     {
       id: 'finding-001',
@@ -465,29 +518,38 @@ export const quoteCalculationDemo: QuoteCalculationView = {
       id: 'win',
       name: '中标优先',
       description: '在最低毛利约束下，提高价格竞争力。',
-      amount: '126200.00',
+      amount: '29600.00',
       currency: 'CNY',
-      confidenceLow: '124900.00',
-      confidenceHigh: '130800.00',
+      confidenceLow: '28800.00',
+      confidenceHigh: '30200.00',
+      predictedScore: '94.6',
+      grossMargin: '9.46%',
+      riskLevel: 'low',
     },
     {
       id: 'balanced',
       name: '均衡策略',
       description: '兼顾样本中位水平、目标毛利与中标概率。',
-      amount: '129600.00',
+      amount: '30200.00',
       currency: 'CNY',
-      confidenceLow: '125000.00',
-      confidenceHigh: '134200.00',
+      confidenceLow: '28800.00',
+      confidenceHigh: '31600.00',
+      predictedScore: '88.2',
+      grossMargin: '11.26%',
+      riskLevel: 'medium',
       recommended: true,
     },
     {
       id: 'profit',
       name: '利润优先',
       description: '在评分下降可控的范围内提高目标毛利。',
-      amount: '133800.00',
+      amount: '31600.00',
       currency: 'CNY',
-      confidenceLow: '129400.00',
-      confidenceHigh: '137600.00',
+      confidenceLow: '30200.00',
+      confidenceHigh: '32400.00',
+      predictedScore: '78.5',
+      grossMargin: '15.19%',
+      riskLevel: 'high',
     },
   ],
 };

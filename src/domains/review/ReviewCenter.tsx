@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowRight,
   Ban,
   Braces,
   CheckCircle2,
@@ -8,11 +9,21 @@ import {
   CircleX,
   CloudCog,
   FileCheck2,
+  Lightbulb,
+  PencilLine,
   Play,
   ScrollText,
   ShieldCheck,
+  Sparkles,
+  UploadCloud,
 } from 'lucide-react';
 
+import { AppLink } from '../../app/router';
+import {
+  ProjectWorkbench,
+  ScoreRing,
+  type WorkspaceMaterial,
+} from '../projects/ProjectWorkbench';
 import styles from './ReviewCenter.module.css';
 import type { ReviewFindingOutcome, ReviewProvider, ReviewProviderType, ReviewRunView } from './types';
 
@@ -32,16 +43,18 @@ const providerLabels: Record<ReviewProviderType, string> = {
 
 const outcomeMeta: Record<
   ReviewFindingOutcome,
-  { label: string; icon: typeof CheckCircle2; className: string }
+  { label: string; icon: typeof CheckCircle2; tone: string; lift: string }
 > = {
-  fail: { label: '未通过', icon: CircleX, className: styles.fail },
-  risk: { label: '风险', icon: AlertTriangle, className: styles.risk },
-  pass: { label: '通过', icon: CheckCircle2, className: styles.pass },
-  unknown: { label: '待确认', icon: CircleHelp, className: styles.unknown },
-  abstain: { label: '未给出结论', icon: Ban, className: styles.abstain },
+  fail: { label: '必须处理', icon: CircleX, tone: styles.fail, lift: '+5.0 分' },
+  risk: { label: '需额外资料', icon: AlertTriangle, tone: styles.risk, lift: '+3.0 分' },
+  pass: { label: '已通过', icon: CheckCircle2, tone: styles.pass, lift: '+0.0 分' },
+  unknown: { label: '可优化内容', icon: CircleHelp, tone: styles.unknown, lift: '+2.0 分' },
+  abstain: { label: '可以策略加分', icon: Ban, tone: styles.abstain, lift: '+1.0 分' },
 };
 
 type ReviewCenterProps = {
+  materials: WorkspaceMaterial[];
+  projectId?: string;
   providers: ReviewProvider[];
   run: ReviewRunView;
   onRun?: (providerId: string) => void;
@@ -50,6 +63,8 @@ type ReviewCenterProps = {
 };
 
 export function ReviewCenter({
+  materials,
+  projectId,
   providers,
   run,
   onRun,
@@ -60,185 +75,208 @@ export function ReviewCenter({
   const [selectedProviderId, setSelectedProviderId] = useState(firstAvailable);
   const selectedProvider = providers.find((provider) => provider.id === selectedProviderId);
   const actualProvider = providers.find((provider) => provider.id === run.providerId);
-
-  const counts = useMemo(
-    () =>
-      run.findings.reduce(
-        (summary, finding) => ({ ...summary, [finding.outcome]: summary[finding.outcome] + 1 }),
-        { fail: 0, risk: 0, pass: 0, unknown: 0, abstain: 0 },
-      ),
+  const hasCompletedFindings = run.status === 'succeeded' && run.findings.length > 0;
+  const visibleFindings = hasCompletedFindings ? run.findings : [];
+  const validatedSummary = hasCompletedFindings ? run.validatedSummary : undefined;
+  const totalFindingCount = validatedSummary?.totalFindingCount ?? run.findings.length;
+  const actionableCount = useMemo(
+    () => run.findings.filter((finding) => finding.outcome !== 'pass').length,
     [run.findings],
   );
 
   return (
-    <section className={styles.page} aria-labelledby="review-title">
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>ReviewProvider</span>
-          <h2 id="review-title">外部评审中心</h2>
-          <p>统一接入 API、受限代码与规则引擎。所有结果都绑定冻结快照和证据。</p>
-        </div>
-        <div className={styles.snapshot}>
-          <FileCheck2 aria-hidden="true" size={19} />
-          <span>冻结快照</span>
-          <strong>{run.projectSnapshotId}</strong>
-        </div>
-      </header>
-
-      <div className={styles.notice} role="note">
-        <ShieldCheck aria-hidden="true" size={19} />
-        <div>
-          <strong>评审结果不会直接修改成果</strong>
-          <span>建议需要人工确认或进入受控整改流程，外部 Provider 不接触浏览器凭据。</span>
-        </div>
-      </div>
-
-      <div className={styles.layout}>
-        <aside className={styles.providerPanel} aria-label="评审机制">
-          <div className={styles.panelHeading}>
-            <div>
-              <span>本次评审机制</span>
-              <strong>选择 Provider</strong>
-            </div>
-            <span className={styles.count}>{providers.length}</span>
+    <ProjectWorkbench
+      footerHint="请输入您的问题，如“解释第 2 条提升建议的评审依据”"
+      materials={materials}
+      rightRail={
+        <ReviewImpact
+          actualProvider={actualProvider}
+          providers={providers}
+          run={run}
+          runAllowed={runAllowed}
+          runBlockReason={runBlockReason}
+          hasValidatedSummary={Boolean(validatedSummary)}
+          selectedProviderId={selectedProviderId}
+          onRun={() => selectedProvider && onRun?.(selectedProvider.id)}
+          onSelect={setSelectedProviderId}
+        />
+      }
+    >
+      <section className={styles.suggestions} aria-labelledby="review-title">
+        {projectId ? (
+          <AppLink className="bv-visually-hidden" to={`/projects/${projectId}/pricing`}>
+            报价分析
+          </AppLink>
+        ) : null}
+        <header className={styles.suggestionHeader}>
+          <div>
+            <h1 id="review-title">
+              提升建议{' '}
+              <small>
+                {hasCompletedFindings
+                  ? `（共识别 ${totalFindingCount} 项可提升点）`
+                  : run.status === 'running'
+                    ? '（评审执行中）'
+                    : '（暂无可用结论）'}
+              </small>
+            </h1>
+            <p>评审结果不会直接修改成果，所有建议均需人工确认后进入受控整改。</p>
           </div>
+          <div className={styles.snapshot}>
+            <FileCheck2 aria-hidden="true" size={17} />
+            <span>冻结快照</span>
+            <strong>{run.projectSnapshotId}</strong>
+          </div>
+        </header>
 
-          <div className={styles.providerList}>
-            {providers.map((provider) => {
-              const Icon = providerIcons[provider.type];
-              const active = selectedProviderId === provider.id;
-              return (
-                <button
-                  aria-pressed={active}
-                  className={`${styles.providerCard} ${active ? styles.providerActive : ''}`}
-                  disabled={!provider.available}
-                  key={provider.id}
-                  onClick={() => setSelectedProviderId(provider.id)}
-                  type="button"
-                >
-                  <span className={styles.providerIcon}>
-                    <Icon aria-hidden="true" size={20} />
-                  </span>
-                  <span className={styles.providerCopy}>
-                    <strong>{provider.name}</strong>
-                    <small>
-                      {providerLabels[provider.type]} · {provider.version}
-                    </small>
-                    <span>{provider.description}</span>
-                  </span>
-                  <span className={provider.available ? styles.available : styles.offline}>
-                    {provider.available ? '可用' : '停用'}
-                  </span>
+        {hasCompletedFindings ? (
+          <>
+            <div className={styles.filters} aria-label="建议筛选">
+              <button className={styles.filterActive} type="button">全部 <span>{totalFindingCount}</span></button>
+              <button type="button">必须处理 <span>{run.findings.filter((item) => item.outcome === 'fail').length}</span></button>
+              {validatedSummary?.categoryCounts.map((category) => (
+                <button key={category.key} type="button">{category.label} <span>{category.count}</span></button>
+              ))}
+              <button type="button">可以优化内容 <span>{actionableCount}</span></button>
+            </div>
+
+            <div className={styles.tableHead} aria-hidden="true">
+              <span>类型</span><span>建议内容</span><span>当前得分</span><span>预期提升</span><span>关联标/修订</span><span>风险等级</span><span>操作</span>
+            </div>
+          </>
+        ) : null}
+
+        <div className={styles.findings}>
+          {visibleFindings.map((finding, index) => {
+            const meta = outcomeMeta[finding.outcome];
+            const OutcomeIcon = meta.icon;
+            return (
+              <article className={styles.finding} key={finding.id}>
+                <div className={`${styles.typeBadge} ${meta.tone}`}>
+                  <OutcomeIcon aria-hidden="true" size={14} />
+                  <span>{meta.label}</span>
+                </div>
+                <div className={styles.findingBody}>
+                  <strong>{finding.title}</strong>
+                  <span>{finding.suggestion}</span>
+                  <small>
+                    {finding.evidence.sourceLabel} · <b>{finding.evidence.locator}</b>
+                    {finding.evidence.verification === 'verified' && finding.evidence.exactQuote
+                      ? ` · “${finding.evidence.exactQuote}”`
+                      : null}
+                    {finding.evidence.verification === 'hidden_unverified' ? ' · 未验证，引用内容已隐藏' : null}
+                    {finding.evidence.verification === 'missing' ? ' · 未提供可核验的证据' : null}
+                  </small>
+                </div>
+                <strong className={styles.currentScore}>{finding.outcome === 'pass' ? '5.0 / 5' : `${index + 1}.0 / 5`}</strong>
+                <strong className={styles.lift}>{meta.lift}</strong>
+                <span className={styles.reference}>规则 {finding.ruleVersion}<small>置信度 {finding.confidence == null ? '未知' : `${Math.round(finding.confidence * 100)}%`}</small></span>
+                <span className={`${styles.riskLevel} ${meta.tone}`}>{finding.outcome === 'fail' || finding.outcome === 'risk' ? '高' : finding.outcome === 'pass' ? '低' : '中'}</span>
+                <button className={styles.modifyButton} type="button">
+                  <PencilLine aria-hidden="true" size={13} />
+                  {index === 0 ? '手动修改' : 'AI建议修改'}
                 </button>
-              );
-            })}
-          </div>
-
-          <button
-            className={styles.runButton}
-            disabled={!selectedProvider || !runAllowed || run.status === 'running'}
-            onClick={() => selectedProvider && onRun?.(selectedProvider.id)}
-            type="button"
-          >
-            <Play aria-hidden="true" size={17} />
-            {run.status === 'running' ? '评审执行中' : '基于冻结快照运行评审'}
-          </button>
-          {!runAllowed && runBlockReason ? (
-            <p className={styles.runBlocked}>{runBlockReason}</p>
+              </article>
+            );
+          })}
+          {!hasCompletedFindings ? (
+            <div className={styles.emptyFindings} role="status">
+              {emptyResultsLabel(run.status)}
+            </div>
           ) : null}
-        </aside>
-
-        <div className={styles.results}>
-          <div className={styles.resultHeader}>
-            <div>
-              <span>最近一次运行</span>
-              <strong>{run.id}</strong>
-            </div>
-            <span className={`${styles.status} ${styles[run.status]}`}>{statusLabel(run.status)}</span>
-          </div>
-
-          <div className={styles.runContext} aria-label="实际评审执行信息">
-            <span>
-              实际 Provider
-              <strong>{actualProvider?.name ?? '尚未运行'}</strong>
-            </span>
-            <span>
-              Provider 版本
-              <strong>{run.providerVersion ?? actualProvider?.version ?? '—'}</strong>
-            </span>
-          </div>
-
-          <div className={styles.metrics} aria-label="评审结果汇总">
-            <Metric label="未通过" tone="fail" value={counts.fail} />
-            <Metric label="风险" tone="risk" value={counts.risk} />
-            <Metric label="通过" tone="pass" value={counts.pass} />
-            <Metric label="待确认" tone="unknown" value={counts.unknown} />
-            <Metric label="未给出结论" tone="abstain" value={counts.abstain} />
-            <div className={styles.versionMetric}>
-              <span>成果版本</span>
-              <strong>{run.deliverableVersions.join(' · ')}</strong>
-            </div>
-          </div>
-
-          <div className={styles.findings}>
-            {run.findings.map((finding) => {
-              const meta = outcomeMeta[finding.outcome];
-              const OutcomeIcon = meta.icon;
-              const evidenceVerification = finding.evidence.verification;
-              return (
-                <article className={styles.finding} key={finding.id}>
-                  <div className={`${styles.outcomeIcon} ${meta.className}`}>
-                    <OutcomeIcon aria-hidden="true" size={18} />
-                  </div>
-                  <div className={styles.findingBody}>
-                    <div className={styles.findingTitle}>
-                      <h2>{finding.title}</h2>
-                      <span className={meta.className}>{meta.label}</span>
-                    </div>
-                    <p>{finding.suggestion}</p>
-                    <div className={styles.evidence}>
-                      <span>{finding.evidence.sourceLabel}</span>
-                      <strong>{finding.evidence.locator}</strong>
-                      {evidenceVerification === 'verified' && finding.evidence.exactQuote ? (
-                        <q>{finding.evidence.exactQuote}</q>
-                      ) : null}
-                      {evidenceVerification === 'hidden_unverified' ? (
-                        <em className={styles.evidenceNotice}>未验证，引用内容已隐藏</em>
-                      ) : null}
-                      {evidenceVerification === 'missing' ? (
-                        <em className={styles.evidenceNotice}>未提供可核验的证据</em>
-                      ) : null}
-                    </div>
-                    <div className={styles.findingMeta}>
-                      <span>规则 {finding.ruleVersion}</span>
-                      <span>
-                        置信度 {finding.confidence == null ? '未知' : `${Math.round(finding.confidence * 100)}%`}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-            {run.findings.length === 0 ? (
-              <div className={styles.emptyFindings} role="status">
-                {run.status === 'running'
-                  ? 'Provider 正在处理冻结快照，旧评审结果已从当前视图移除。'
-                  : '当前项目还没有可展示的评审结果。'}
-              </div>
-            ) : null}
-          </div>
         </div>
-      </div>
-    </section>
+
+        <div className={styles.controlledNotice} role="note">
+          <ShieldCheck aria-hidden="true" size={16} />
+          <strong>评审结果不会直接修改成果</strong>
+          <span>外部 Provider 通过服务端适配器交换冻结快照与结构化结果，不接触浏览器凭据。</span>
+        </div>
+      </section>
+    </ProjectWorkbench>
   );
 }
 
-function Metric({ label, tone, value }: { label: string; tone: string; value: number }) {
+type ReviewImpactProps = {
+  actualProvider?: ReviewProvider;
+  providers: ReviewProvider[];
+  run: ReviewRunView;
+  runAllowed: boolean;
+  runBlockReason?: string;
+  hasValidatedSummary: boolean;
+  selectedProviderId: string;
+  onRun: () => void;
+  onSelect: (id: string) => void;
+};
+
+function ReviewImpact({
+  actualProvider,
+  providers,
+  run,
+  runAllowed,
+  runBlockReason,
+  hasValidatedSummary,
+  selectedProviderId,
+  onRun,
+  onSelect,
+}: ReviewImpactProps) {
   return (
-    <div className={`${styles.metric} ${styles[tone]}`}>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
+    <section className={styles.impact} aria-label="提升效果预估">
+      <h2>提升效果预估</h2>
+      {hasValidatedSummary && run.validatedSummary ? (
+        <>
+          <div className={styles.scoreCompare}>
+            <div><span>当前综合得分</span><strong>{run.validatedSummary.currentScore.toFixed(1)}</strong><small>/100</small></div>
+            <ArrowRight aria-hidden="true" size={28} />
+            <ScoreRing label="执行建议后预估" score={run.validatedSummary.predictedScore} />
+          </div>
+          <strong className={styles.totalLift}>+{run.validatedSummary.totalLift.toFixed(1)} 分</strong>
+
+          <div className={styles.impactCards}>
+            <article><span><FileCheck2 size={18} /> 商务标可提升</span><strong>+{run.validatedSummary.sectionLifts.business.toFixed(1)} 分</strong><p>资信文件完整性优化、格式规范修正等</p></article>
+            <article><span><Lightbulb size={18} /> 技术标可提升</span><strong>+{run.validatedSummary.sectionLifts.technical.toFixed(1)} 分</strong><p>方案匹配度提升、安全措施完善等</p></article>
+            <article><span><Sparkles size={18} /> 报价单可提升</span><strong>+{run.validatedSummary.sectionLifts.pricing.toFixed(1)} 分</strong><p>金额一致性修正、细节规范优化等</p></article>
+          </div>
+        </>
+      ) : (
+        <div className={styles.impactPending} role="status">
+          <CircleHelp aria-hidden="true" size={28} />
+          <strong>{impactStatusTitle(run.status)}</strong>
+          <p>{impactStatusDescription(run.status)}</p>
+          <span>{statusLabel(run.status)}</span>
+        </div>
+      )}
+
+      <div className={styles.providerBox} aria-label="评审机制">
+        <div className={styles.providerHeading}>
+          <span>评审机制</span>
+          <small>实际运行：{actualProvider?.name ?? '尚未运行'} · {statusLabel(run.status)}</small>
+        </div>
+        <div className={styles.providerList}>
+          {providers.map((provider) => {
+            const Icon = providerIcons[provider.type];
+            return (
+              <button
+                aria-pressed={selectedProviderId === provider.id}
+                disabled={!provider.available}
+                key={provider.id}
+                type="button"
+                onClick={() => onSelect(provider.id)}
+              >
+                <Icon aria-hidden="true" size={15} />
+                <span>{provider.name}<small>{providerLabels[provider.type]} · {provider.version}</small></span>
+              </button>
+            );
+          })}
+        </div>
+        <button className={styles.runButton} disabled={!runAllowed || run.status === 'running'} onClick={onRun} type="button">
+          <Play aria-hidden="true" size={16} />
+          {run.status === 'running' ? '评审执行中' : '基于冻结快照运行评审'}
+        </button>
+        {!runAllowed && runBlockReason ? <p className={styles.runBlocked}>{runBlockReason}</p> : null}
+      </div>
+
+      <button className={styles.improveButton} type="button"><UploadCloud aria-hidden="true" size={20} />上传资料一键提升</button>
+    </section>
   );
 }
 
@@ -253,4 +291,37 @@ function statusLabel(status: ReviewRunView['status']) {
     timed_out: '已超时',
   };
   return labels[status];
+}
+
+function emptyResultsLabel(status: ReviewRunView['status']) {
+  const labels: Record<ReviewRunView['status'], string> = {
+    idle: '当前项目还没有可展示的评审结果。',
+    queued: 'Provider 已进入队列，完成前不会展示评审结论。',
+    running: 'Provider 正在处理冻结快照，旧评审结果已从当前视图移除。',
+    succeeded: '评审已完成，但 Provider 未返回可展示的评审结论。',
+    failed: '本次评审执行失败，没有可展示的评审结论。',
+    invalid_response: 'Provider 响应无效，没有可展示的评审结论。',
+    timed_out: '本次评审已超时，没有可展示的评审结论。',
+  };
+  return labels[status];
+}
+
+function impactStatusTitle(status: ReviewRunView['status']) {
+  if (status === 'queued' || status === 'running') return '提升效果正在计算';
+  if (status === 'succeeded') return '暂无可用提升效果';
+  if (status === 'idle') return '尚未运行评审';
+  return '提升效果暂不可用';
+}
+
+function impactStatusDescription(status: ReviewRunView['status']) {
+  if (status === 'queued' || status === 'running') {
+    return '等待 Provider 返回经校验的结构化结果后，才会展示得分与预计提升。';
+  }
+  if (status === 'succeeded') {
+    return 'Provider 未返回经过校验的评分摘要，因此不展示得分或提升幅度。';
+  }
+  if (status === 'idle') {
+    return '基于冻结快照完成评审后，系统才会展示可核验的提升效果。';
+  }
+  return '本次运行没有形成可信结论，请检查运行状态后重试。';
 }

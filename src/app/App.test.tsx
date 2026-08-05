@@ -77,6 +77,19 @@ describe('App web shell', () => {
     expect(screen.queryByRole('dialog', { name: '任务进度' })).not.toBeInTheDocument();
   });
 
+  it('creates a project-scoped generation task from the materials page', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/projects/BV-2026-018/materials');
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: '开始生成' }));
+
+    const taskDialog = screen.getByRole('dialog', { name: '任务进度' });
+    expect(taskDialog).toBeInTheDocument();
+    expect(within(taskDialog).getByText('生成任务已创建，正在等待处理。')).toBeInTheDocument();
+    expect(within(taskDialog).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+  });
+
   it('does not carry an open task drawer into another project', async () => {
     const user = userEvent.setup();
     renderApp();
@@ -216,7 +229,7 @@ describe('App web shell', () => {
     expect(screen.queryByText(/已确认“均衡策略”/)).not.toBeInTheDocument();
     expect(screen.getByText('当前项目尚未查询历史样本或执行报价测算。')).toBeInTheDocument();
     expect(screen.queryByText('history-query-20260805-08')).not.toBeInTheDocument();
-    expect(screen.queryByText('129600.00')).not.toBeInTheDocument();
+    expect(screen.queryByText('30,200.00')).not.toBeInTheDocument();
   });
 
   it('does not expose or run another project review without a frozen snapshot', async () => {

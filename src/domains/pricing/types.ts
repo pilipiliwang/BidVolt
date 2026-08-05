@@ -19,6 +19,9 @@ export type QuoteStrategy = {
   currency: string;
   confidenceLow: string;
   confidenceHigh: string;
+  predictedScore?: string;
+  grossMargin?: string;
+  riskLevel?: 'low' | 'medium' | 'high';
   recommended?: boolean;
 };
 

@@ -261,6 +261,35 @@ describe('review API to UI adapter', () => {
     expect(view.responseHash).toBeUndefined();
   });
 
+  it('maps an explicitly validated review summary without inventing aggregate values', () => {
+    const summarizedRun = reviewRunSchema.parse({
+      ...run,
+      status: 'succeeded',
+      review_summary: {
+        total_finding_count: 18,
+        category_counts: [
+          { category_key: 'business-bid-letter', label: '商务标-投标函', count: 4 },
+        ],
+        current_score: 76,
+        predicted_score: 91.6,
+        total_lift: 15.6,
+        section_lifts: { business: 6.2, technical: 6.8, pricing: 2.6 },
+      },
+    });
+
+    expect(adaptReviewRun(summarizedRun, 'project-a', trustedEvidenceIndex).validatedSummary)
+      .toEqual({
+        totalFindingCount: 18,
+        categoryCounts: [
+          { key: 'business-bid-letter', label: '商务标-投标函', count: 4 },
+        ],
+        currentScore: 76,
+        predictedScore: 91.6,
+        totalLift: 15.6,
+        sectionLifts: { business: 6.2, technical: 6.8, pricing: 2.6 },
+      });
+  });
+
   it('hides unverified quotes and rejects project or frozen-snapshot scope mismatches', () => {
     const emptyIndex = createTrustedReviewEvidenceIndex({
       projectId: 'project-a',

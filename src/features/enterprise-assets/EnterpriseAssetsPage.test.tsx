@@ -55,7 +55,8 @@ const assets: EnterpriseAsset[] = [
 ];
 
 describe('EnterpriseAssetsPage', () => {
-  it('shows enterprise-only classification, extracted facts and revision provenance', () => {
+  it('shows screenshot-aligned library browsing and opens traceable details', async () => {
+    const user = userEvent.setup();
     render(
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
@@ -71,13 +72,22 @@ describe('EnterpriseAssetsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '企业资料库' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '企业资料库', level: 2 })).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent('企业域');
     expect(screen.getByRole('note')).toHaveTextContent('自动分类不会改变其数据归属');
+    expect(screen.getByRole('note')).toHaveTextContent('项目材料也不会进入企业库');
+    expect(screen.getByRole('table')).toHaveTextContent('华东电气营业执照.pdf');
+    expect(screen.getByRole('button', { name: /企业证照/ })).toHaveTextContent('1');
+
+    await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
+
+    expect(screen.getByRole('dialog', { name: '华东电气营业执照.pdf详情' })).toBeInTheDocument();
     expect(screen.getByLabelText('自动分类置信度')).toHaveTextContent('96%');
     expect(screen.getByText('统一社会信用代码')).toBeInTheDocument();
     expect(screen.getAllByText('来源：营业执照原件 · 第 1 页')).toHaveLength(2);
     expect(screen.getByText('自动识别为企业证照并抽取字段')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '关闭资料详情' }));
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
     expect(screen.getByRole('progressbar', { name: '近三年业绩.xlsx处理进度' })).toHaveAttribute(
       'aria-valuenow',
       '42',
@@ -98,12 +108,15 @@ describe('EnterpriseAssetsPage', () => {
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
     const upload = screen.getByLabelText(/选择文件或拖拽到此处/);
     const file = new File(['qualification'], '承装资质.pdf', { type: 'application/pdf' });
     await user.upload(upload, file);
 
     expect(onUpload).toHaveBeenCalledWith([file]);
 
+    await user.click(screen.getByRole('button', { name: '关闭上传资料窗口' }));
+    await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
     const creditCodeFact = screen.getByText('统一社会信用代码').closest('article');
     expect(creditCodeFact).not.toBeNull();
     await user.click(within(creditCodeFact!).getByRole('button', { name: '纠正字段' }));

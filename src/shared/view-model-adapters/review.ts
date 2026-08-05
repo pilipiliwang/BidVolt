@@ -137,5 +137,23 @@ export function adaptReviewRun(
     providerVersion: run.provider_version,
     finishedAt: run.finished_at ?? undefined,
     findings: run.findings.map((finding) => adaptReviewFinding(finding, evidenceIndex)),
+    validatedSummary: run.review_summary
+      ? {
+          totalFindingCount: run.review_summary.total_finding_count,
+          categoryCounts: run.review_summary.category_counts.map((category) => ({
+            key: category.category_key,
+            label: category.label,
+            count: category.count,
+          })),
+          currentScore: run.review_summary.current_score,
+          predictedScore: run.review_summary.predicted_score,
+          totalLift: run.review_summary.total_lift,
+          sectionLifts: {
+            business: run.review_summary.section_lifts.business,
+            technical: run.review_summary.section_lifts.technical,
+            pricing: run.review_summary.section_lifts.pricing,
+          },
+        }
+      : undefined,
   };
 }

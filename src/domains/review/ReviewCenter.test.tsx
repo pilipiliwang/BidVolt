@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { reviewProvidersDemo, reviewRunDemo } from '../../app/demo-data';
 import { ReviewCenter } from './ReviewCenter';
 import type { ReviewProvider, ReviewRunView } from './types';
 
@@ -50,18 +51,41 @@ const run: ReviewRunView = {
 
 describe('ReviewCenter', () => {
   it('shows provider type, frozen snapshot, evidence and controlled result notice', () => {
-    render(<ReviewCenter providers={providers} run={run} />);
+    render(<ReviewCenter materials={[]} providers={providers} run={run} />);
 
     expect(screen.getByText('远程 API · 2026.08')).toBeInTheDocument();
     expect(screen.getByText('沙箱代码 · v3')).toBeInTheDocument();
     expect(screen.getByText('snap_20260805')).toBeInTheDocument();
     expect(screen.getByText('评审结果不会直接修改成果')).toBeInTheDocument();
     expect(screen.getByText('第 12 页 · 资格条件 3.1')).toBeInTheDocument();
+    expect(screen.getByText(/共识别 1 项可提升点/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /商务标-投标函/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /商务标文件/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+    expect(screen.getByText('暂无可用提升效果')).toBeInTheDocument();
+  });
+
+  it('renders the P07 totals and impact only from the demo validated summary', () => {
+    render(
+      <ReviewCenter materials={[]} providers={reviewProvidersDemo} run={reviewRunDemo} />,
+    );
+
+    expect(screen.getByText(/共识别 18 项可提升点/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '商务标-投标函 4' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '商务标文件 4' })).toBeInTheDocument();
+    expect(screen.getByText('76.0')).toBeInTheDocument();
+    expect(screen.getByLabelText('执行建议后预估 91.6 分')).toBeInTheDocument();
+    expect(screen.getByText('+15.6 分')).toBeInTheDocument();
+    expect(screen.getByText('+6.2 分')).toBeInTheDocument();
+    expect(screen.getByText('+6.8 分')).toBeInTheDocument();
+    expect(screen.getByText('+2.6 分')).toBeInTheDocument();
   });
 
   it('runs only the user-selected provider', () => {
     const onRun = vi.fn();
-    render(<ReviewCenter onRun={onRun} providers={providers} run={run} />);
+    render(<ReviewCenter materials={[]} onRun={onRun} providers={providers} run={run} />);
 
     fireEvent.click(screen.getByRole('button', { name: /本地规则代码/ }));
     fireEvent.click(screen.getByRole('button', { name: '基于冻结快照运行评审' }));
@@ -72,6 +96,7 @@ describe('ReviewCenter', () => {
   it('blocks execution until a frozen snapshot and deliverable versions exist', () => {
     render(
       <ReviewCenter
+        materials={[]}
         providers={providers}
         run={{
           ...run,
@@ -89,5 +114,59 @@ describe('ReviewCenter', () => {
     expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeDisabled();
     expect(screen.getByText('请先冻结项目快照并生成至少一个成果版本。')).toBeInTheDocument();
     expect(screen.getByText('当前项目还没有可展示的评审结果。')).toBeInTheDocument();
+    expect(screen.getByText('尚未运行评审')).toBeInTheDocument();
+    expect(screen.queryByText(/共识别 18 项可提升点/)).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+  });
+
+  it('does not show completed-review conclusions while a provider is running', () => {
+    render(
+      <ReviewCenter
+        materials={[]}
+        providers={providers}
+        run={{
+          ...run,
+          id: 'running-review',
+          status: 'running',
+          findings: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('（评审执行中）')).toBeInTheDocument();
+    expect(
+      screen.getByText('Provider 正在处理冻结快照，旧评审结果已从当前视图移除。'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('提升效果正在计算')).toBeInTheDocument();
+    expect(screen.queryByText(/共识别 18 项可提升点/)).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+  });
+
+  it('does not fabricate scores when a completed provider returns no findings', () => {
+    render(
+      <ReviewCenter
+        materials={[]}
+        providers={providers}
+        run={{
+          ...run,
+          id: 'empty-review',
+          findings: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('（暂无可用结论）')).toBeInTheDocument();
+    expect(
+      screen.getByText('评审已完成，但 Provider 未返回可展示的评审结论。'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('暂无可用提升效果')).toBeInTheDocument();
+    expect(screen.queryByText(/共识别 18 项可提升点/)).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
   });
 });
