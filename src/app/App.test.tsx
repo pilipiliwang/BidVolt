@@ -188,7 +188,33 @@ describe('App web shell', () => {
 
     expect(window.location.pathname).toBe('/projects/BV-2026-018/materials');
     expect(screen.getByLabelText('营业执照（2026 年更新）')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '企业资料只读' })).toBeDisabled();
+    expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
+  });
+
+  it('syncs a workbench enterprise upload to the enterprise library without mixing project materials', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/projects/BV-2026-018/review');
+    renderApp();
+
+    await user.click(screen.getByRole('tab', { name: '企业资料' }));
+    const enterpriseFile = new File(['enterprise only'], '工作台新增企业资质.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    await user.upload(
+      screen.getByLabelText('上传企业资料并同步资料库'),
+      enterpriseFile,
+    );
+
+    expect(window.location.pathname).toBe('/projects/BV-2026-018/review');
+    expect(screen.getByLabelText('工作台新增企业资质.docx')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: '当前招标材料' }));
+    expect(screen.queryByLabelText('工作台新增企业资质.docx')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: /企业资料/ }));
+    expect(window.location.pathname).toBe('/enterprise-assets');
+    expect(screen.getAllByText('工作台新增企业资质.docx').length).toBeGreaterThan(0);
+    expect(screen.getByText('处理中')).toBeInTheDocument();
   });
 
   it('uploads from the workbench add-file control into the current project only', async () => {

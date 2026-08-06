@@ -89,6 +89,35 @@ describe('ProjectListPage', () => {
     await user.click(submitButton);
     expect(within(dialog).getByRole('alert')).toHaveTextContent('截止时间必须是晚于当前时间');
     expect(onCreateProject).not.toHaveBeenCalled();
+
+    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
+      target: { value: '2099-12-31T12:00' },
+    });
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('provides a safe explicit deadline picker with a keyboard fallback', async () => {
+    renderProjectList();
+    const { user, dialog } = await openCreateProjectDialog();
+    const deadlineInput = within(dialog).getByLabelText('截止时间') as HTMLInputElement;
+    const showPicker = vi.fn(() => {
+      throw new DOMException('Picker unavailable', 'NotAllowedError');
+    });
+    Object.defineProperty(deadlineInput, 'showPicker', {
+      configurable: true,
+      value: showPicker,
+    });
+
+    expect(deadlineInput.min).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(new Date(deadlineInput.min).getTime()).toBeGreaterThan(Date.now());
+
+    await user.click(
+      within(dialog).getByRole('button', { name: '选择截止日期与时间' }),
+    );
+
+    expect(showPicker).toHaveBeenCalledTimes(1);
+    expect(deadlineInput).toHaveFocus();
+    expect(within(dialog).getByText(/也可使用键盘直接输入/)).toBeInTheDocument();
   });
 
   it('returns a normalized ProjectSummary after a valid submission', async () => {

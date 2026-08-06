@@ -1,0 +1,126 @@
+.account-menu {
+  position: relative;
+  z-index: 30;
+}
+
+.account-menu--sidebar {
+  display: grid;
+  place-items: center;
+}
+
+.account-menu__popover {
+  position: absolute;
+  z-index: 80;
+  display: grid;
+  width: min(270px, calc(100vw - 32px));
+  padding: 10px;
+  border: 1px solid #dbe7e1;
+  border-radius: 14px;
+  color: #173028;
+  background: #fff;
+  box-shadow: 0 18px 45px rgb(8 43 31 / 20%);
+}
+
+.account-menu--sidebar .account-menu__popover {
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.account-menu--topbar .account-menu__popover {
+  top: calc(100% + 9px);
+  right: 0;
+}
+
+.account-menu__identity {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  padding: 9px 9px 12px;
+  border-bottom: 1px solid #e5ece8;
+}
+
+.account-menu__identity > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(145deg, #164c43, #058153);
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.account-menu__identity p {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.account-menu__identity small,
+.account-menu__identity em {
+  color: #6f8079;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.account-menu__identity strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu__logout {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  justify-content: flex-start;
+  margin-top: 7px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  color: #a72c35;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.account-menu__logout:hover {
+  background: #fff1f2;
+}
+
+.account-menu__logout:focus-visible {
+  outline: 3px solid rgb(189 54 64 / 22%);
+  outline-offset: 1px;
+}
+
+.ui0802-sidebar-user[aria-expanded='true'],
+.profile-button[aria-expanded='true'] {
+  background: rgb(10 145 87 / 10%);
+}
+
+@media (max-width: 760px) {
+  .account-menu--topbar .profile-button {
+    display: grid;
+    min-width: 42px;
+    grid-template-columns: 34px;
+    padding: 4px;
+  }
+
+  .account-menu--topbar .profile-button > div,
+  .account-menu--topbar .profile-button > svg {
+    display: none;
+  }
+
+  .account-menu--topbar .account-menu__popover {
+    position: fixed;
+    top: 72px;
+    right: 16px;
+  }
+}

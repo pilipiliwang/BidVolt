@@ -97,7 +97,7 @@
   border-bottom: 1px solid var(--office-line);
   color: #667085;
   background: #fff;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .office-editor-save-state--dirty { color: #a35d08; background: #fffaf0; }
@@ -222,7 +222,7 @@
   border-spacing: 0;
   table-layout: fixed;
   color: #263347;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .office-sheet-grid th,
@@ -277,7 +277,7 @@
   border: 0;
   color: #4f5d70;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .office-sheet-tabs button[aria-selected='true'] {
@@ -287,7 +287,7 @@
   font-weight: 700;
 }
 
-.office-sheet-tabs span { margin-left: auto; color: #475467; font-size: 11px; }
+.office-sheet-tabs span { margin-left: auto; color: #475467; font-size: var(--font-size-sm); }
 
 .office-review-rail,
 .office-quote-rail { min-height: 100%; background: #fff; }
@@ -304,7 +304,7 @@
 
 .office-review-rail h2,
 .office-quote-rail h2 { margin: 0; font-size: 16px; }
-.office-review-rail__demo { margin: 0; padding: 8px 16px; color: #8a5b13; background: #fff8e7; font-size: 10px; }
+.office-review-rail__demo { margin: 0; padding: 8px 16px; color: #8a5b13; background: #fff8e7; font-size: var(--font-size-xs); }
 
 .office-review-metrics {
   display: grid;
@@ -323,27 +323,27 @@
 .office-review-metrics span,
 .office-review-metrics strong,
 .office-review-metrics small { display: block; }
-.office-review-metrics span { color: #687386; font-size: 10px; }
+.office-review-metrics span { color: #687386; font-size: var(--font-size-xs); }
 .office-review-metrics strong { margin-top: 7px; color: var(--office-green); font-size: 21px; }
-.office-review-metrics small { color: #526073; font-size: 10px; }
+.office-review-metrics small { color: #526073; font-size: var(--font-size-xs); }
 
 .office-review-items { display: grid; gap: 7px; padding: 0 13px 14px; }
 .office-review-items article { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 7px; padding: 10px; border: 1px solid var(--office-line); border-radius: 8px; }
 .office-review-items svg { color: var(--office-green); }
 .office-review-items span strong,
 .office-review-items span small { display: block; }
-.office-review-items span strong { font-size: 11px; }
-.office-review-items span small { margin-top: 2px; color: #7b8798; font-size: 9px; }
+.office-review-items span strong { font-size: var(--font-size-sm); }
+.office-review-items span small { margin-top: 2px; color: #7b8798; font-size: var(--font-size-xs); }
 .office-review-items b { color: var(--office-green); font-size: 12px; }
 .office-review-rail > button { width: calc(100% - 26px); min-height: 42px; margin: 0 13px 13px; border: 0; border-radius: 7px; color: #fff; background: #9acdb4; font-weight: 700; }
 
 .office-quote-rail dl { margin: 0; padding: 8px 16px; }
 .office-quote-rail dl div { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #eef1f4; }
-.office-quote-rail dt { color: #5d6878; font-size: 11px; }
+.office-quote-rail dt { color: #5d6878; font-size: var(--font-size-sm); }
 .office-quote-rail dd { margin: 0; color: var(--office-green); font-size: 16px; font-weight: 800; }
-.office-quote-rail dd small { color: #253046; font-size: 10px; }
+.office-quote-rail dd small { color: #253046; font-size: var(--font-size-xs); }
 .office-quote-rail ul { display: grid; gap: 21px; margin: 12px 0 0; padding: 12px 17px; list-style: none; }
-.office-quote-rail li { display: grid; grid-template-columns: 23px 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
+.office-quote-rail li { display: grid; grid-template-columns: 23px 1fr auto; align-items: center; gap: 8px; font-size: var(--font-size-sm); }
 .office-quote-rail li:first-child svg,
 .office-quote-rail li:first-child strong { color: var(--office-green); }
 .office-quote-rail li:not(:first-child) svg,
@@ -363,4 +363,10 @@
   .office-mock-editor .bv-project-workspace__right { display: none; }
   .office-word-stage { padding: 18px; }
   .office-word-page { padding: 40px; }
+}
+
+@media (max-width: 760px) {
+  .office-mock-editor .bv-project-workspace { display: block; }
+  .office-word-stage { padding: 10px; }
+  .office-word-page { padding: clamp(20px, 7vw, 36px); }
 }

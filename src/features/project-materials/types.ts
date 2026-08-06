@@ -73,6 +73,7 @@ export interface ProjectMaterialUploadProps {
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   requirements: ProjectRequirement[];
   snapshots: ProjectSnapshot[];
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;

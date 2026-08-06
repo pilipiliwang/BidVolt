@@ -207,13 +207,13 @@
 
 .ui0802-shell .sidebar-footnote strong {
   color: rgb(255 255 255 / 76%);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
 .ui0802-shell .sidebar-footnote small {
   color: rgb(221 255 235 / 52%);
-  font-size: 8px;
+  font-size: var(--font-size-xs);
 }
 
 .ui0802-sidebar-user {
@@ -431,11 +431,14 @@
 .ui0802-project-page {
   display: grid;
   gap: 27px;
+  width: 100%;
+  min-width: 0;
 }
 
 .ui0802-project-toolbar {
   display: flex;
-  width: min(1240px, calc(100% - 82px));
+  width: 100%;
+  min-width: 0;
   align-items: center;
   justify-content: flex-end;
 }
@@ -672,7 +675,8 @@
 
 .ui0802-summary-grid {
   display: grid;
-  width: min(1240px, calc(100% - 82px));
+  width: 100%;
+  min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
 }
@@ -740,6 +744,7 @@
 }
 
 .ui0802-project-table-card {
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   border: 1px solid #e3e6e9;
@@ -1285,11 +1290,6 @@
 }
 
 @media (max-width: 1320px) {
-  .ui0802-project-toolbar,
-  .ui0802-summary-grid {
-    width: 100%;
-  }
-
   .ui0802-project-table th,
   .ui0802-project-table td {
     padding-right: 16px;

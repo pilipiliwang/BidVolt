@@ -81,7 +81,9 @@ describe('EnterpriseAssetsPage', () => {
 
     await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
 
-    expect(screen.getByRole('dialog', { name: '华东电气营业执照.pdf详情' })).toBeInTheDocument();
+    const detailDialog = screen.getByRole('dialog', { name: '华东电气营业执照.pdf详情' });
+    expect(detailDialog).toBeInTheDocument();
+    expect(detailDialog.parentElement?.parentElement).toBe(document.body);
     expect(screen.getByLabelText('自动分类置信度')).toHaveTextContent('96%');
     expect(screen.getByText('统一社会信用代码')).toBeInTheDocument();
     expect(screen.getAllByText('来源：营业执照原件 · 第 1 页')).toHaveLength(2);

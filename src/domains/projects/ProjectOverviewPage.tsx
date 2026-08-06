@@ -23,6 +23,7 @@ import './project-overview-0802.css';
 type ProjectOverviewPageProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
   onOpenTasks: () => void;
   overview?: ProjectOverviewView;
@@ -69,6 +70,7 @@ const mockDownloadHref: Record<ProjectDeliverableView['id'], string> = {
 export function ProjectOverviewPage({
   enterpriseMaterials,
   materials,
+  onAddEnterpriseFiles,
   onAddFiles,
   onOpenTasks,
   overview,
@@ -96,6 +98,7 @@ export function ProjectOverviewPage({
       enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       materials={materials}
+      onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
       rightRail={
         <section className="bv-review-summary" aria-labelledby="overview-score-title">

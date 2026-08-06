@@ -21,6 +21,7 @@ type PricingCenterProps = {
   calculation: QuoteCalculationView;
   enterpriseMaterials?: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
   onApply?: (strategyId: string) => void;
 };
@@ -58,6 +59,7 @@ export function PricingCenter({
   calculation,
   enterpriseMaterials = [],
   materials,
+  onAddEnterpriseFiles,
   onAddFiles,
   onApply,
 }: PricingCenterProps) {
@@ -139,6 +141,7 @@ export function PricingCenter({
       enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“解释当前单价的时间与地区调整”"
       materials={materials}
+      onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
       rightRail={
         <section className={styles.strategies} aria-labelledby="strategy-title">

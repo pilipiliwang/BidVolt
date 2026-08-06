@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Archive, CircleAlert, Hourglass, Plus, Search, X } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Archive, CalendarDays, CircleAlert, Hourglass, Plus, Search, X } from 'lucide-react';
 
 import { AppLink } from '../../app/router';
 import { projectSummaries, type ProjectSummary } from './project-view-model';
+import './ProjectListPage.css';
 
 type ProjectTableRow = ProjectSummary & {
   deadlineHint: string;
@@ -41,6 +42,17 @@ function getFocusableElements(container: HTMLElement) {
   return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
     (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
   );
+}
+
+function toDateTimeLocalValue(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function getMinimumDeadline() {
+  const minimum = new Date(Date.now() + 5 * 60_000);
+  minimum.setSeconds(0, 0);
+  return toDateTimeLocalValue(minimum);
 }
 
 const supplementalProjects: ProjectTableRow[] = [
@@ -122,9 +134,13 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [draft, setDraft] = useState<NewProjectDraft>(emptyDraft);
   const [formError, setFormError] = useState('');
+  const [minimumDeadline, setMinimumDeadline] = useState(getMinimumDeadline);
   const createButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
+  const deadlineInputRef = useRef<HTMLInputElement>(null);
+  const deadlineInputId = useId();
+  const deadlineHelpId = useId();
 
   const projectRows = useMemo<ProjectTableRow[]>(
     () => [
@@ -158,6 +174,24 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
     setCreateOpen(false);
     setDraft(emptyDraft);
     setFormError('');
+  };
+
+  const updateDraft = (field: keyof NewProjectDraft, value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }));
+    setFormError('');
+  };
+
+  const openDeadlinePicker = () => {
+    const input = deadlineInputRef.current;
+    if (!input) return;
+
+    input.focus();
+    try {
+      input.showPicker?.();
+    } catch {
+      // Some embedded browsers expose showPicker but reject it. The focused,
+      // keyboard-editable input remains a complete fallback.
+    }
   };
 
   useEffect(() => {
@@ -257,7 +291,10 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
           ref={createButtonRef}
           className="ui0802-create-project"
           type="button"
-          onClick={() => setCreateOpen(true)}
+          onClick={() => {
+            setMinimumDeadline(getMinimumDeadline());
+            setCreateOpen(true);
+          }}
         >
           <Plus aria-hidden="true" size={18} />
           新增项目
@@ -392,7 +429,7 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
                   name="title"
                   value={draft.title}
                   placeholder="例如：新能源升压站设备采购"
-                  onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+                  onChange={(event) => updateDraft('title', event.target.value)}
                 />
               </label>
               <label>
@@ -401,7 +438,7 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
                   name="code"
                   value={draft.code}
                   placeholder="例如：BV-2026-021"
-                  onChange={(event) => setDraft((current) => ({ ...current, code: event.target.value }))}
+                  onChange={(event) => updateDraft('code', event.target.value)}
                 />
               </label>
               <label>
@@ -410,18 +447,36 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
                   name="buyer"
                   value={draft.buyer}
                   placeholder="请输入招标单位名称"
-                  onChange={(event) => setDraft((current) => ({ ...current, buyer: event.target.value }))}
+                  onChange={(event) => updateDraft('buyer', event.target.value)}
                 />
               </label>
-              <label>
-                截止时间
-                <input
-                  name="deadline"
-                  type="datetime-local"
-                  value={draft.deadline}
-                  onChange={(event) => setDraft((current) => ({ ...current, deadline: event.target.value }))}
-                />
-              </label>
+              <div className="ui0802-deadline-control">
+                <label htmlFor={deadlineInputId}>截止时间</label>
+                <div className="ui0802-deadline-field">
+                  <input
+                    ref={deadlineInputRef}
+                    id={deadlineInputId}
+                    name="deadline"
+                    type="datetime-local"
+                    min={minimumDeadline}
+                    value={draft.deadline}
+                    aria-describedby={deadlineHelpId}
+                    onChange={(event) => updateDraft('deadline', event.target.value)}
+                  />
+                  <button
+                    className="ui0802-deadline-picker"
+                    type="button"
+                    aria-label="选择截止日期与时间"
+                    onClick={openDeadlinePicker}
+                  >
+                    <CalendarDays aria-hidden="true" size={18} />
+                    <span>选择</span>
+                  </button>
+                </div>
+                <small id={deadlineHelpId} className="ui0802-deadline-help">
+                  请选择晚于当前时间的日期和时间，也可使用键盘直接输入。
+                </small>
+              </div>
               {formError ? <p className="ui0802-project-form-error" role="alert">{formError}</p> : null}
               <footer>
                 <button type="button" onClick={closeCreateDialog}>取消</button>

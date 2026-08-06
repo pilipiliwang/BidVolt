@@ -10,6 +10,7 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   FolderKanban,
+  LogOut,
   Menu,
   UserRound,
   X,
@@ -22,6 +23,7 @@ import {
 } from '../domains/projects/project-view-model';
 import '../styles/ui0802-shell.css';
 import { AppLink, type AppRoute } from './router';
+import './AppShell.css';
 
 const focusableSelector = [
   'a[href]',
@@ -44,6 +46,7 @@ type AppShellProps = {
   currentProjectId?: string;
   eyebrow: string;
   enterpriseName: string;
+  onLogout: () => void;
   onOpenTasks: () => void;
   projectSummary?: ProjectSummary;
   taskCount: number;
@@ -195,12 +198,110 @@ function WorkspaceCard({ enterpriseName }: { enterpriseName: string }) {
   );
 }
 
+function AccountMenu({
+  onLogout,
+  placement,
+  user,
+}: {
+  onLogout: () => void;
+  placement: 'sidebar' | 'topbar';
+  user: AppShellProps['user'];
+}) {
+  const [isOpen, setOpen] = useState(false);
+  const menuId = useId();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const placementLabel = placement === 'sidebar' ? '侧栏' : '顶部';
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={menuRef} className={`account-menu account-menu--${placement}`}>
+      <button
+        ref={triggerRef}
+        className={placement === 'sidebar' ? 'ui0802-sidebar-user' : 'profile-button'}
+        type="button"
+        aria-controls={isOpen ? menuId : undefined}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-label={`${placementLabel}账户菜单，${user.displayName}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {placement === 'sidebar' ? (
+          <UserRound aria-hidden="true" size={27} strokeWidth={1.8} />
+        ) : (
+          <>
+            <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
+            <div>
+              <strong>{user.displayName}</strong>
+              <small>{user.role}</small>
+            </div>
+            <ChevronDown aria-hidden="true" size={15} />
+          </>
+        )}
+      </button>
+
+      {isOpen ? (
+        <div
+          className="account-menu__popover"
+          id={menuId}
+          role="menu"
+          aria-label={`${user.displayName}的账户菜单`}
+        >
+          <div className="account-menu__identity" role="none">
+            <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
+            <p>
+              <small>当前登录账户</small>
+              <strong>{user.displayName}</strong>
+              <em>{user.role}</em>
+            </p>
+          </div>
+          <button
+            className="account-menu__logout"
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+          >
+            <LogOut aria-hidden="true" size={17} />
+            退出登录
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AppShell({
   children,
   currentRoute,
   currentProjectId,
   eyebrow,
   enterpriseName,
+  onLogout,
   onOpenTasks,
   projectSummary: projectSummaryOverride,
   taskCount,
@@ -307,9 +408,7 @@ export function AppShell({
               <small>企业资料与项目材料独立</small>
             </p>
           </div>
-          <button className="ui0802-sidebar-user" type="button" disabled aria-label={`${user.displayName}，${user.role}`}>
-            <UserRound aria-hidden="true" size={27} strokeWidth={1.8} />
-          </button>
+          <AccountMenu onLogout={onLogout} placement="sidebar" user={user} />
         </div>
       </aside>
 
@@ -366,21 +465,23 @@ export function AppShell({
           )}
 
           <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
-            <button
-              className="task-status-button"
-              type="button"
-              disabled={taskCount === 0}
-              onClick={() => taskCount > 0 && onOpenTasks()}
-              aria-label={
-                taskCount > 0
-                  ? `查看任务进度，当前有 ${taskCount} 个任务运行中`
-                  : '当前页面没有项目任务'
-              }
-            >
-              <Activity aria-hidden="true" size={17} />
-              <span>任务进度</span>
-              <em>{taskCount}</em>
-            </button>
+            {currentRoute !== 'enterprise-assets' && currentRoute !== 'history-prices' ? (
+              <button
+                className="task-status-button"
+                type="button"
+                disabled={taskCount === 0}
+                onClick={() => taskCount > 0 && onOpenTasks()}
+                aria-label={
+                  taskCount > 0
+                    ? `查看任务进度，当前有 ${taskCount} 个任务运行中`
+                    : '当前页面没有项目任务'
+                }
+              >
+                <Activity aria-hidden="true" size={17} />
+                <span>任务进度</span>
+                <em>{taskCount}</em>
+              </button>
+            ) : null}
             <button
               className="icon-button icon-button--quiet"
               type="button"
@@ -389,19 +490,6 @@ export function AppShell({
             >
               <Bell aria-hidden="true" size={19} />
               <span className="notification-dot" aria-hidden="true" />
-            </button>
-            <button
-              className="profile-button"
-              type="button"
-              aria-label="账户菜单（MVP 暂未开放）"
-              disabled
-            >
-              <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
-              <div>
-                <strong>{user.displayName}</strong>
-                <small>{user.role}</small>
-              </div>
-              <ChevronDown aria-hidden="true" size={15} />
             </button>
           </div>
         </header>

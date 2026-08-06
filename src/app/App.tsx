@@ -52,6 +52,7 @@ export function App() {
   const session = demoSession;
   const defaultScopeKey = getProjectScopeKey(session.enterpriseId, defaultProjectId);
   const route = useUrlRoute();
+  const [isAuthenticated, setAuthenticated] = useState(() => route.name !== 'login');
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>(projectSummaries);
   const [enterpriseAssets, setEnterpriseAssets] = useState<
@@ -154,15 +155,49 @@ export function App() {
   }, [pageMeta.title, routeProjectId]);
 
   const handleEnterpriseUpload = (files: File[]) => {
-    const incoming = files.map<EnterpriseIngestionItem>((file, index) => ({
-      id: `enterprise-upload-${Date.now()}-${index}`,
+    const uploadBatchId = Date.now();
+    const incomingIngestion = files.map<EnterpriseIngestionItem>((file, index) => ({
+      id: `enterprise-upload-${uploadBatchId}-${index}`,
       name: file.name,
       status: 'classifying',
       progress: 18,
     }));
+    const incomingAssets = files.map<EnterpriseAsset>((file, index) => {
+      const assetId = `enterprise-asset-${uploadBatchId}-${index}`;
+      return {
+        id: assetId,
+        name: file.name,
+        category: 'other',
+        classificationConfidence: 0,
+        status: 'processing',
+        updatedAt: '刚刚',
+        facts: [],
+        revisions: [
+          {
+            id: `${assetId}-revision-1`,
+            revisionNo: 1,
+            createdAt: '刚刚',
+            createdBy: session.user.displayName,
+            changeNote: '已上传，等待 Agent 自动归类与字段抽取',
+            isCurrent: true,
+          },
+        ],
+      };
+    });
+
     setEnterpriseIngestion((current) => ({
       ...current,
-      [session.enterpriseId]: [...incoming, ...(current[session.enterpriseId] ?? [])],
+      [session.enterpriseId]: [
+        ...incomingIngestion,
+        ...(current[session.enterpriseId] ?? []),
+      ],
+    }));
+    setEnterpriseAssets((current) => ({
+      ...current,
+      [session.enterpriseId]: [
+        ...incomingAssets,
+        ...(current[session.enterpriseId] ?? []),
+      ],
     }));
   };
 
@@ -294,8 +329,15 @@ export function App() {
     }
   };
 
-  if (route.name === 'login') {
-    return <LoginPage onLogin={() => navigate('/projects')} />;
+  if (!isAuthenticated || route.name === 'login') {
+    return (
+      <LoginPage
+        onLogin={() => {
+          setAuthenticated(true);
+          navigate('/projects', { replace: true });
+        }}
+      />
+    );
   }
 
   return (
@@ -305,6 +347,10 @@ export function App() {
       eyebrow={pageMeta.eyebrow}
       enterpriseName={session.enterpriseName}
       title={pageMeta.title}
+      onLogout={() => {
+        setAuthenticated(false);
+        navigate('/login', { replace: true });
+      }}
       onOpenTasks={openTaskDrawer}
       projectSummary={activeProject}
       taskCount={activeTaskCount}
@@ -326,6 +372,7 @@ export function App() {
           overview={activeOverview}
           project={activeProject}
           projectId={route.projectId}
+          onAddEnterpriseFiles={handleEnterpriseUpload}
           onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
           onOpenTasks={openTaskDrawer}
           taskSummary={
@@ -354,6 +401,7 @@ export function App() {
           key={route.projectId}
           enterpriseMaterials={activeEnterpriseMaterials}
           materials={projectMaterials[activeScopeKey] ?? []}
+          onAddEnterpriseFiles={handleEnterpriseUpload}
           projectId={route.projectId}
           projectName={activeProject.title}
           requirements={projectRequirements[activeScopeKey] ?? []}
@@ -368,6 +416,7 @@ export function App() {
           key={route.projectId}
           enterpriseMaterials={activeEnterpriseMaterials}
           materials={activeWorkspaceMaterials}
+          onAddEnterpriseFiles={handleEnterpriseUpload}
           onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
           projectId={route.projectId}
           providers={reviewProvidersDemo}
@@ -410,6 +459,7 @@ export function App() {
             calculation={activeQuoteCalculation}
             enterpriseMaterials={activeEnterpriseMaterials}
             materials={activeWorkspaceMaterials}
+            onAddEnterpriseFiles={handleEnterpriseUpload}
             onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
             samples={activeHistoryPriceSamples}
             onApply={(strategyId) =>
@@ -426,6 +476,7 @@ export function App() {
           deliverableId={route.deliverableId}
           enterpriseMaterials={activeEnterpriseMaterials}
           materials={activeWorkspaceMaterials}
+          onAddEnterpriseFiles={handleEnterpriseUpload}
           onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
           project={activeProject}
           projectId={route.projectId}

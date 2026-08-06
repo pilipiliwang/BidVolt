@@ -28,6 +28,7 @@ type DeliverableEditorPageProps = {
   deliverableId: DeliverableRouteId;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
   onSave?: (payload: OfficeMockSavePayload) => Promise<void> | void;
   project?: ProjectSummary;
@@ -47,6 +48,7 @@ export function DeliverableEditorPage({
   deliverableId,
   enterpriseMaterials,
   materials,
+  onAddEnterpriseFiles,
   onAddFiles,
   onSave,
   project: projectOverride,
@@ -101,6 +103,7 @@ export function DeliverableEditorPage({
         enterpriseMaterials={enterpriseMaterials}
         footerHint="请输入您的问题，如“检查当前成果中仍需人工确认的内容”"
         materials={materials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAddFiles={onAddFiles}
         rightRail={
           deliverableId === 'quote' ? (

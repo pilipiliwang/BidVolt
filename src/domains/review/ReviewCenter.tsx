@@ -61,6 +61,7 @@ const outcomeMeta: Record<
 type ReviewCenterProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles: (files: File[]) => void;
   projectId?: string;
   providers: ReviewProvider[];
@@ -80,6 +81,7 @@ type SuggestionEditState = {
 export function ReviewCenter({
   enterpriseMaterials,
   materials,
+  onAddEnterpriseFiles,
   onAddFiles,
   projectId,
   providers,
@@ -143,6 +145,7 @@ export function ReviewCenter({
       enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“解释第 2 条提升建议的评审依据”"
       materials={materials}
+      onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
       rightRail={
         <ReviewImpact

@@ -24,12 +24,14 @@ export type WorkspaceMaterial = {
 type ProjectSourceRailProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
 };
 
 export function ProjectSourceRail({
   enterpriseMaterials,
   materials,
+  onAddEnterpriseFiles,
   onAddFiles,
 }: ProjectSourceRailProps) {
   const [activeSource, setActiveSource] = useState<'enterprise' | 'project'>('project');
@@ -110,8 +112,26 @@ export function ProjectSourceRail({
           </div>
         ) : null}
 
-        {showingEnterprise ? (
-          <ReadonlyUploadControl label="企业资料只读" title="请前往企业资料库管理企业资料" />
+        {showingEnterprise && onAddEnterpriseFiles ? (
+          <label className="bv-source-rail__upload">
+            <UploadCloud aria-hidden="true" size={21} />
+            <span>上传企业资料</span>
+            <input
+              aria-label="上传企业资料并同步资料库"
+              multiple
+              type="file"
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files ?? []);
+                if (files.length > 0) onAddEnterpriseFiles(files);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+        ) : showingEnterprise ? (
+          <ReadonlyUploadControl
+            label="企业资料上传不可用"
+            title="当前页面未提供企业资料上传能力"
+          />
         ) : onAddFiles ? (
           <label className="bv-source-rail__upload">
             <UploadCloud aria-hidden="true" size={21} />
@@ -166,6 +186,7 @@ type ProjectWorkbenchProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   footerHint?: string;
   materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
   rightRail: ReactNode;
 };
@@ -175,6 +196,7 @@ export function ProjectWorkbench({
   enterpriseMaterials,
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
   materials,
+  onAddEnterpriseFiles,
   onAddFiles,
   rightRail,
 }: ProjectWorkbenchProps) {
@@ -183,6 +205,7 @@ export function ProjectWorkbench({
       <ProjectSourceRail
         enterpriseMaterials={enterpriseMaterials}
         materials={materials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAddFiles={onAddFiles}
       />
       <main className="bv-project-workspace__main">{children}</main>

@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { EnterpriseAssetDetail } from './components/EnterpriseAssetDetail';
 import { EnterpriseAssetUpload } from './components/EnterpriseAssetUpload';
@@ -238,7 +239,7 @@ export function EnterpriseAssetsPage({
         </div>
       </section>
 
-      {isUploadOpen ? (
+      {isUploadOpen ? createPortal(
         <div className="enterprise-modal-layer">
           <button
             className="enterprise-modal-backdrop"
@@ -272,10 +273,11 @@ export function EnterpriseAssetsPage({
               onUpload={onUpload}
             />
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
 
-      {selectedAsset ? (
+      {selectedAsset ? createPortal(
         <div className="enterprise-modal-layer">
           <button
             className="enterprise-modal-backdrop"
@@ -303,7 +305,8 @@ export function EnterpriseAssetsPage({
               onSelectRevision={onSelectRevision}
             />
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </section>
   );
