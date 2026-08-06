@@ -112,7 +112,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <section className="login0802__story" aria-label="产品能力介绍">
         <div className="login0802__brand">
           <BrandLogo />
-          <strong>AI电投助手</strong>
+          <strong>AI电网投标助手</strong>
         </div>
         <div className="login0802__brand-rule" aria-hidden="true" />
         <p className="login0802__lead">
@@ -159,7 +159,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         <form className="login0802__form" onSubmit={handleSubmit}>
           <h1 id="login-panel-title" className="sr-only">
-            {mode === 'login' ? '登录AI电投助手' : '注册AI电投助手'}
+            {mode === 'login' ? '登录AI电网投标助手' : '注册AI电网投标助手'}
           </h1>
           <label>
             <span>邮箱</span>

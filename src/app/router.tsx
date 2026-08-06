@@ -13,8 +13,16 @@ export type AppRoute =
   | { name: 'enterprise-assets' }
   | { name: 'review-center'; projectId: string }
   | { name: 'pricing-center'; projectId: string }
+  | {
+      name: 'deliverable-editor';
+      projectId: string;
+      deliverableId: DeliverableRouteId;
+      versionId: string;
+    }
   | { name: 'history-prices' }
   | { name: 'not-found' };
+
+export type DeliverableRouteId = 'business' | 'technical' | 'quote';
 
 const NAVIGATION_EVENT = 'bidvolt:navigation';
 
@@ -50,6 +58,18 @@ export function matchRoute(pathname: string): AppRoute {
     return { name: 'history-prices' };
   }
 
+  const deliverableEditorMatch = path.match(
+    /^\/projects\/([^/]+)\/deliverables\/(business|technical|quote)\/versions\/([^/]+)$/,
+  );
+  if (deliverableEditorMatch) {
+    return {
+      name: 'deliverable-editor',
+      projectId: decodePathPart(deliverableEditorMatch[1]),
+      deliverableId: deliverableEditorMatch[2] as DeliverableRouteId,
+      versionId: decodePathPart(deliverableEditorMatch[3]),
+    };
+  }
+
   const projectSectionMatch = path.match(
     /^\/projects\/([^/]+)\/(materials|review|pricing)$/,
   );
@@ -75,6 +95,14 @@ export function matchRoute(pathname: string): AppRoute {
   }
 
   return { name: 'not-found' };
+}
+
+export function deliverableEditorPath(
+  projectId: string,
+  deliverableId: DeliverableRouteId,
+  versionId: string,
+) {
+  return `/projects/${encodeURIComponent(projectId)}/deliverables/${deliverableId}/versions/${encodeURIComponent(versionId)}`;
 }
 
 function subscribeToLocation(onStoreChange: () => void) {

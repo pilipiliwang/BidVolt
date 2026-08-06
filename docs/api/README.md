@@ -1,7 +1,11 @@
-# BidVolt Web API Contract v0.2
+# AI电网投标助手 Web API Contract v0.2
 
 本目录是网页端与后端协作的契约基线。`openapi.yaml` 描述 HTTP 接口，运行时 Zod Schema 位于
 `src/shared/api`，MSW 实现位于 `src/mocks`。三者必须同步演进。
+
+Office 在线编辑、新建项目和项目文件入口的联调边界见
+[`FRONTEND_INTEGRATION.md`](./FRONTEND_INTEGRATION.md)。该文档中的待实现接口在进入
+`openapi.yaml` 前仅作为前后端评审草案。
 
 ## 不可突破的边界
 

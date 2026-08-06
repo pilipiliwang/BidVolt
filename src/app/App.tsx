@@ -3,13 +3,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { PricingCenter } from '../domains/pricing/PricingCenter';
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
 import { LoginPage } from '../domains/auth/LoginPage';
+import { DeliverableEditorPage } from '../domains/editor';
 import { HistoryPricesPage } from '../domains/history';
 import { ProjectListPage } from '../domains/projects/ProjectListPage';
 import { ProjectOverviewPage } from '../domains/projects/ProjectOverviewPage';
 import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
 import { ReviewCenter } from '../domains/review/ReviewCenter';
 import type { ReviewRunView } from '../domains/review/types';
-import { getProjectSummary } from '../domains/projects/project-view-model';
+import {
+  projectSummaries,
+  type ProjectSummary,
+} from '../domains/projects/project-view-model';
 import {
   EnterpriseAssetsPage,
   type EnterpriseAsset,
@@ -49,6 +53,7 @@ export function App() {
   const defaultScopeKey = getProjectScopeKey(session.enterpriseId, defaultProjectId);
   const route = useUrlRoute();
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>(projectSummaries);
   const [enterpriseAssets, setEnterpriseAssets] = useState<
     ProjectDomainState<EnterpriseAsset>
   >({ [session.enterpriseId]: enterpriseAssetsDemo });
@@ -84,7 +89,12 @@ export function App() {
   const activeScopeKey = routeProjectId
     ? getProjectScopeKey(session.enterpriseId, routeProjectId)
     : undefined;
-  const activeProject = routeProjectId ? getProjectSummary(routeProjectId) : undefined;
+  const activeProject = routeProjectId
+    ? projects.find((project) => project.id === routeProjectId)
+    : undefined;
+  const activeEnterpriseMaterials = toWorkspaceEnterpriseMaterials(
+    enterpriseAssets[session.enterpriseId] ?? [],
+  );
   const activeProjectMaterials = activeScopeKey ? projectMaterials[activeScopeKey] ?? [] : [];
   const demoWorkspaceMaterials = routeProjectId
     ? projectWorkspaceMaterialsDemoByProjectId[routeProjectId]
@@ -104,11 +114,19 @@ export function App() {
   const activeOverview = routeProjectId
     ? projectOverviewDemoByProjectId[routeProjectId]
     : undefined;
+  const activeDeliverable =
+    route.name === 'deliverable-editor'
+      ? activeOverview?.deliverables.find(
+          (deliverable) =>
+            deliverable.id === route.deliverableId &&
+            deliverable.versionId === route.versionId,
+        )
+      : undefined;
 
   const pageMeta = useMemo(() => {
     switch (route.name) {
       case 'login':
-        return { eyebrow: 'AI电投助手', title: '登录' };
+        return { eyebrow: 'AI电网投标助手', title: '登录' };
       case 'project-overview':
         return { eyebrow: '项目工作台', title: '项目概览' };
       case 'project-materials':
@@ -119,17 +137,19 @@ export function App() {
         return { eyebrow: '项目工作台', title: '外部评审中心' };
       case 'pricing-center':
         return { eyebrow: '项目工作台', title: '报价测算中心' };
+      case 'deliverable-editor':
+        return { eyebrow: '项目工作台', title: '成果在线编辑' };
       case 'history-prices':
         return { eyebrow: '报价数据中心', title: '历史报价' };
       case 'not-found':
-        return { eyebrow: 'BidVolt Web', title: '页面未找到' };
+        return { eyebrow: 'AI电网投标助手', title: '页面未找到' };
       default:
         return { eyebrow: '投标协同中心', title: '项目列表' };
     }
   }, [route.name]);
 
   useEffect(() => {
-    document.title = `${pageMeta.title} · BidVolt Web`;
+    document.title = `${pageMeta.title} · AI电网投标助手`;
     document.getElementById('main-content')?.focus();
   }, [pageMeta.title, routeProjectId]);
 
@@ -286,15 +306,27 @@ export function App() {
       enterpriseName={session.enterpriseName}
       title={pageMeta.title}
       onOpenTasks={openTaskDrawer}
+      projectSummary={activeProject}
       taskCount={activeTaskCount}
       user={session.user}
     >
-      {route.name === 'projects' ? <ProjectListPage /> : null}
+      {route.name === 'projects' ? (
+        <ProjectListPage
+          projects={projects}
+          onCreateProject={(project) => {
+            setProjects((current) => [project, ...current]);
+            navigate(`/projects/${encodeURIComponent(project.id)}/materials`);
+          }}
+        />
+      ) : null}
       {route.name === 'project-overview' ? (
         <ProjectOverviewPage
+          enterpriseMaterials={activeEnterpriseMaterials}
           materials={activeWorkspaceMaterials}
           overview={activeOverview}
+          project={activeProject}
           projectId={route.projectId}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
           onOpenTasks={openTaskDrawer}
           taskSummary={
             latestTaskEvent?.percent != null && activeTaskCount > 0
@@ -320,6 +352,7 @@ export function App() {
       {route.name === 'project-materials' && activeProject && activeScopeKey ? (
         <ProjectMaterialsPage
           key={route.projectId}
+          enterpriseMaterials={activeEnterpriseMaterials}
           materials={projectMaterials[activeScopeKey] ?? []}
           projectId={route.projectId}
           projectName={activeProject.title}
@@ -333,7 +366,9 @@ export function App() {
       {route.name === 'review-center' && activeProject && activeReviewRun && activeScopeKey ? (
         <ReviewCenter
           key={route.projectId}
+          enterpriseMaterials={activeEnterpriseMaterials}
           materials={activeWorkspaceMaterials}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
           projectId={route.projectId}
           providers={reviewProvidersDemo}
           runAllowed={Boolean(reviewRuns[activeScopeKey])}
@@ -373,7 +408,9 @@ export function App() {
           <PricingCenter
             key={route.projectId}
             calculation={activeQuoteCalculation}
+            enterpriseMaterials={activeEnterpriseMaterials}
             materials={activeWorkspaceMaterials}
+            onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
             samples={activeHistoryPriceSamples}
             onApply={(strategyId) =>
               setAppliedStrategyIds((current) => ({
@@ -384,7 +421,26 @@ export function App() {
           />
         </>
       ) : null}
-      {['project-materials', 'review-center', 'pricing-center'].includes(route.name) &&
+      {route.name === 'deliverable-editor' && activeProject && activeDeliverable ? (
+        <DeliverableEditorPage
+          deliverableId={route.deliverableId}
+          enterpriseMaterials={activeEnterpriseMaterials}
+          materials={activeWorkspaceMaterials}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files)}
+          project={activeProject}
+          projectId={route.projectId}
+          versionId={route.versionId}
+        />
+      ) : null}
+      {route.name === 'deliverable-editor' && activeProject && !activeDeliverable ? (
+        <MissingDeliverable projectId={route.projectId} />
+      ) : null}
+      {[
+        'project-materials',
+        'review-center',
+        'pricing-center',
+        'deliverable-editor',
+      ].includes(route.name) &&
       !activeProject ? (
         <MissingProject />
       ) : null}
@@ -429,6 +485,28 @@ function toWorkspaceMaterials(materials: ProjectMaterial[]): WorkspaceMaterial[]
   }));
 }
 
+function toWorkspaceEnterpriseMaterials(assets: EnterpriseAsset[]): WorkspaceMaterial[] {
+  const statusLabels: Record<EnterpriseAsset['status'], string> = {
+    failed: '处理失败',
+    needs_review: '待确认',
+    processing: '处理中',
+    ready: '已归档',
+  };
+  const statusTones: Record<EnterpriseAsset['status'], WorkspaceMaterial['tone']> = {
+    failed: 'red',
+    needs_review: 'orange',
+    processing: 'blue',
+    ready: 'green',
+  };
+
+  return assets.map((asset) => ({
+    id: `enterprise:${asset.id}`,
+    name: asset.name,
+    status: statusLabels[asset.status],
+    tone: statusTones[asset.status],
+  }));
+}
+
 function isProjectUpload(material: ProjectMaterial, projectId: string) {
   return material.id.startsWith(`${projectId}-upload-`);
 }
@@ -463,6 +541,19 @@ function MissingProject() {
       <p>返回项目列表选择一个可访问的工作台。</p>
       <AppLink className="button button--primary" to="/projects">
         返回项目列表
+      </AppLink>
+    </section>
+  );
+}
+
+function MissingDeliverable({ projectId }: { projectId: string }) {
+  return (
+    <section className="empty-page" aria-labelledby="missing-deliverable-title">
+      <span className="empty-page__code">未找到</span>
+      <h1 id="missing-deliverable-title">当前项目没有这个成果版本</h1>
+      <p>成果必须来自当前项目的受控版本，系统不会回退加载其他项目或全局演示内容。</p>
+      <AppLink className="button button--primary" to={`/projects/${encodeURIComponent(projectId)}/overview`}>
+        返回项目概览
       </AppLink>
     </section>
   );

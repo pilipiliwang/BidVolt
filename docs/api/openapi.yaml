@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: BidVolt Web API
+  title: AI电网投标助手 Web API
   version: 0.2.0
   description: |
     Web-only frontend contract. Enterprise assets and project materials use separate upload

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -25,7 +25,13 @@ import {
   type WorkspaceMaterial,
 } from '../projects/ProjectWorkbench';
 import styles from './ReviewCenter.module.css';
-import type { ReviewFindingOutcome, ReviewProvider, ReviewProviderType, ReviewRunView } from './types';
+import type {
+  ReviewFinding,
+  ReviewFindingOutcome,
+  ReviewProvider,
+  ReviewProviderType,
+  ReviewRunView,
+} from './types';
 
 const providerIcons: Record<ReviewProviderType, typeof CloudCog> = {
   api: CloudCog,
@@ -53,7 +59,9 @@ const outcomeMeta: Record<
 };
 
 type ReviewCenterProps = {
+  enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddFiles: (files: File[]) => void;
   projectId?: string;
   providers: ReviewProvider[];
   run: ReviewRunView;
@@ -62,8 +70,17 @@ type ReviewCenterProps = {
   runBlockReason?: string;
 };
 
+type SuggestionEditState = {
+  draft: string;
+  error?: string;
+  findingId: string;
+  runId: string;
+};
+
 export function ReviewCenter({
+  enterpriseMaterials,
   materials,
+  onAddFiles,
   projectId,
   providers,
   run,
@@ -75,6 +92,8 @@ export function ReviewCenter({
   const [selectedProviderId, setSelectedProviderId] = useState(firstAvailable);
   const selectedProvider = providers.find((provider) => provider.id === selectedProviderId);
   const actualProvider = providers.find((provider) => provider.id === run.providerId);
+  const [suggestionOverrides, setSuggestionOverrides] = useState<Record<string, string>>({});
+  const [suggestionEdit, setSuggestionEdit] = useState<SuggestionEditState | null>(null);
   const hasCompletedFindings = run.status === 'succeeded' && run.findings.length > 0;
   const visibleFindings = hasCompletedFindings ? run.findings : [];
   const validatedSummary = hasCompletedFindings ? run.validatedSummary : undefined;
@@ -83,11 +102,48 @@ export function ReviewCenter({
     () => run.findings.filter((finding) => finding.outcome !== 'pass').length,
     [run.findings],
   );
+  const activeSuggestionEdit = suggestionEdit?.runId === run.id ? suggestionEdit : null;
+
+  const beginSuggestionEdit = (finding: ReviewFinding) => {
+    const currentSuggestion =
+      suggestionOverrides[suggestionOverrideKey(run.id, finding.id)] ?? finding.suggestion;
+    setSuggestionEdit({
+      draft: currentSuggestion,
+      error: currentSuggestion.trim() ? undefined : '建议内容不能为空',
+      findingId: finding.id,
+      runId: run.id,
+    });
+  };
+
+  const updateSuggestionDraft = (draft: string) => {
+    setSuggestionEdit((current) =>
+      current && current.runId === run.id
+        ? { ...current, draft, error: draft.trim() ? undefined : '建议内容不能为空' }
+        : current,
+    );
+  };
+
+  const saveSuggestion = (finding: ReviewFinding) => {
+    if (!activeSuggestionEdit || activeSuggestionEdit.findingId !== finding.id) return;
+    const nextSuggestion = activeSuggestionEdit.draft.trim();
+    if (!nextSuggestion) {
+      setSuggestionEdit({ ...activeSuggestionEdit, error: '建议内容不能为空' });
+      return;
+    }
+
+    setSuggestionOverrides((current) => ({
+      ...current,
+      [suggestionOverrideKey(run.id, finding.id)]: nextSuggestion,
+    }));
+    setSuggestionEdit(null);
+  };
 
   return (
     <ProjectWorkbench
+      enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“解释第 2 条提升建议的评审依据”"
       materials={materials}
+      onAddFiles={onAddFiles}
       rightRail={
         <ReviewImpact
           actualProvider={actualProvider}
@@ -99,6 +155,7 @@ export function ReviewCenter({
           selectedProviderId={selectedProviderId}
           onRun={() => selectedProvider && onRun?.(selectedProvider.id)}
           onSelect={setSelectedProviderId}
+          onAddFiles={onAddFiles}
         />
       }
     >
@@ -150,6 +207,10 @@ export function ReviewCenter({
           {visibleFindings.map((finding, index) => {
             const meta = outcomeMeta[finding.outcome];
             const OutcomeIcon = meta.icon;
+            const isEditing = activeSuggestionEdit?.findingId === finding.id;
+            const suggestion =
+              suggestionOverrides[suggestionOverrideKey(run.id, finding.id)] ?? finding.suggestion;
+            const errorId = `review-suggestion-error-${finding.id}`;
             return (
               <article className={styles.finding} key={finding.id}>
                 <div className={`${styles.typeBadge} ${meta.tone}`}>
@@ -158,7 +219,40 @@ export function ReviewCenter({
                 </div>
                 <div className={styles.findingBody}>
                   <strong>{finding.title}</strong>
-                  <span>{finding.suggestion}</span>
+                  {isEditing && activeSuggestionEdit ? (
+                    <div className={styles.suggestionEditor}>
+                      <textarea
+                        autoFocus
+                        aria-describedby={activeSuggestionEdit.error ? errorId : undefined}
+                        aria-invalid={Boolean(activeSuggestionEdit.error)}
+                        aria-label={`编辑“${finding.title}”的建议内容`}
+                        value={activeSuggestionEdit.draft}
+                        onChange={(event) => updateSuggestionDraft(event.currentTarget.value)}
+                      />
+                      {activeSuggestionEdit.error ? (
+                        <p id={errorId} role="alert">{activeSuggestionEdit.error}</p>
+                      ) : null}
+                      <div className={styles.suggestionEditorActions}>
+                        <button
+                          aria-label={`保存建议：${finding.title}`}
+                          disabled={!activeSuggestionEdit.draft.trim()}
+                          type="button"
+                          onClick={() => saveSuggestion(finding)}
+                        >
+                          保存
+                        </button>
+                        <button
+                          aria-label={`取消编辑：${finding.title}`}
+                          type="button"
+                          onClick={() => setSuggestionEdit(null)}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className={styles.suggestionText}>{suggestion}</span>
+                  )}
                   <small>
                     {finding.evidence.sourceLabel} · <b>{finding.evidence.locator}</b>
                     {finding.evidence.verification === 'verified' && finding.evidence.exactQuote
@@ -172,9 +266,15 @@ export function ReviewCenter({
                 <strong className={styles.lift}>{meta.lift}</strong>
                 <span className={styles.reference}>规则 {finding.ruleVersion}<small>置信度 {finding.confidence == null ? '未知' : `${Math.round(finding.confidence * 100)}%`}</small></span>
                 <span className={`${styles.riskLevel} ${meta.tone}`}>{finding.outcome === 'fail' || finding.outcome === 'risk' ? '高' : finding.outcome === 'pass' ? '低' : '中'}</span>
-                <button className={styles.modifyButton} type="button">
+                <button
+                  aria-label={`编辑建议：${finding.title}`}
+                  className={styles.modifyButton}
+                  disabled={isEditing}
+                  type="button"
+                  onClick={() => beginSuggestionEdit(finding)}
+                >
                   <PencilLine aria-hidden="true" size={13} />
-                  {index === 0 ? '手动修改' : 'AI建议修改'}
+                  编辑建议
                 </button>
               </article>
             );
@@ -196,6 +296,10 @@ export function ReviewCenter({
   );
 }
 
+function suggestionOverrideKey(runId: string, findingId: string) {
+  return `${runId}:${findingId}`;
+}
+
 type ReviewImpactProps = {
   actualProvider?: ReviewProvider;
   providers: ReviewProvider[];
@@ -206,6 +310,7 @@ type ReviewImpactProps = {
   selectedProviderId: string;
   onRun: () => void;
   onSelect: (id: string) => void;
+  onAddFiles: (files: File[]) => void;
 };
 
 function ReviewImpact({
@@ -218,7 +323,12 @@ function ReviewImpact({
   selectedProviderId,
   onRun,
   onSelect,
+  onAddFiles,
 }: ReviewImpactProps) {
+  const supplementInputRef = useRef<HTMLInputElement>(null);
+  const [staleSnapshotId, setStaleSnapshotId] = useState<string | null>(null);
+  const needsNewSnapshot = staleSnapshotId === run.projectSnapshotId;
+
   return (
     <section className={styles.impact} aria-label="提升效果预估">
       <h2>提升效果预估</h2>
@@ -268,14 +378,50 @@ function ReviewImpact({
             );
           })}
         </div>
-        <button className={styles.runButton} disabled={!runAllowed || run.status === 'running'} onClick={onRun} type="button">
+        <button
+          className={styles.runButton}
+          disabled={!runAllowed || run.status === 'running' || needsNewSnapshot}
+          onClick={onRun}
+          type="button"
+        >
           <Play aria-hidden="true" size={16} />
-          {run.status === 'running' ? '评审执行中' : '基于冻结快照运行评审'}
+          {run.status === 'running'
+            ? '评审执行中'
+            : needsNewSnapshot
+              ? '请先冻结新快照'
+              : '基于冻结快照运行评审'}
         </button>
         {!runAllowed && runBlockReason ? <p className={styles.runBlocked}>{runBlockReason}</p> : null}
       </div>
 
-      <button className={styles.improveButton} type="button"><UploadCloud aria-hidden="true" size={20} />上传资料一键提升</button>
+      <button
+        className={styles.improveButton}
+        onClick={() => supplementInputRef.current?.click()}
+        type="button"
+      >
+        <UploadCloud aria-hidden="true" size={20} />
+        上传项目补充资料
+      </button>
+      <input
+        ref={supplementInputRef}
+        aria-label="上传当前项目补充资料"
+        className="bv-visually-hidden"
+        multiple
+        type="file"
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? []);
+          if (files.length > 0) {
+            onAddFiles(files);
+            setStaleSnapshotId(run.projectSnapshotId);
+          }
+          event.currentTarget.value = '';
+        }}
+      />
+      {needsNewSnapshot ? (
+        <p className={styles.runBlocked} role="status">
+          补充资料已加入当前项目；请冻结新快照后重新运行评审。
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -5,6 +5,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './LoginPage';
 
 describe('LoginPage', () => {
+  it('shows the full AI电网投标助手 product name', () => {
+    render(<LoginPage />);
+
+    expect(screen.getByText('AI电网投标助手')).toBeInTheDocument();
+    expect(screen.getByText('登录AI电网投标助手')).toBeInTheDocument();
+  });
+
   it('submits the visible login form without storing credentials itself', async () => {
     const user = userEvent.setup();
     const onLogin = vi.fn();

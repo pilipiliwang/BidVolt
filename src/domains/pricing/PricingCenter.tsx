@@ -19,7 +19,9 @@ import type { HistoryPriceSample, QuoteCalculationView } from './types';
 type PricingCenterProps = {
   samples: HistoryPriceSample[];
   calculation: QuoteCalculationView;
+  enterpriseMaterials?: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddFiles?: (files: File[]) => void;
   onApply?: (strategyId: string) => void;
 };
 
@@ -51,7 +53,14 @@ const riskLabels = {
   high: '高风险',
 } as const;
 
-export function PricingCenter({ samples, calculation, materials, onApply }: PricingCenterProps) {
+export function PricingCenter({
+  samples,
+  calculation,
+  enterpriseMaterials = [],
+  materials,
+  onAddFiles,
+  onApply,
+}: PricingCenterProps) {
   const recommendedStrategy = calculation.strategies.find((strategy) => strategy.recommended);
   const hasCalculatedResult = calculation.status === 'calculated' && Boolean(recommendedStrategy);
   const defaultStrategy = recommendedStrategy?.id ?? '';
@@ -127,8 +136,10 @@ export function PricingCenter({ samples, calculation, materials, onApply }: Pric
 
   return (
     <ProjectWorkbench
+      enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“解释当前单价的时间与地区调整”"
       materials={materials}
+      onAddFiles={onAddFiles}
       rightRail={
         <section className={styles.strategies} aria-labelledby="strategy-title">
           <header><h2 id="strategy-title">报价策略</h2><CircleHelp aria-hidden="true" size={15} /></header>

@@ -36,9 +36,9 @@ export const projectWorkspaceMaterialsDemoByProjectId: Record<string, WorkspaceM
 export const projectOverviewDemoByProjectId: Record<string, ProjectOverviewView> = {
   [defaultProjectId]: {
     deliverables: [
-      { id: 'business', title: '商务标文件', pages: 128, words: '28.6 万', score: '28.6 / 30', lift: '6.2 分', missing: 2, tone: 'business' },
-      { id: 'technical', title: '技术标文件', pages: 186, words: '42.3 万', score: '45.3 / 50', lift: '6.8 分', missing: 1, tone: 'technical' },
-      { id: 'quote', title: '报价单', pages: 32, words: '8.7 万', score: '17.5 / 20', lift: '2.6 分', missing: 0, tone: 'quote' },
+      { id: 'business', title: '商务标文件', pages: 128, words: '28.6 万', score: '28.6 / 30', lift: '6.2 分', missing: 2, tone: 'business', versionId: 'business-v8' },
+      { id: 'technical', title: '技术标文件', pages: 186, words: '42.3 万', score: '45.3 / 50', lift: '6.8 分', missing: 1, tone: 'technical', versionId: 'technical-v6' },
+      { id: 'quote', title: '报价单', pages: 32, words: '8.7 万', score: '17.5 / 20', lift: '2.6 分', missing: 0, tone: 'quote', versionId: 'quote-v4' },
     ],
     score: {
       business: 28.6,

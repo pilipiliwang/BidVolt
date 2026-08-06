@@ -77,6 +77,24 @@ describe('App web shell', () => {
     expect(screen.queryByRole('dialog', { name: '任务进度' })).not.toBeInTheDocument();
   });
 
+  it('creates a new project and enters its isolated materials page', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole('button', { name: '新增项目' }));
+    const dialog = screen.getByRole('dialog', { name: '新增项目' });
+    await user.type(within(dialog).getByLabelText('项目名称'), '东海升压站设备采购');
+    await user.type(within(dialog).getByLabelText('招标编号'), 'BV-2099-101');
+    await user.type(within(dialog).getByLabelText('招标人'), '东海电力建设有限公司');
+    await user.type(within(dialog).getByLabelText('截止时间'), '2099-12-31T17:00');
+    await user.click(within(dialog).getByRole('button', { name: '创建并进入材料页' }));
+
+    expect(window.location.pathname).toBe('/projects/BV-2099-101/materials');
+    expect(screen.getByText('东海升压站设备采购')).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent('项目域 · BV-2099-101');
+    expect(screen.getByText('当前项目尚未上传招标材料')).toBeInTheDocument();
+  });
+
   it('creates a project-scoped generation task from the materials page', async () => {
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/projects/BV-2026-018/materials');
@@ -161,6 +179,62 @@ describe('App web shell', () => {
     expect(screen.queryByText('项目附件营业执照.pdf')).not.toBeInTheDocument();
   });
 
+  it('shows enterprise library data inline without leaving the project workbench', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/projects/BV-2026-018/materials');
+    renderApp();
+
+    await user.click(screen.getByRole('tab', { name: '企业资料' }));
+
+    expect(window.location.pathname).toBe('/projects/BV-2026-018/materials');
+    expect(screen.getByLabelText('营业执照（2026 年更新）')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '企业资料只读' })).toBeDisabled();
+  });
+
+  it('uploads from the workbench add-file control into the current project only', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/projects/BV-2026-018/review');
+    renderApp();
+    const file = new File(['supplement'], '评审补充附件.pdf', { type: 'application/pdf' });
+
+    await user.upload(screen.getByLabelText('添加当前项目文件'), file);
+    await user.click(screen.getByRole('tab', { name: '当前招标材料' }));
+
+    expect(screen.getByLabelText('评审补充附件.pdf')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/projects/BV-2026-018/review');
+  });
+
+  it('opens the project-scoped Office editor from the preview action', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/projects/BV-2026-018/overview');
+    renderApp();
+
+    await user.click(screen.getByRole('link', { name: '预览技术标文件' }));
+
+    expect(window.location.pathname).toMatch(
+      /^\/projects\/BV-2026-018\/deliverables\/technical\/versions\//,
+    );
+    expect(screen.getByText(/演示编辑器/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '下载技术标 Mock Word' })).toHaveAttribute(
+      'href',
+      '/mock-files/技术标文件-Mock.docx',
+    );
+  });
+
+  it.each([
+    '/projects/BV-2026-015/deliverables/technical/versions/technical-v6',
+    '/projects/BV-2026-018/deliverables/technical/versions/other-project-version',
+  ])('does not load global Mock deliverables for an unowned route %s', (path) => {
+    window.history.replaceState(null, '', path);
+    renderApp();
+
+    expect(
+      screen.getByRole('heading', { name: '当前项目没有这个成果版本' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '技术标文档内容' })).not.toBeInTheDocument();
+    expect(screen.getByText(/不会回退加载其他项目或全局演示内容/)).toBeInTheDocument();
+  });
+
   it('resets project-material view state when the route changes projects', async () => {
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/projects/BV-2026-018/materials');
@@ -214,7 +288,7 @@ describe('App web shell', () => {
     await user.click(
       screen.getByRole('link', { name: '进入海上平台电气设备采购项目工作台' }),
     );
-    await user.click(screen.getByRole('link', { name: '查看报价测算' }));
+    await user.click(screen.getByRole('link', { name: '报价分析' }));
     await user.click(screen.getByRole('button', { name: '应用到报价单并生成新版本' }));
     await user.click(screen.getByRole('button', { name: '确认生成新版本' }));
     expect(screen.getByRole('status')).toHaveTextContent('均衡策略');

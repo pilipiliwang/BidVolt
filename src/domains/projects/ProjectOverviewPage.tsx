@@ -10,8 +10,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-import { AppLink } from '../../app/router';
-import { getProjectSummary } from './project-view-model';
+import { AppLink, deliverableEditorPath } from '../../app/router';
+import { getProjectSummary, type ProjectSummary } from './project-view-model';
 import {
   ProjectWorkbench,
   ResultCover,
@@ -21,9 +21,12 @@ import {
 import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
+  enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
+  onAddFiles?: (files: File[]) => void;
   onOpenTasks: () => void;
   overview?: ProjectOverviewView;
+  project?: ProjectSummary;
   projectId: string;
   taskSummary?: {
     message: string;
@@ -40,6 +43,7 @@ export type ProjectDeliverableView = {
   score: string;
   title: string;
   tone: 'business' | 'technical' | 'quote';
+  versionId?: string;
   words: string;
 };
 
@@ -56,14 +60,23 @@ export type ProjectOverviewView = {
   };
 };
 
+const mockDownloadHref: Record<ProjectDeliverableView['id'], string> = {
+  business: '/mock-files/商务标文件-Mock.docx',
+  technical: '/mock-files/技术标文件-Mock.docx',
+  quote: '/mock-files/报价单-Mock.xlsx',
+};
+
 export function ProjectOverviewPage({
+  enterpriseMaterials,
   materials,
+  onAddFiles,
   onOpenTasks,
   overview,
+  project: projectOverride,
   projectId,
   taskSummary,
 }: ProjectOverviewPageProps) {
-  const project = getProjectSummary(projectId);
+  const project = projectOverride ?? getProjectSummary(projectId);
 
   if (!project) {
     return (
@@ -80,8 +93,10 @@ export function ProjectOverviewPage({
 
   return (
     <ProjectWorkbench
+      enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       materials={materials}
+      onAddFiles={onAddFiles}
       rightRail={
         <section className="bv-review-summary" aria-labelledby="overview-score-title">
           <header>
@@ -127,9 +142,6 @@ export function ProjectOverviewPage({
     >
       <section className="bv-deliverables" aria-labelledby="deliverables-title">
         <h2 className="bv-visually-hidden">{project.title}</h2>
-        <AppLink className="bv-visually-hidden" to={`/projects/${projectId}/pricing`}>
-          报价分析
-        </AppLink>
         <header className="bv-deliverables__header">
           <div>
             <span className="bv-deliverables__title-icon"><FileCheck2 aria-hidden="true" size={24} /></span>
@@ -142,6 +154,10 @@ export function ProjectOverviewPage({
             <AppLink className="bv-materials-entry" to={`/projects/${projectId}/materials`}>
               <FolderOpen aria-hidden="true" size={18} />
               打开项目材料
+            </AppLink>
+            <AppLink className="bv-materials-entry" to={`/projects/${projectId}/pricing`}>
+              <TrendingUp aria-hidden="true" size={18} />
+              报价分析
             </AppLink>
             <label>版本号 <select aria-label="成果版本"><option>V3.2</option></select></label>
             <label><ShieldCheck aria-hidden="true" size={18} /><select aria-label="版本时间"><option>最新版本</option></select></label>
@@ -164,12 +180,14 @@ export function ProjectOverviewPage({
               </dl>
               <div className="bv-deliverable-card__actions">
                 <AppLink
-                  aria-label={item.id === 'quote' ? '查看报价测算' : undefined}
-                  to={item.id === 'quote' ? `/projects/${projectId}/pricing` : `/projects/${projectId}/review`}
+                  aria-label={`预览${item.title}`}
+                  to={deliverableEditorPath(projectId, item.id, item.versionId ?? 'latest')}
                 >
                   预览文件 <Eye aria-hidden="true" size={17} />
                 </AppLink>
-                <button aria-label={`下载${item.title}`} type="button"><Download aria-hidden="true" size={18} /></button>
+                <a aria-label={`下载${item.title}`} download href={mockDownloadHref[item.id]}>
+                  <Download aria-hidden="true" size={18} />
+                </a>
               </div>
             </article>
           ))}

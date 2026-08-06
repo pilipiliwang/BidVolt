@@ -38,12 +38,23 @@
 .findingBody > span { overflow: hidden; color: #44546b; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .findingBody small { overflow: hidden; color: #7c899a; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
 .findingBody small b { color: #4a5b72; font-weight: 500; }
+.suggestionText { min-height: 14px; }
+.suggestionEditor { display: grid; gap: 5px; padding: 6px; border: 1px solid #a9dec1; border-radius: 6px; background: #f8fcfa; }
+.suggestionEditor textarea { width: 100%; min-height: 58px; resize: vertical; padding: 7px 8px; border: 1px solid #cfd9d4; border-radius: 5px; color: #26374f; background: #fff; font: inherit; font-size: 9px; line-height: 1.5; }
+.suggestionEditor textarea:focus { border-color: #079653; outline: 2px solid rgb(7 150 83 / 18%); }
+.suggestionEditor textarea[aria-invalid='true'] { border-color: #d92d20; outline-color: rgb(217 45 32 / 15%); }
+.suggestionEditor > p { margin: 0; color: #b42318; font-size: 8px; }
+.suggestionEditorActions { display: flex; justify-content: flex-end; gap: 5px; }
+.suggestionEditorActions button { min-height: 25px; padding: 0 9px; border: 1px solid #cfd9d4; border-radius: 5px; color: #42526a; background: #fff; font-size: 8px; font-weight: 700; }
+.suggestionEditorActions button:first-child { border-color: #079653; color: #fff; background: #079653; }
+.suggestionEditorActions button:disabled { cursor: not-allowed; opacity: .48; }
 .currentScore { color: #26374f; font-size: 10px; }
 .lift { color: #04a255; font-size: 10px; }
 .reference { color: #34475f; font-size: 8px; line-height: 1.45; }
 .reference small { display: block; color: #8793a3; font-size: 7px; }
 .riskLevel { font-size: 9px; font-weight: 700; text-align: center; }
 .modifyButton { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 27px; padding: 0 6px; border: 1px solid #74d3a0; border-radius: 5px; color: #06904e; background: #fff; font-size: 8px; font-weight: 700; }
+.modifyButton:disabled { cursor: default; opacity: .55; }
 
 .fail { color: #f04438; }
 .risk { color: #f79009; }

@@ -9,7 +9,7 @@ import './styles/global.css';
 const root = document.getElementById('root');
 
 if (!root) {
-  throw new Error('BidVolt root element is missing');
+  throw new Error('AI电网投标助手根节点缺失');
 }
 
 const renderApp = () => {

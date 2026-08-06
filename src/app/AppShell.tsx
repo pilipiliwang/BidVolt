@@ -16,7 +16,10 @@ import {
 } from 'lucide-react';
 
 import { BrandLogo } from '../shared/ui/BrandLogo';
-import { getProjectSummary } from '../domains/projects/project-view-model';
+import {
+  getProjectSummary,
+  type ProjectSummary,
+} from '../domains/projects/project-view-model';
 import '../styles/ui0802-shell.css';
 import { AppLink, type AppRoute } from './router';
 
@@ -42,6 +45,7 @@ type AppShellProps = {
   eyebrow: string;
   enterpriseName: string;
   onOpenTasks: () => void;
+  projectSummary?: ProjectSummary;
   taskCount: number;
   title: string;
   user: {
@@ -63,6 +67,7 @@ function getNavigationItems(projectId?: string) {
         'projects',
         'project-overview',
         'project-materials',
+        'deliverable-editor',
       ] satisfies AppRoute['name'][],
     },
     {
@@ -95,9 +100,9 @@ function getNavigationItems(projectId?: string) {
 
 function Brand() {
   return (
-    <AppLink className="brand" to="/projects" aria-label="AI电投助手首页">
+    <AppLink className="brand" to="/projects" aria-label="AI电网投标助手首页">
       <BrandLogo className="brand__mark" />
-      <strong>AI电投助手</strong>
+      <strong>AI电网投标助手</strong>
     </AppLink>
   );
 }
@@ -197,16 +202,24 @@ export function AppShell({
   eyebrow,
   enterpriseName,
   onOpenTasks,
+  projectSummary: projectSummaryOverride,
   taskCount,
   title,
   user,
 }: AppShellProps) {
   const isProjectMode =
     currentProjectId !== undefined &&
-    ['project-overview', 'project-materials', 'review-center', 'pricing-center'].includes(
+    [
+      'project-overview',
+      'project-materials',
+      'review-center',
+      'pricing-center',
+      'deliverable-editor',
+    ].includes(
       currentRoute,
     );
-  const projectSummary = currentProjectId ? getProjectSummary(currentProjectId) : undefined;
+  const projectSummary =
+    projectSummaryOverride ?? (currentProjectId ? getProjectSummary(currentProjectId) : undefined);
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileNavId = useId();
   const mobileNavRef = useRef<HTMLElement>(null);

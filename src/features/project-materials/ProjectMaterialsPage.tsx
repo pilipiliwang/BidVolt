@@ -168,6 +168,7 @@ function SimulatedReviewPanel({
 }
 
 export function ProjectMaterialsPage({
+  enterpriseMaterials = [],
   projectId,
   projectName,
   materials,
@@ -212,8 +213,9 @@ export function ProjectMaterialsPage({
 
   return (
     <ProjectWorkbench
+      enterpriseMaterials={enterpriseMaterials}
       materials={workspaceMaterials}
-      onUpload={uploadProjectFiles}
+      onAddFiles={onUpload ? uploadProjectFiles : undefined}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       rightRail={
         <SimulatedReviewPanel
