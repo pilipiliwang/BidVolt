@@ -217,6 +217,28 @@
 .bv-project-workspace__main { grid-column: 2; grid-row: 1; }
 .bv-project-workspace__right { grid-column: 3; grid-row: 1; }
 
+.bv-project-workspace--content {
+  grid-template-rows: auto 90px;
+  min-height: 0;
+  align-content: start;
+}
+
+.bv-project-workspace--content .bv-source-rail__tabs button { font-size: 16px; }
+.bv-project-workspace--content .bv-source-rail__heading { font-size: 14px; }
+.bv-project-workspace--content .bv-source-rail__files li,
+.bv-project-workspace--content .bv-source-rail__files small { font-size: 14px; }
+.bv-project-workspace--content .bv-source-rail__empty { font-size: 13px; }
+.bv-project-workspace--content .bv-source-rail__missing strong,
+.bv-project-workspace--content .bv-source-rail__missing span { font-size: 13px; }
+.bv-project-workspace--content .bv-source-rail__upload,
+.bv-project-workspace--content .bv-project-chat button,
+.bv-project-workspace--content .bv-project-chat textarea { font-size: 15px; }
+.bv-project-workspace--content .bv-score-ring span,
+.bv-project-workspace--content .bv-score-ring small { font-size: 14px; }
+.bv-project-workspace--content .bv-score-ring strong { font-size: 40px; }
+.bv-project-workspace--content .bv-result-cover strong { font-size: 21px; }
+.bv-project-workspace--content .bv-result-cover span { font-size: 13px; }
+
 .bv-project-chat {
   display: grid;
   grid-column: 2 / 4;

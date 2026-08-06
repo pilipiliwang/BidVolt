@@ -194,6 +194,7 @@ type ProjectWorkbenchProps = {
   children: ReactNode;
   enterpriseMaterials: WorkspaceMaterial[];
   footerHint?: string;
+  heightMode?: 'content' | 'fill';
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
@@ -205,6 +206,7 @@ type ProjectWorkbenchProps = {
 export function ProjectWorkbench({
   assistantDraft,
   assistantFocusRequest,
+  heightMode = 'fill',
   children,
   enterpriseMaterials,
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
@@ -216,7 +218,7 @@ export function ProjectWorkbench({
   rightRail,
 }: ProjectWorkbenchProps) {
   return (
-    <div className="bv-project-workspace">
+    <div className={`bv-project-workspace bv-project-workspace--${heightMode}`}>
       <ProjectSourceRail
         enterpriseMaterials={enterpriseMaterials}
         materials={materials}

@@ -21,6 +21,21 @@ const overview: ProjectOverviewView = {
 };
 
 describe('ProjectOverviewPage', () => {
+  it('uses the content-sized workbench layout on the overview page', () => {
+    render(
+      <ProjectOverviewPage
+        enterpriseMaterials={[]}
+        materials={[]}
+        onOpenTasks={vi.fn()}
+        projectId="BV-2026-018"
+      />,
+    );
+
+    expect(screen.getByRole('main').closest('.bv-project-workspace')).toHaveClass(
+      'bv-project-workspace--content',
+    );
+  });
+
   it('shows a visible project-material entry for regular users', () => {
     render(
       <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} projectId="BV-2026-018" onOpenTasks={vi.fn()} />,

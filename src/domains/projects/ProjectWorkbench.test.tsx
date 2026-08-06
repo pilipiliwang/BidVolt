@@ -2,7 +2,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ProjectChatBar, ProjectSourceRail, type WorkspaceMaterial } from './ProjectWorkbench';
+import {
+  ProjectChatBar,
+  ProjectSourceRail,
+  ProjectWorkbench,
+  type WorkspaceMaterial,
+} from './ProjectWorkbench';
 
 const projectMaterials: WorkspaceMaterial[] = [
   { id: 'project-1', name: '当前招标文件.pdf', status: '已识别', tone: 'blue' },
@@ -11,6 +16,24 @@ const projectMaterials: WorkspaceMaterial[] = [
 const enterpriseMaterials: WorkspaceMaterial[] = [
   { id: 'enterprise-1', name: '企业营业执照.pdf', status: '可复用', tone: 'green' },
 ];
+
+describe('ProjectWorkbench', () => {
+  it('keeps the viewport-filling layout by default for editor pages', () => {
+    render(
+      <ProjectWorkbench
+        enterpriseMaterials={[]}
+        materials={[]}
+        rightRail={<div>Review</div>}
+      >
+        <div>Editor</div>
+      </ProjectWorkbench>,
+    );
+
+    expect(screen.getByRole('main').closest('.bv-project-workspace')).toHaveClass(
+      'bv-project-workspace--fill',
+    );
+  });
+});
 
 describe('ProjectSourceRail', () => {
   it('exposes clearly disabled controls when upload handling is unavailable', async () => {

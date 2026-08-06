@@ -96,6 +96,7 @@ export function ProjectOverviewPage({
   return (
     <ProjectWorkbench
       enterpriseMaterials={enterpriseMaterials}
+      heightMode="content"
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
