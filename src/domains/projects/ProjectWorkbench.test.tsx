@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -136,5 +136,48 @@ describe('ProjectChatBar', () => {
 
     expect(screen.getByRole('button', { name: '添加文件' })).toBeDisabled();
     expect(screen.queryByLabelText('添加当前项目文件')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '发送' })).toHaveAttribute(
+      'title',
+      '项目助手接口尚未接入',
+    );
+  });
+
+  it('fills and focuses the controlled assistant draft, while keeping it editable', () => {
+    const onValueChange = vi.fn();
+    const { rerender } = render(
+      <ProjectChatBar
+        focusRequest={0}
+        hint="提问"
+        onValueChange={onValueChange}
+        value=""
+      />,
+    );
+
+    rerender(
+      <ProjectChatBar
+        focusRequest={1}
+        hint="提问"
+        onValueChange={onValueChange}
+        value={'请针对以下选中内容进行修改：\n设备供货方案\n\n修改要求：'}
+      />,
+    );
+
+    const assistantInput = screen.getByRole('textbox', { name: '向项目助手提问' });
+    expect(assistantInput).toHaveFocus();
+    expect(assistantInput).toHaveValue(
+      '请针对以下选中内容进行修改：\n设备供货方案\n\n修改要求：',
+    );
+    fireEvent.change(assistantInput, { target: { value: '补充风险控制' } });
+    expect(onValueChange).toHaveBeenCalledWith('补充风险控制');
+  });
+
+  it('only enables sending when a handler and non-empty message are available', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<ProjectChatBar hint="提问" onSend={onSend} value="请优化选中内容" />);
+
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(onSend).toHaveBeenCalledWith('请优化选中内容');
   });
 });

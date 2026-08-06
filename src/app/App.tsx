@@ -44,7 +44,7 @@ import {
   reviewRunDemo,
 } from './demo-data';
 import { AppLink, navigate, useUrlRoute } from './router';
-import { demoSession, getProjectScopeKey } from './session';
+import { demoSession, getEditorDraftScopeKey, getProjectScopeKey } from './session';
 
 type ProjectDomainState<T> = Record<string, T[]>;
 
@@ -473,7 +473,17 @@ export function App() {
       ) : null}
       {route.name === 'deliverable-editor' && activeProject && activeDeliverable ? (
         <DeliverableEditorPage
+          key={`${getEditorDraftScopeKey(
+            session.enterpriseId,
+            session.userId,
+            route.projectId,
+          )}:${route.deliverableId}:${route.versionId}`}
           deliverableId={route.deliverableId}
+          draftScopeId={getEditorDraftScopeKey(
+            session.enterpriseId,
+            session.userId,
+            route.projectId,
+          )}
           enterpriseMaterials={activeEnterpriseMaterials}
           materials={activeWorkspaceMaterials}
           onAddEnterpriseFiles={handleEnterpriseUpload}

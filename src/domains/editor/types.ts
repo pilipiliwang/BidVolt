@@ -13,6 +13,18 @@ export type QuoteSheetRow = {
   userPrice: number;
 };
 
+export type QuoteSheetWritableRow = Pick<
+  QuoteSheetRow,
+  | 'id'
+  | 'code'
+  | 'name'
+  | 'specification'
+  | 'quantity'
+  | 'unit'
+  | 'tenderPrice'
+  | 'userPrice'
+>;
+
 export type OfficeMockSavePayload =
   | {
       kind: 'word';
@@ -26,6 +38,6 @@ export type OfficeMockSavePayload =
       projectId: string;
       deliverableId: 'quote';
       versionId: string;
-      rows: QuoteSheetRow[];
+      rows: QuoteSheetWritableRow[];
       total: number;
     };

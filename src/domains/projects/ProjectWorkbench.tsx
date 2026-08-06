@@ -10,7 +10,14 @@ import {
   Send,
   UploadCloud,
 } from 'lucide-react';
-import { useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 
 import './project-workbench.css';
 
@@ -182,22 +189,30 @@ function MaterialIcon({ tone = 'blue' }: { tone?: WorkspaceMaterial['tone'] }) {
 }
 
 type ProjectWorkbenchProps = {
+  assistantDraft?: string;
+  assistantFocusRequest?: number;
   children: ReactNode;
   enterpriseMaterials: WorkspaceMaterial[];
   footerHint?: string;
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
+  onAssistantDraftChange?: (value: string) => void;
+  onAssistantSend?: (value: string) => void;
   rightRail: ReactNode;
 };
 
 export function ProjectWorkbench({
+  assistantDraft,
+  assistantFocusRequest,
   children,
   enterpriseMaterials,
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantDraftChange,
+  onAssistantSend,
   rightRail,
 }: ProjectWorkbenchProps) {
   return (
@@ -210,19 +225,51 @@ export function ProjectWorkbench({
       />
       <main className="bv-project-workspace__main">{children}</main>
       <aside className="bv-project-workspace__right">{rightRail}</aside>
-      <ProjectChatBar hint={footerHint} onAddFiles={onAddFiles} />
+      <ProjectChatBar
+        focusRequest={assistantFocusRequest}
+        hint={footerHint}
+        onAddFiles={onAddFiles}
+        onSend={onAssistantSend}
+        onValueChange={onAssistantDraftChange}
+        value={assistantDraft}
+      />
     </div>
   );
 }
 
 export function ProjectChatBar({
+  focusRequest,
   hint,
   onAddFiles,
+  onSend,
+  onValueChange,
+  value,
 }: {
+  focusRequest?: number;
   hint: string;
   onAddFiles?: (files: File[]) => void;
+  onSend?: (value: string) => void;
+  onValueChange?: (value: string) => void;
+  value?: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assistantInputRef = useRef<HTMLTextAreaElement>(null);
+  const [localValue, setLocalValue] = useState('');
+  const currentValue = value ?? localValue;
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const input = assistantInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.scrollIntoView?.({ block: 'nearest' });
+  }, [focusRequest]);
+
+  const updateValue = (nextValue: string) => {
+    if (value === undefined) setLocalValue(nextValue);
+    onValueChange?.(nextValue);
+  };
 
   return (
     <div className="bv-project-chat" aria-label="项目助手输入">
@@ -251,9 +298,22 @@ export function ProjectChatBar({
       ) : null}
       <label>
         <span className="bv-visually-hidden">向项目助手提问</span>
-        <input placeholder={hint} />
+        <textarea
+          aria-label="向项目助手提问"
+          placeholder={hint}
+          ref={assistantInputRef}
+          rows={2}
+          value={currentValue}
+          onChange={(event) => updateValue(event.currentTarget.value)}
+        />
       </label>
-      <button className="bv-project-chat__send" type="button">
+      <button
+        className="bv-project-chat__send"
+        disabled={!onSend || !currentValue.trim()}
+        title={onSend ? '发送给项目助手' : '项目助手接口尚未接入'}
+        type="button"
+        onClick={() => onSend?.(currentValue.trim())}
+      >
         发送
         <Send aria-hidden="true" size={19} />
       </button>

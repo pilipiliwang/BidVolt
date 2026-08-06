@@ -1,0 +1,408 @@
+.office-sheet-editor-v2 {
+  --sheet-accent: #087f4d;
+  --sheet-accent-soft: #eaf8f1;
+  --sheet-border: #dfe5ec;
+  --sheet-muted: #637083;
+  position: relative;
+  background: #fff;
+}
+
+.office-sheet-editor-v2 button,
+.office-sheet-editor-v2 input,
+.office-sheet-editor-v2 select {
+  font: inherit;
+}
+
+.office-sheet-toolbar {
+  flex-wrap: wrap;
+  overflow: visible;
+  gap: 6px;
+  padding-block: 8px;
+}
+
+.office-sheet-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.office-sheet-toolbar button[aria-pressed='true'] {
+  border-color: #9bcfb8;
+  color: var(--sheet-accent);
+  background: var(--sheet-accent-soft);
+}
+
+.office-sheet-toolbar__divider {
+  width: 1px;
+  height: 23px;
+  margin-inline: 3px;
+  background: var(--sheet-border);
+}
+
+.office-sheet-formula-bar {
+  display: grid;
+  grid-template-columns: 80px 24px minmax(180px, 1fr) auto;
+  min-height: 39px;
+  align-items: center;
+  border-bottom: 1px solid var(--sheet-border);
+  background: #fff;
+}
+
+.office-sheet-formula-bar > input {
+  min-width: 0;
+  height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-right: 1px solid var(--sheet-border);
+  outline: 0;
+  color: #263347;
+  background: transparent;
+  font-size: 13px;
+}
+
+.office-sheet-formula-bar > input:focus {
+  box-shadow: inset 0 0 0 2px #4f8df7;
+}
+
+.office-sheet-formula-bar > span[aria-hidden='true'] {
+  color: var(--sheet-accent);
+  font-family: Georgia, serif;
+  font-size: 14px;
+  font-style: italic;
+  text-align: center;
+}
+
+.office-sheet-formula-bar__error {
+  max-width: 210px;
+  margin-inline: 8px;
+  color: #b42318;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.office-sheet-controls {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--sheet-border);
+  color: var(--sheet-muted);
+  background: #fbfcfd;
+  font-size: 12px;
+}
+
+.office-sheet-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.office-sheet-controls input,
+.office-sheet-controls select,
+.office-sheet-zoom select {
+  height: 29px;
+  padding: 3px 8px;
+  border: 1px solid #d5dde6;
+  border-radius: 5px;
+  outline: 0;
+  color: #243247;
+  background: #fff;
+}
+
+.office-sheet-controls input { width: min(250px, 23vw); }
+.office-sheet-controls input:focus,
+.office-sheet-controls select:focus,
+.office-sheet-zoom select:focus { border-color: #4f8df7; box-shadow: 0 0 0 2px rgb(79 141 247 / 14%); }
+
+.office-sheet-controls > span[aria-live] {
+  color: #176f49;
+  font-weight: 700;
+}
+
+.office-sheet-controls__notice { margin-left: auto; }
+
+.office-sheet-editor-v2 .office-sheet-stage {
+  min-height: 240px;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid {
+  font-size: 12px;
+}
+
+.office-sheet-stage[data-zoom='80'] .office-sheet-grid { font-size: 10px; min-width: 920px; }
+.office-sheet-stage[data-zoom='90'] .office-sheet-grid { font-size: 11px; min-width: 1010px; }
+.office-sheet-stage[data-zoom='110'] .office-sheet-grid { font-size: 13px; min-width: 1230px; }
+.office-sheet-stage[data-zoom='125'] .office-sheet-grid { font-size: 14px; min-width: 1370px; }
+
+.office-sheet-editor-v2 .office-sheet-grid thead { position: static; }
+.office-sheet-editor-v2 .office-sheet-stage--frozen .office-sheet-grid thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid th,
+.office-sheet-editor-v2 .office-sheet-grid td {
+  position: relative;
+  height: 40px;
+  padding: 0;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid thead th,
+.office-sheet-editor-v2 .office-sheet-grid tfoot th,
+.office-sheet-editor-v2 .office-sheet-grid tfoot td {
+  padding: 5px 7px;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid tbody th button {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid tbody tr.is-row-selected > th {
+  color: #fff;
+  background: var(--sheet-accent);
+}
+
+.office-sheet-editor-v2 .office-sheet-grid tbody tr.is-whole-row-selected > td {
+  box-shadow: inset 0 1px 0 #71b99a, inset 0 -1px 0 #71b99a;
+  background-color: #f2fbf6;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid td.is-selected {
+  z-index: 1;
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid td:has(input[aria-invalid='true']) {
+  outline: 2px solid #dc2626;
+  outline-offset: -2px;
+}
+
+.office-sheet-cell-input {
+  width: 100%;
+  height: 100%;
+  padding: 5px 7px;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  color: #263347;
+  background: transparent;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.office-sheet-cell-input--number {
+  appearance: textfield;
+  text-align: right;
+}
+
+.office-sheet-cell-input::-webkit-inner-spin-button,
+.office-sheet-cell-input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+
+.office-sheet-cell-input:focus { background: #f8fbff; }
+
+.office-sheet-cell-value-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid__suggested {
+  outline: 0;
+  background: #f0fbf5;
+}
+
+.office-sheet-cell-total {
+  padding: 5px 7px !important;
+  cursor: cell;
+  font-variant-numeric: tabular-nums;
+  text-align: right !important;
+}
+
+.office-sheet-cell-readonly {
+  padding: 5px 7px !important;
+  cursor: cell;
+  color: #596579;
+  background-image: linear-gradient(135deg, transparent 0 94%, rgb(100 116 139 / 22%) 94% 100%);
+  font-variant-numeric: tabular-nums;
+  text-align: right !important;
+}
+
+.office-sheet-cell-readonly::after {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  color: #8a96a8;
+  content: '只读';
+  font-size: 8px;
+  line-height: 1;
+}
+
+.office-sheet-cell-readonly--unavailable {
+  color: #8a5b13;
+  background-color: #fffaf0;
+  font-weight: 700;
+  text-align: center !important;
+}
+
+.office-sheet-editor-v2 .office-sheet-grid tfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  color: #1e3a2d;
+  background: #f3faf6;
+  font-weight: 800;
+}
+
+.office-sheet-empty {
+  margin: 0;
+  padding: 38px;
+  color: #697586;
+  text-align: center;
+}
+
+.office-sheet-report {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 22px;
+  background: #f5f7f9;
+}
+
+.office-sheet-report > header {
+  margin-bottom: 16px;
+}
+
+.office-sheet-report h3,
+.office-sheet-report p { margin: 0; }
+.office-sheet-report h3 { color: #1e2c40; font-size: 18px; }
+.office-sheet-report p { margin-top: 5px; color: #697586; font-size: 13px; }
+
+.office-sheet-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.office-sheet-summary-cards article {
+  display: grid;
+  min-height: 105px;
+  align-content: center;
+  gap: 9px;
+  padding: 18px;
+  border: 1px solid var(--sheet-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.office-sheet-summary-cards span { color: #667085; font-size: 13px; }
+.office-sheet-summary-cards strong { color: var(--sheet-accent); font-size: 20px; }
+
+.office-sheet-report table {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--sheet-border);
+  border-radius: 8px;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #263347;
+  background: #fff;
+  font-size: 13px;
+}
+
+.office-sheet-report th,
+.office-sheet-report td {
+  padding: 11px 13px;
+  border-right: 1px solid var(--sheet-border);
+  border-bottom: 1px solid var(--sheet-border);
+  text-align: right;
+}
+
+.office-sheet-report th:first-child,
+.office-sheet-report td:first-child { text-align: left; }
+.office-sheet-report th:last-child,
+.office-sheet-report td:last-child { border-right: 0; }
+.office-sheet-report tbody tr:last-child td { border-bottom: 0; }
+.office-sheet-report th { color: #344054; background: #f8fafb; }
+.office-sheet-report .is-over { color: #b42318; }
+.office-sheet-report .is-under { color: #087f4d; }
+
+.office-sheet-editor-v2 .office-sheet-tabs {
+  gap: 5px;
+}
+
+.office-sheet-zoom {
+  display: inline-flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 6px;
+  color: #475467;
+  font-size: 12px;
+}
+
+.office-sheet-zoom select { height: 30px; }
+
+.office-sheet-confirm-backdrop {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  inset: 0;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 48%);
+}
+
+.office-sheet-confirm {
+  width: min(420px, 100%);
+  padding: 24px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgb(15 23 42 / 28%);
+}
+
+.office-sheet-confirm h3 { margin: 0; color: #172033; font-size: 19px; }
+.office-sheet-confirm p { margin: 12px 0 22px; color: #596579; font-size: 14px; line-height: 1.65; }
+.office-sheet-confirm > div { display: flex; justify-content: flex-end; gap: 9px; }
+
+.office-sheet-confirm button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid #d4dce5;
+  border-radius: 6px;
+  color: #344054;
+  background: #fff;
+}
+
+.office-sheet-confirm button:last-child {
+  border-color: var(--sheet-accent);
+  color: #fff;
+  background: var(--sheet-accent);
+  font-weight: 700;
+}
+
+@media (max-width: 1120px) {
+  .office-sheet-toolbar .office-editor-toolbar__save { margin-left: 0; }
+  .office-sheet-controls { flex-wrap: wrap; }
+  .office-sheet-controls__notice { margin-left: 0; }
+  .office-sheet-summary-cards { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .office-sheet-formula-bar { grid-template-columns: 64px 23px minmax(120px, 1fr); }
+  .office-sheet-formula-bar__error { display: none; }
+  .office-sheet-controls input { width: 180px; max-width: 45vw; }
+  .office-sheet-summary-cards { grid-template-columns: 1fr; }
+  .office-sheet-report { padding: 14px; }
+}

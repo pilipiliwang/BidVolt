@@ -241,7 +241,7 @@ describe('App web shell', () => {
       /^\/projects\/BV-2026-018\/deliverables\/technical\/versions\//,
     );
     expect(screen.getByText(/演示编辑器/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '下载技术标 Mock Word' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: '下载原始 Mock Word' })).toHaveAttribute(
       'href',
       '/mock-files/技术标文件-Mock.docx',
     );

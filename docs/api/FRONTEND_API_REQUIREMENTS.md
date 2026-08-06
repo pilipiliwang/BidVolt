@@ -142,8 +142,12 @@
 | 成果编辑器 | 创建在线编辑会话 | POST /projects/{project_id}/deliverables/{deliverable_type}/versions/{version_id}/editor-sessions | 待新增，已有草案 | P0 |
 | 成果编辑器 | 查询编辑会话状态 | GET /editor-sessions/{session_id} | 待新增，已有草案 | P0 |
 | 成果编辑器 | 结束编辑并等待新版本 | POST /editor-sessions/{session_id}/complete | 待新增，已有草案 | P0 |
-| 项目助手 | 发送问题 | POST /projects/{project_id}/assistant/messages | 待新增 | P0，若保留当前可点击按钮 |
-| 项目助手 | 流式接收回答 | GET /assistant/messages/{message_id}/stream | 待新增 | P0，若保留当前可点击按钮 |
+| 成果编辑器 | 生成 AI 修改建议 | POST /editor-sessions/{session_id}/suggestions | 待新增；生产能力 | P1 |
+| 成果编辑器 | 查询建议与差异 | GET /editor-sessions/{session_id}/suggestions/{suggestion_id} | 待新增；生产能力 | P1 |
+| 成果编辑器 | 用户确认应用建议 | POST /editor-sessions/{session_id}/suggestions/{suggestion_id}/apply | 待新增；生产能力 | P1 |
+| 成果编辑器 | 把选区/单元格上下文填入项目助手 | 无需接口 | 浏览器内交互 | - |
+| 项目助手 | 发送问题 | POST /projects/{project_id}/assistant/messages | 待新增；未接入时发送禁用 | P0 |
+| 项目助手 | 流式接收回答 | GET /assistant/messages/{message_id}/stream | 待新增；未接入时发送禁用 | P0 |
 | 项目助手 | 刷新后恢复会话记录 | GET /projects/{project_id}/assistant/messages | 待新增 | P1 |
 | 全局页面 | 字号、网格宽度、断点布局和日期控件适配 | 无需接口 | 无需接口 | - |
 
@@ -303,7 +307,7 @@
 
 - 方法与路径：GET /projects/{project_id}/overview
 - 状态：待新增
-- 页面动作：进入“招标文件成果”页。
+- 页面动作：进入“标书成果总览”页。
 
 响应 data：
 
@@ -593,6 +597,9 @@ multipart 字段：
 
 响应继续返回 read_only=true、provider_id、provider_version、query_snapshot_id、source_updated_at、samples、total、page、size、normalization_warnings，并增加统计摘要 statistics。
 
+`read_only=true` 是强制数据边界，不只是 UI 提示。前端、业务后端和文档编辑服务都不得获得外部历史库的
+POST/PUT/PATCH/DELETE 通道；样本修订只能在外部数据源自身完成，下一次查询以新的不可变快照反映结果。
+
 statistics 至少包含 count、min_price、max_price、median_price、average_price、latest_price、recent_change_rate。
 
 ### FE-QUOTE-003 历史样本详情
@@ -634,7 +641,30 @@ CalculatedQuote 建议增加前端展示字段：basis_metrics、trend_points、
 
 表格中“数量 × 用户报价”和当前总价可在浏览器即时预览，不需要每次输入都调用接口。保存后的正式金额以新报价版本接口返回值为准。
 
+数量、单价、税率、金额和比例在接口中均使用十进制定点字符串，并明确币种/精度。浏览器不得把 IEEE 754
+浮点结果作为正式请求的权威总价；服务端忽略或仅校验客户端行金额与总价，由 QuoteEngine 基于允许编辑的输入、
+冻结历史样本和算法版本重新计算。
+
 ## 13. Word/Excel 在线预览编辑
+
+完整的 P0/P1 能力分层见
+[`docs/product/ONLINE_EDITOR_CAPABILITIES.md`](../product/ONLINE_EDITOR_CAPABILITIES.md)，生产联调流程见
+[`FRONTEND_INTEGRATION.md`](./FRONTEND_INTEGRATION.md)。
+
+### FE-EDITOR-000 当前网页 P0 工具
+
+当前技术标/商务标支持本地草稿、常用文字和段落格式、撤销/重做、查找替换、批注、缩放和保存状态；还支持
+可编辑目录、标题与目录同步、点击目录定位和页面预览。报价单支持单元格定位、用户报价校验、行增删复制、排序
+筛选、冻结表头、工作表切换、建议价确认与即时合计。这些操作在浏览器内完成，不需要业务接口，草稿按
+`enterprise_id + user_id + project_id + deliverable_type + version_id` 隔离。报价历史价和算法建议价只读，只有明确允许的用户报价字段可编辑。
+
+“AI针对性修改”按钮也是浏览器内交互：Word 使用当前选区，报价表使用当前单元格或整行，将其转为纯文本上下文
+写入页面底部项目助手输入框并聚焦，供用户补充要求。该动作不自动提交、不发起网络请求、不直接修改正文或表格，
+也不调用 FE-EDITOR-004～006；项目助手接口未接入时发送按钮必须禁用。
+
+当前实现不直接修改 `docx`/`xlsx` 二进制文件，不保证复杂格式、公式、分页、批注和修订的原生保真，也不提供
+服务端共同编辑或正式版本历史。只有接入文档服务并完成以下会话、回调与新版本闭环后，页面才能宣称支持原生
+Office 在线编辑。浏览器 localStorage 保存成功不得显示为“云端已保存”。
 
 ### FE-EDITOR-001 创建编辑会话
 
@@ -642,19 +672,36 @@ CalculatedQuote 建议增加前端展示字段：basis_metrics、trend_points、
 - 状态：待新增；FRONTEND_INTEGRATION.md 已有草案
 - 页面动作：点击“预览文件”后打开可编辑的 Word/Excel 页面。
 
-请求字段：mode=edit、expected_version_id。
+请求字段：
 
-响应 data：session_id、provider、document_type、editor_url 或 editor_config、expires_at、status。
+| 字段 | 类型 | 必需 | 说明 |
+|---|---|---:|---|
+| mode | edit / comment / review | 是 | 期望模式；服务端按用户真实权限收敛，不能据此提权 |
+| expected_version_id | string | 是 | 必须与路径 `version_id` 一致，作为乐观并发基线 |
+| client_capabilities | object | 否 | 浏览器声明 autosave/comments/review 等能力，只用于协商 |
 
-前端不需要供应商保存回调凭据，公开响应不应返回 callback_token。编辑器的服务端回调不属于网页接口。
+响应 data：session_id、provider、document_type、mode、permissions、editor_url 或 editor_config、expires_at、
+status、autosave。`permissions` 至少明确 `edit`、`comment`、`review`、`download`；`autosave` 至少明确
+`enabled` 和 `interval_seconds`。
+
+权限语义：`edit` 可修改工作副本；`comment` 只能新增/回复/解决批注；`review` 只能创建修订以及执行被授权的
+接受/拒绝操作。服务端必须逐请求校验，隐藏工具栏不能作为权限控制。
+
+前端不需要供应商保存回调凭据。公开响应和浏览器可见的 `editor_config` 不得返回 `callback_token`、对象存储
+密钥、内部回调地址或可复用服务凭据；编辑器的服务端回调不属于网页接口。
 
 ### FE-EDITOR-002 查询编辑状态
 
 - 方法与路径：GET /editor-sessions/{session_id}
 - 状态：待新增
-- 页面动作：显示 opening、editing、saving、saved、failed、expired 状态。
+- 页面动作：显示 `opening | editing | autosaving | saving | saved | conflict | failed | expired` 状态。
 
-saved 时响应必须包含 new_version_id，前端据此刷新地址或跳转到新版本。
+响应还需包含 source_version_id、expected_version_id、has_pending_changes、last_autosaved_at、last_saved_at、
+可选 checkpoint_revision_id。saved 时必须包含 new_version_id，前端据此刷新地址或跳转到新版本。失败时返回
+error.code、error.message、error.retryable 和可选 retry_after_seconds。
+
+“自动保存成功”表示服务端已持久化会话检查点，不能只表示浏览器本地存储成功。检查点不得覆盖源成果版本；
+保存固化后必须生成不可变的新版本。
 
 ### FE-EDITOR-003 完成编辑
 
@@ -664,28 +711,77 @@ saved 时响应必须包含 new_version_id，前端据此刷新地址或跳转�
 - 请求：expected_version_id，可选 client_save_token。
 - 响应：session_id、status、task_id 或 new_version_id。
 
-编辑器内部的文字输入、单元格输入、撤销、重做、字体、字号、加粗、斜体、下划线、查找替换和工作表切换不需要业务接口。
+请求头必须携带 `Idempotency-Key`；网络重试复用原幂等键。服务端保存前再次校验 expected_version_id，成功后
+生成新成果版本和审计记录，旧版本继续可读。若基线已变化，返回 `409 VERSION_CONFLICT`，details 至少包含
+expected_version_id、current_version_id、session_id、recoverable=true；保留检查点并让用户选择打开最新版、保存
+为副本或导出，不得自动覆盖。
 
-当前“AI针对性修改”仍是演示按钮，本轮不定义接口；若继续保留为可点击状态，应在接入前禁用或另行定义“生成修改建议—预览差异—用户确认应用”的接口组。
+编辑器内部的文字输入、单元格输入、撤销、重做、字体、字号、加粗、斜体、下划线、查找替换、缩放和工作表
+切换不需要业务接口。
+
+文档服务保存回调只能调用业务后端内部地址。后端校验供应商签名、时间戳、随机数、会话归属、内容哈希、文件
+类型/大小并防重放，以 provider_event_id 幂等处理；浏览器只查询公开会话状态。重复回调不得重复生成版本。
+
+浏览器仅对网络错误、429、502、503、504 或 `retryable=true` 做带抖动的指数退避，并遵守 Retry-After；400、
+401、403、404、409 和 retryable=false 不自动重试。409 必须进入显式冲突处理。
+
+### FE-EDITOR-004 生成 AI 修改建议
+
+- 方法与路径：POST /editor-sessions/{session_id}/suggestions
+- 状态：待新增；只用于用户主动发起的生产 AI 修改，上下文填充动作不调用
+- 页面动作：用户选择范围、输入明确指令后点击“生成建议”。
+- 请求：selection_ref 或结构锚点、instruction、expected_version_id、expected_document_revision_id。
+- 响应：suggestion_id、status、task_id、created_at；不得直接修改文档。
+
+### FE-EDITOR-005 查询建议与差异
+
+- 方法与路径：GET /editor-sessions/{session_id}/suggestions/{suggestion_id}
+- 状态：待新增
+- 页面动作：在差异预览中逐条查看建议。
+- 响应：status、changes、before/after 摘要、evidence_refs、warnings、model_or_rule_version。
+
+差异必须可定位到当前文档修订；锚点失效、依据不属于冻结快照或版本已经变化时失败关闭，要求重新生成。
+
+### FE-EDITOR-006 确认应用 AI 建议
+
+- 方法与路径：POST /editor-sessions/{session_id}/suggestions/{suggestion_id}/apply
+- 状态：待新增
+- 页面动作：用户勾选变更项并确认应用。
+- 请求：confirmed=true、change_ids、expected_version_id、expected_document_revision_id。
+- 响应：new_document_revision_id、applied_change_ids、audit_log_id。
+
+生产 AI 流程必须是“生成建议 → 差异预览 → 用户确认应用”。生成、查看、应用、部分应用、拒绝和撤销都要记录
+操作者、时间、源版本、选区哈希、指令、变更项、模型/规则版本和结果；不得记录模型思维链或内部凭据。comment
+权限只能写入批注，review 权限只能形成待接受/拒绝的修订，只有 edit=true 且用户确认后才能直接应用到工作副本。
+
+当前网页只完成编辑器选区/单元格到项目助手输入框的上下文交接，不代表生产 AI 已接入。真正执行修改时仍必须
+使用上述建议接口闭环。
 
 ## 14. 项目助手
 
-项目概览、材料、评审、报价和成果编辑页面底部都显示项目助手输入框。如果保留可点击“发送”按钮，需要以下接口；否则上线前应禁用该按钮。
+项目概览、材料、评审、报价和成果编辑页面底部都显示项目助手输入框。接口未接入前发送按钮必须禁用，输入框仍可
+接收用户输入，以及成果编辑器“AI针对性修改”传入的纯文本上下文。
+
+点击“AI针对性修改”只填入并聚焦输入框，不能自动调用以下接口。用户可以继续补充、删改上下文；接口接入后也
+只有用户主动点击发送才允许发起请求。
 
 ### FE-ASSISTANT-001 发送消息
 
 - 方法与路径：POST /projects/{project_id}/assistant/messages
-- 状态：待新增
+- 状态：待新增；接入前发送按钮禁用
 - 页面动作：输入问题后点击“发送”。
 
 请求字段：content、可选 conversation_id、current_route、project_snapshot_id、deliverable_version_id、uploaded_material_ids。
+
+编辑器带入的选区/单元格/整行上下文只是 `content` 中可由用户继续编辑的纯文本；填入时不创建消息，只有用户主动
+发送后才随 content 上传。前端不得在后台另行上传选区。
 
 响应字段：conversation_id、user_message_id、assistant_message_id、status、stream_url。
 
 ### FE-ASSISTANT-002 回答流
 
 - 方法与路径：GET /assistant/messages/{message_id}/stream
-- 状态：待新增
+- 状态：待新增；发送接口未接入时不建连
 - 页面动作：逐步显示回答和引用。
 
 公开事件类型至少包含 message.delta、message.citation、message.completed、message.failed。citation 使用可校验的 evidence_ref。流中不允许返回内部推理、工具参数、凭据或原始模型响应。
@@ -710,14 +806,17 @@ saved 时响应必须包含 new_version_id，前端据此刷新地址或跳转�
 - 已加载数据范围内的临时筛选和排序。
 - 评审建议输入框的本地编辑、空值校验和取消。
 - 报价单单元格即时计算与总价预览。
-- 在线编辑器内部的排版、撤销、重做、查找替换和工作表切换。
+- 在线编辑器内部的排版、撤销、重做、查找替换、可编辑目录、标题同步、目录定位、页面预览和工作表切换。
+- 把 Word 当前选区或报价表当前单元格/整行的纯文本上下文写入项目助手输入框并聚焦；该动作不自动发送。
 - 版本标签、风险标签、评分环和静态图表渲染。
 - 工作台“新建资料”区、三张仪表盘卡片和下方表格的同宽网格布局。
 - 根字号、行高、控件最小尺寸、断点换行和浏览器缩放下的响应式适配。
 - 新建项目截止时间控件的日历弹层定位、日期/时间选择、键盘操作和关闭行为；只有提交后的
   `deadline_at` 才进入 `POST /projects`。
 
-通知、注册、忘记密码、AI 针对性修改和“一键修改”目前未形成完整可用流程，标记为暂不接入，不应为这些静态或禁用控件提前定义接口。账户菜单本身由前端实现，但其中的“退出登录”必须调用
+通知、注册和忘记密码目前未形成完整可用流程，标记为暂不接入，不应为静态或禁用控件提前定义接口。当前
+“AI针对性修改”只完成编辑器上下文到项目助手输入框的交接，不调用 FE-EDITOR-004～006；接入生产 AI 后必须
+使用该接口组并执行差异预览、用户确认和审计。账户菜单本身由前端实现，但其中的“退出登录”必须调用
 `POST /auth/logout`，不属于暂不接入项。
 
 ## 16. 前端联调验收清单
@@ -744,9 +843,24 @@ saved 时响应必须包含 new_version_id，前端据此刷新地址或跳转�
 ### 16.3 成果与编辑
 
 - 只有项目拥有的真实 version_id 才能打开编辑页。
-- 保存 Word/Excel 后返回新 version_id，旧版本仍能查询。
+- 当前浏览器 Mock 的编辑、撤销/重做、查找替换、缩放、批注、表格行操作和报价重算均可真实操作；刷新只恢复
+  当前 `enterprise_id + user_id + project_id + deliverable_type + version_id` 的本地草稿，不串用其他账号、企业或成果。
+- Word 目录可编辑；正文标题变化后目录同步，点击目录能定位对应内容，页面预览可切换且不破坏编辑内容。
+- 网页 Mock 不修改 docx/xlsx 二进制；下载源文件时不会把本地草稿错误标记为已更新的 Office 文件。
+- 原生文档服务分别以 edit、comment、review 权限创建会话时，服务端和工具栏操作都符合权限范围；篡改 mode、
+  editor_config 或请求体不能越权。
+- 创建会话的响应与浏览器网络记录中不存在 callback_token、对象存储密钥、内部回调地址或可复用服务凭据。
+- 自动保存只在服务端检查点持久化后显示成功；本地缓存、断网或回调失败不会误报为云端已保存。
+- 保存 Word/Excel 后返回新 version_id，旧版本仍能查询；重复 complete 请求和重复供应商回调不会生成重复版本。
+- expected_version_id 已过期时返回 409 并保留可恢复检查点，不覆盖新版本，也不自动把基线切换到最新版。
 - 下载文件名、类型和版本与页面选中的成果一致。
-- 报价单保存后以接口返回金额为准，浏览器预览值不作为最终结果。
+- 点击“AI针对性修改”后，Word 当前选区或报价表当前单元格/整行的纯文本上下文写入页面底部项目助手输入框并
+  聚焦；不自动发送、不产生网络请求、不直接修改正文/表格。项目助手接口未接入时发送按钮禁用。
+- 生产 AI 建议先生成候选差异，用户可选择变更项；未经确认不修改文档，应用后能取得 audit_log_id，并能审计
+  生成、查看、应用/拒绝/撤销全过程。
+- 报价单保存后以接口返回金额为准，浏览器预览值不作为最终结果；金额字段以定点字符串传输，服务端确定性复算。
+- 历史报价、报价历史价和算法建议价在报价分析、报价单工作表和文档服务中始终只读，不存在新增、修改或删除
+  外部样本/只读字段的请求；确认应用建议价只写入用户报价字段。
 
 ### 16.4 错误与重试
 
@@ -754,6 +868,10 @@ saved 时响应必须包含 new_version_id，前端据此刷新地址或跳转�
 - 多个并发 401 只触发一次缓存清理与跳转；登录失败的 `INVALID_CREDENTIALS` 留在登录页。
 - 404 显示项目或成果不可访问，不加载默认 Demo 内容。
 - 409 提示数据已更新，允许刷新到最新 revision/version。
+- 编辑会话的 409 不自动重试；页面提供打开最新版、保留副本或导出检查点等明确恢复动作。
+- 保存/状态查询仅对网络错误、429、502、503、504 或 retryable=true 退避重试，并遵守 Retry-After；complete
+  重试复用同一 Idempotency-Key。
+- 会话 failed/expired 时区分是否存在服务端检查点；没有检查点时不得展示“已保存”或虚构可恢复版本。
 - 新建项目的 `deadline_at` 缺失、格式/时区错误或非未来时间均能映射到截止时间字段提示；日期时间控件
   打开、选择、键盘操作及关闭不触发无关接口。
 - 可重试任务错误展示重试入口；不可重试错误展示明确原因。

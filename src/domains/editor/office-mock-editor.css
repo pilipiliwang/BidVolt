@@ -335,7 +335,21 @@
 .office-review-items span strong { font-size: var(--font-size-sm); }
 .office-review-items span small { margin-top: 2px; color: #7b8798; font-size: var(--font-size-xs); }
 .office-review-items b { color: var(--office-green); font-size: 12px; }
-.office-review-rail > button { width: calc(100% - 26px); min-height: 42px; margin: 0 13px 13px; border: 0; border-radius: 7px; color: #fff; background: #9acdb4; font-weight: 700; }
+.office-review-rail > a {
+  display: flex;
+  width: calc(100% - 26px);
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 13px 13px;
+  border-radius: 7px;
+  color: #fff;
+  background: var(--office-green);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.office-review-rail > a:hover { background: #08764f; }
 
 .office-quote-rail dl { margin: 0; padding: 8px 16px; }
 .office-quote-rail dl div { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #eef1f4; }
