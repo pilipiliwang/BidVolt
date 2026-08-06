@@ -149,7 +149,7 @@ export function ProjectOverviewPage({
           <div>
             <span className="bv-deliverables__title-icon"><FileCheck2 aria-hidden="true" size={24} /></span>
             <div>
-              <h1 id="deliverables-title">招标文件成果</h1>
+              <h1 id="deliverables-title">标书成果预览</h1>
               <p><span>从项目材料到最终交付</span> · 所有成果读取当前项目冻结快照</p>
             </div>
           </div>

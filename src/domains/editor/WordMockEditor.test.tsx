@@ -22,6 +22,7 @@ function renderEditor(overrides: Partial<React.ComponentProps<typeof WordMockEdi
 }
 
 function selectText(text: Text, start: number, end: number) {
+  text.parentElement?.closest<HTMLElement>('[contenteditable="true"]')?.focus();
   const range = document.createRange();
   range.setStart(text, start);
   range.setEnd(text, end);
@@ -154,17 +155,50 @@ describe('WordMockEditor', () => {
     expect(onSendSelectionToAssistant).toHaveBeenCalledOnce();
     expect(onSendSelectionToAssistant).toHaveBeenCalledWith('需要针对修改');
     expect(editor.innerHTML).toBe(before);
+
+    editor.blur();
+    await user.click(screen.getByRole('button', { name: 'AI针对性修改' }));
+    expect(onSendSelectionToAssistant).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: '取消AI选取' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('does not invoke the AI assistant callback when there is no text selection', async () => {
+  it('enters AI selection mode and automatically sends a preview selection', async () => {
     const user = userEvent.setup();
     const onSendSelectionToAssistant = vi.fn();
     renderEditor({ onSendSelectionToAssistant });
+    const editor = screen.getByRole('textbox', { name: '技术标文档内容' });
+    editor.innerHTML = '<p>请优化这一段技术方案</p>';
+    fireEvent.input(editor);
 
-    await user.click(screen.getByRole('button', { name: 'AI针对性修改' }));
+    const action = screen.getByRole('button', { name: 'AI针对性修改' });
+    await user.click(action);
 
     expect(onSendSelectionToAssistant).not.toHaveBeenCalled();
-    expect(screen.getByText('请先选择要针对性修改的内容')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '取消AI选取' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/AI 选取已开启：在文档中拖动选择文字/)).toBeInTheDocument();
+
+    const text = editor.querySelector('p')?.firstChild as Text;
+    selectText(text, 3, 8);
+    fireEvent.mouseUp(editor);
+
+    expect(onSendSelectionToAssistant).toHaveBeenCalledOnce();
+    expect(onSendSelectionToAssistant).toHaveBeenCalledWith('这一段技术');
+    expect(screen.getByRole('button', { name: 'AI针对性修改' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/AI 选取已开启：在文档中拖动选择文字/)).not.toBeInTheDocument();
+  });
+
+  it('cancels AI selection mode with Escape without sending content', async () => {
+    const user = userEvent.setup();
+    const onSendSelectionToAssistant = vi.fn();
+    renderEditor({ onSendSelectionToAssistant });
+    const editor = screen.getByRole('textbox', { name: '技术标文档内容' });
+
+    await user.click(screen.getByRole('button', { name: 'AI针对性修改' }));
+    fireEvent.keyDown(editor, { key: 'Escape' });
+
+    expect(onSendSelectionToAssistant).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'AI针对性修改' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('已取消 AI 针对性选取。')).toBeInTheDocument();
   });
 
   it('truncates a 4001-character AI selection to 4000 characters with an explicit notice', async () => {

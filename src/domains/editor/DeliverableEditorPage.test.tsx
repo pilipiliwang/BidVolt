@@ -87,6 +87,7 @@ describe('DeliverableEditorPage', () => {
     const editor = screen.getByRole('textbox', { name: '技术标文档内容' });
     editor.innerHTML = '<p>设备供货范围与实施计划</p>';
     fireEvent.input(editor);
+    editor.focus();
     const text = editor.querySelector('p')?.firstChild;
     expect(text).toBeInstanceOf(Text);
     const range = document.createRange();
@@ -106,6 +107,43 @@ describe('DeliverableEditorPage', () => {
       '请针对以下选中内容进行修改：\n设备供货范围\n\n修改要求：',
     );
     expect(editor).toHaveTextContent('设备供货范围与实施计划');
+  });
+
+  it('activates preview selection first and fills the assistant when the user finishes selecting', async () => {
+    render(
+      <DeliverableEditorPage
+        deliverableId="business"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        materials={projectMaterials}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="business-v8"
+      />,
+    );
+
+    const editor = screen.getByRole('textbox', { name: '商务标文档内容' });
+    editor.innerHTML = '<p>商务条款响应与交付承诺</p>';
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'AI针对性修改' }));
+    expect(screen.getByRole('button', { name: '取消AI选取' })).toHaveAttribute('aria-pressed', 'true');
+
+    const text = editor.querySelector('p')?.firstChild;
+    expect(text).toBeInstanceOf(Text);
+    const range = document.createRange();
+    range.setStart(text as Text, 0);
+    range.setEnd(text as Text, 6);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    fireEvent.mouseUp(editor);
+
+    const assistantInput = screen.getByRole('textbox', { name: '向项目助手提问' });
+    await waitFor(() => expect(assistantInput).toHaveFocus());
+    expect(assistantInput).toHaveValue(
+      '请针对以下选中内容进行修改：\n商务条款响应\n\n修改要求：',
+    );
+    expect(editor).toHaveTextContent('商务条款响应与交付承诺');
   });
 
   it('edits a user quote cell and recalculates its row and total', async () => {

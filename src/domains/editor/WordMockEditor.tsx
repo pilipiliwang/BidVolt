@@ -103,6 +103,7 @@ export function WordMockEditor({
   const [fontFamily, setFontFamily] = useState('SimSun, "Songti SC", serif');
   const [fontSize, setFontSize] = useState('16px');
   const [announcement, setAnnouncement] = useState('');
+  const [aiSelectionMode, setAiSelectionMode] = useState(false);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -313,6 +314,14 @@ export function WordMockEditor({
   };
 
   const handleKeyboardShortcut = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' && aiSelectionMode) {
+      event.preventDefault();
+      setAiSelectionMode(false);
+      savedRangeRef.current = null;
+      window.getSelection()?.removeAllRanges();
+      setAnnouncement('已取消 AI 针对性选取。');
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
     const target = event.target;
@@ -524,24 +533,58 @@ export function WordMockEditor({
     setAnnouncement('批注已删除，原文已保留。');
   };
 
-  const sendSelectionToAssistant = () => {
-    const range = restoreEditorRange(editorRef.current, savedRangeRef, false);
+  const fillSelectionToAssistant = () => {
+    const editor = editorRef.current;
+    const activeElement = document.activeElement;
+    const editorHasFocus = Boolean(
+      editor && activeElement && (activeElement === editor || editor.contains(activeElement)),
+    );
+    const selection = window.getSelection();
+    const directRange = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const range = editorHasFocus && editor && directRange && isRangeInsideEditor(editor, directRange) && !directRange.collapsed
+      ? directRange.cloneRange()
+      : null;
     const fullSelection = range?.toString().trim() ?? '';
-    if (!fullSelection) {
-      setAnnouncement('请先选择要针对性修改的内容');
-      return;
-    }
+    if (!fullSelection) return false;
+    savedRangeRef.current = range?.cloneRange() ?? null;
     if (!onSendSelectionToAssistant) {
       setAnnouncement('AI助手连接暂不可用，请稍后重试。');
-      return;
+      return false;
     }
     const selectedText = fullSelection.slice(0, MAX_ASSISTANT_SELECTION_LENGTH);
+    setAiSelectionMode(false);
     onSendSelectionToAssistant(selectedText);
     setAnnouncement(
       fullSelection.length > MAX_ASSISTANT_SELECTION_LENGTH
         ? '选区较长，已截取前4000字填入项目助手输入框。'
         : '已填入项目助手输入框，请补充修改要求。',
     );
+    return true;
+  };
+
+  const handleAiSelectionButton = () => {
+    if (aiSelectionMode) {
+      setAiSelectionMode(false);
+      savedRangeRef.current = null;
+      window.getSelection()?.removeAllRanges();
+      setAnnouncement('已取消 AI 针对性选取。');
+      return;
+    }
+    if (fillSelectionToAssistant()) return;
+
+    savedRangeRef.current = null;
+    window.getSelection()?.removeAllRanges();
+    setAiSelectionMode(true);
+    editorRef.current?.focus({ preventScroll: true });
+    setAnnouncement('AI 选取已开启，请在预览文件中拖动选择要修改的文字。');
+  };
+
+  const handleEditorSelectionComplete = () => {
+    rememberCurrentSelection(editorRef.current, savedRangeRef);
+    if (!aiSelectionMode) return;
+    if (!fillSelectionToAssistant()) {
+      setAnnouncement('请在预览文件中拖动选择文字，松开后将自动填入下方输入框。');
+    }
   };
 
   const handleEditorInput = () => {
@@ -737,9 +780,11 @@ export function WordMockEditor({
             className="office-editor-toolbar__ai"
             type="button"
             onMouseDown={holdEditorSelection}
-            onClick={sendSelectionToAssistant}
+            aria-pressed={aiSelectionMode}
+            title={aiSelectionMode ? '取消 AI 针对性选取' : '选取预览内容并填入项目助手'}
+            onClick={handleAiSelectionButton}
           >
-            <Sparkles aria-hidden="true" size={16} /> AI针对性修改
+            <Sparkles aria-hidden="true" size={16} /> {aiSelectionMode ? '取消AI选取' : 'AI针对性修改'}
           </button>
           <button
             aria-label="查找替换"
@@ -789,8 +834,13 @@ export function WordMockEditor({
         </section>
       ) : null}
 
-      <div className={`word-editor-v2__workspace${sidePanel ? ' word-editor-v2__workspace--with-panel' : ''}`}>
+      <div className={`word-editor-v2__workspace${sidePanel ? ' word-editor-v2__workspace--with-panel' : ''}${aiSelectionMode ? ' word-editor-v2__workspace--ai-selecting' : ''}`}>
         <div className="office-word-stage word-editor-v2__stage">
+          {aiSelectionMode ? (
+            <div className="word-editor-v2__ai-selection-hint" role="status">
+              AI 选取已开启：在文档中拖动选择文字，松开后自动填入下方输入框；按 Esc 取消。
+            </div>
+          ) : null}
           <article
             ref={editorRef}
             aria-label={`${isTechnical ? '技术标' : '商务标'}文档内容`}
@@ -800,8 +850,8 @@ export function WordMockEditor({
             role="textbox"
             suppressContentEditableWarning
             onInput={handleEditorInput}
-            onKeyUp={() => rememberCurrentSelection(editorRef.current, savedRangeRef)}
-            onMouseUp={() => rememberCurrentSelection(editorRef.current, savedRangeRef)}
+            onKeyUp={handleEditorSelectionComplete}
+            onMouseUp={handleEditorSelectionComplete}
             onPaste={handlePaste}
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleDrop}

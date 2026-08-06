@@ -57,6 +57,13 @@
   opacity: .36;
 }
 
+.word-editor-v2 .office-editor-toolbar__ai[aria-pressed='true'] {
+  border-color: #079653;
+  color: #fff;
+  background: #079653;
+  box-shadow: 0 0 0 3px rgb(7 150 83 / 14%);
+}
+
 .word-editor-v2 .office-editor-toolbar .office-editor-toolbar__save {
   margin-left: auto;
 }
@@ -124,8 +131,41 @@
 }
 
 .word-editor-v2__stage {
+  position: relative;
   min-width: 0;
   padding-top: 34px;
+}
+
+.word-editor-v2__ai-selection-hint {
+  position: sticky;
+  z-index: 4;
+  top: 10px;
+  width: fit-content;
+  max-width: calc(100% - 28px);
+  margin: -24px auto 10px;
+  padding: 7px 12px;
+  border: 1px solid #9fd8bc;
+  border-radius: 999px;
+  color: #05603a;
+  background: #ecfdf3;
+  box-shadow: 0 5px 16px rgb(16 24 40 / 10%);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.word-editor-v2__workspace--ai-selecting .office-word-page {
+  outline: 3px solid rgb(7 150 83 / 35%);
+  outline-offset: 4px;
+  cursor: text;
+  user-select: text;
+}
+
+.word-editor-v2__workspace--ai-selecting .office-word-page::selection,
+.word-editor-v2__workspace--ai-selecting .office-word-page *::selection {
+  color: #102a20;
+  background: #8ce5b8;
 }
 
 .word-editor-v2 .office-word-page {

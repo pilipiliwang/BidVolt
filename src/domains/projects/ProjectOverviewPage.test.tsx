@@ -52,6 +52,7 @@ describe('ProjectOverviewPage', () => {
       />,
     );
 
+    expect(screen.getByRole('heading', { level: 1, name: '标书成果预览' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '预览商务标文件' })).toHaveAttribute(
       'href',
       '/projects/BV-2026-018/deliverables/business/versions/business-v8',
