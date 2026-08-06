@@ -115,6 +115,9 @@ export function DeliverableEditorPage({
             {project.title} · {definition.title} · {versionId}
           </h1>
           <nav className="office-deliverable-tabs" aria-label="成果文件">
+            <AppLink to={`/projects/${encodeURIComponent(projectId)}/overview`}>
+              招标文件成果
+            </AppLink>
             {(Object.keys(mockDeliverables) as DeliverableRouteId[]).map((id) => (
               <AppLink
                 aria-current={id === deliverableId ? 'page' : undefined}

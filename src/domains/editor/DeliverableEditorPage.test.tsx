@@ -30,6 +30,12 @@ describe('DeliverableEditorPage', () => {
     );
 
     expect(screen.getByText('演示编辑器 · 不会回写真实 Office 文件')).toBeInTheDocument();
+    const deliverableTabs = within(
+      screen.getByRole('navigation', { name: '成果文件' }),
+    ).getAllByRole('link');
+    expect(deliverableTabs[0]).toHaveAccessibleName('招标文件成果');
+    expect(deliverableTabs[0]).toHaveAttribute('href', '/projects/BV-2026-018/overview');
+    expect(deliverableTabs[1]).toHaveAccessibleName('技术标');
     expect(screen.getByRole('link', { name: '技术标' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: '商务标' })).toHaveAttribute(
       'href',
