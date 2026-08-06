@@ -3,6 +3,10 @@
 本目录是网页端与后端协作的契约基线。`openapi.yaml` 描述 HTTP 接口，运行时 Zod Schema 位于
 `src/shared/api`，MSW 实现位于 `src/mocks`。三者必须同步演进。
 
+现有网页页面、用户动作、接口状态和最小字段需求见
+[`FRONTEND_API_REQUIREMENTS.md`](./FRONTEND_API_REQUIREMENTS.md)。该文档是前端需求清单，
+用于接口评审，不代表其中标记为“待新增”或“待扩展”的接口已经上线。
+
 Office 在线编辑、新建项目和项目文件入口的联调边界见
 [`FRONTEND_INTEGRATION.md`](./FRONTEND_INTEGRATION.md)。该文档中的待实现接口在进入
 `openapi.yaml` 前仅作为前后端评审草案。
