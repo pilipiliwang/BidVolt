@@ -7,7 +7,7 @@
 [`FRONTEND_API_REQUIREMENTS.md`](./FRONTEND_API_REQUIREMENTS.md)。该文档是前端需求清单，
 用于接口评审，不代表其中标记为“待新增”或“待扩展”的接口已经上线。
 
-Office 在线编辑、新建项目和项目文件入口的联调边界见
+登录会话、Office 在线编辑、新建项目和双域文件入口的联调边界见
 [`FRONTEND_INTEGRATION.md`](./FRONTEND_INTEGRATION.md)。该文档中的待实现接口在进入
 `openapi.yaml` 前仅作为前后端评审草案。
 
@@ -16,7 +16,8 @@ Office 在线编辑、新建项目和项目文件入口的联调边界见
 1. **不存在通用 `target` 上传。** 企业资料只能通过
    `POST /api/v1/enterprise-assets/uploads` 上传；当前招标材料只能通过
    `POST /api/v1/projects/{project_id}/materials/uploads` 上传。任一接口收到 `target`、另一个域的
-   ID 或“同时存入企业库”参数都必须拒绝。
+   ID 或“同时存入企业库”参数都必须拒绝。企业资料库页面和项目工作台“企业资料”页签可以调用同一个
+   企业资料上传接口；入口位置不会改变资料所属域。
 2. **不存在 AI 报价接口。** 不提供 `/quotes/ai-suggest`。报价数字仅来自后端确定性
    QuoteEngine；`insufficient_data` 响应不得包含建议价、价格区间或推荐价。
 3. **历史报价只读。** 前端只允许 `GET /quotes/history` 和
@@ -34,7 +35,8 @@ Office 在线编辑、新建项目和项目文件入口的联调边界见
 - 成功响应：`{ "code": "OK", "message": "", "data": ..., "meta": { "request_id": "..." } }`
 - 业务 ID 使用字符串，避免数据库 `BIGINT` 在 JavaScript 中丢失精度。
 - 金额、单价、比例使用十进制定点字符串，不使用 JavaScript 浮点数传输。
-- 时间使用带时区的 ISO 8601 字符串。
+- 时间使用带时区的 ISO 8601 字符串。`deadline_at` 必须带 `Z` 或显式 UTC offset；无时区本地时间和仅日期
+  均为无效请求。
 - 前端不传 `enterprise_id`；租户只能由后端认证上下文确定。
 - POST/PUT/PATCH 等可重试写请求使用 `Idempotency-Key`。
 - 每个 OpenAPI 操作使用稳定且唯一的 `operationId`；生成 SDK、Mock 和查询键时不得另造名称。
@@ -53,6 +55,16 @@ Office 在线编辑、新建项目和项目文件入口的联调边界见
 
 企业资料事实纠正与 Requirement 确认/更新都是服务端写操作，必须形成新 revision；前端不得只在本地覆盖
 Agent 抽取结果。项目快照通过 `/projects/{project_id}/snapshots` 查询，快照 ID 必须与路径中的项目完全匹配。
+
+## 鉴权、企业域缓存与 UI 边界
+
+- `/login` 是公开路由；受保护路由初始化时通过 `GET /auth/session` 恢复会话。工作台左下角账户菜单通过
+  `POST /auth/logout` 退出。
+- 除 `POST /auth/login` 的凭据错误外，受保护接口的 401 会使当前会话和全部企业作用域缓存失效、断开 SSE，
+  并跳转登录页。只允许保留站内相对路径作为登录后回跳地址。
+- 企业资料库和项目工作台企业资料页签共享同一企业域查询。任一入口上传后同时刷新企业资料列表、facets、详情
+  和 ingestion 队列，不刷新项目材料查询，也不能生成项目 material ID。
+- 工作台网格同宽、全局字号、响应式断点、浏览器缩放适配及日期控件弹层均为前端行为，不新增后端接口。
 
 所有对象详情接口都要验证完整所属关系。未知 ID、其他企业的 ID、其他项目的 material/revision/snapshot，
 以及不属于当前上下文的 review run 或 quote calculation 一律返回 `404 RESOURCE_NOT_FOUND`，不得返回默认对象、
