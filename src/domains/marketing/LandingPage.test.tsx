@@ -44,5 +44,22 @@ describe('LandingPage', () => {
       'href',
       '#boundaries',
     );
+    expect(within(navigation).getByRole('link', { name: '联系我们' })).toHaveAttribute(
+      'href',
+      '#contact',
+    );
+  });
+
+  it('shows a scannable contact entry and a direct telephone action', () => {
+    render(<LandingPage />);
+
+    expect(screen.getByRole('heading', { name: '想进一步了解产品或安排试用？' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '拨打联系人电话 15312065105' })).toHaveAttribute(
+      'href',
+      'tel:15312065105',
+    );
+    expect(
+      screen.getByRole('img', { name: 'AI电网投标助手联系人二维码，包含电话15312065105' }),
+    ).toHaveAttribute('src', '/contact-qr.png');
   });
 });

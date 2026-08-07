@@ -14,6 +14,8 @@ import {
   History,
   Network,
   PencilLine,
+  PhoneCall,
+  QrCode,
   ShieldCheck,
   Sparkles,
   UploadCloud,
@@ -154,6 +156,7 @@ export function LandingPage() {
             <a href="#workflow">工作流程</a>
             <a href="#editor">在线编辑</a>
             <a href="#boundaries">数据边界</a>
+            <a href="#contact">联系我们</a>
           </nav>
 
           <div className="marketing-header__actions">
@@ -358,6 +361,51 @@ export function LandingPage() {
           </div>
         </section>
 
+        <section className="marketing-section marketing-contact" id="contact" aria-labelledby="contact-title">
+          <div className="marketing-container marketing-contact__inner">
+            <div className="marketing-contact__copy">
+              <span className="marketing-eyebrow">联系我们</span>
+              <h2 id="contact-title">想进一步了解产品或安排试用？</h2>
+              <p>
+                扫描右侧二维码保存联系人，或直接拨打电话沟通产品试用、业务场景与合作需求。
+              </p>
+              <a
+                className="marketing-contact__phone"
+                href="tel:15312065105"
+                aria-label="拨打联系人电话 15312065105"
+              >
+                <span className="marketing-contact__phone-icon" aria-hidden="true">
+                  <PhoneCall size={24} />
+                </span>
+                <span>
+                  <small>联系人电话</small>
+                  <strong>153 1206 5105</strong>
+                </span>
+              </a>
+              <span className="marketing-contact__hint">产品咨询 · 试用沟通 · 合作对接</span>
+            </div>
+
+            <figure className="marketing-contact__qr-card">
+              <div className="marketing-contact__qr-frame">
+                <img
+                  src="/contact-qr.png"
+                  alt="AI电网投标助手联系人二维码，包含电话15312065105"
+                  width="410"
+                  height="410"
+                  loading="lazy"
+                />
+              </div>
+              <figcaption>
+                <span aria-hidden="true"><QrCode size={24} /></span>
+                <span>
+                  <strong>扫码保存联系人</strong>
+                  <small>二维码包含联系人名称和电话号码</small>
+                </span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
         <section className="marketing-cta" aria-labelledby="marketing-cta-title">
           <div className="marketing-container marketing-cta__inner">
             <div>
@@ -383,6 +431,7 @@ export function LandingPage() {
             <a href="#capabilities">产品能力</a>
             <a href="#workflow">工作流程</a>
             <a href="#boundaries">数据边界</a>
+            <a href="#contact">联系我们</a>
             <AppLink to="/login">登录</AppLink>
           </nav>
           <span className="marketing-footer__note">网页端使用 · 无需安装客户端</span>
