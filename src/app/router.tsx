@@ -6,6 +6,7 @@ import {
 } from 'react';
 
 export type AppRoute =
+  | { name: 'landing' }
   | { name: 'login' }
   | { name: 'projects' }
   | { name: 'project-overview'; projectId: string }
@@ -46,7 +47,11 @@ export function matchRoute(pathname: string): AppRoute {
     return { name: 'login' };
   }
 
-  if (path === '/' || path === '/projects') {
+  if (path === '/') {
+    return { name: 'landing' };
+  }
+
+  if (path === '/projects') {
     return { name: 'projects' };
   }
 

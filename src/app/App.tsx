@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PricingCenter } from '../domains/pricing/PricingCenter';
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
 import { LoginPage } from '../domains/auth/LoginPage';
+import { LandingPage } from '../domains/marketing/LandingPage';
 import { DeliverableEditorPage } from '../domains/editor';
 import { HistoryPricesPage } from '../domains/history';
 import { ProjectListPage } from '../domains/projects/ProjectListPage';
@@ -52,7 +53,9 @@ export function App() {
   const session = demoSession;
   const defaultScopeKey = getProjectScopeKey(session.enterpriseId, defaultProjectId);
   const route = useUrlRoute();
-  const [isAuthenticated, setAuthenticated] = useState(() => route.name !== 'login');
+  const [isAuthenticated, setAuthenticated] = useState(
+    () => route.name !== 'login' && route.name !== 'landing',
+  );
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>(projectSummaries);
   const [enterpriseAssets, setEnterpriseAssets] = useState<
@@ -126,6 +129,8 @@ export function App() {
 
   const pageMeta = useMemo(() => {
     switch (route.name) {
+      case 'landing':
+        return { eyebrow: '电力行业投标智能工作台', title: '产品首页' };
       case 'login':
         return { eyebrow: 'AI电网投标助手', title: '登录' };
       case 'project-overview':
@@ -328,6 +333,10 @@ export function App() {
       setTaskDrawerProjectId(routeProjectId);
     }
   };
+
+  if (route.name === 'landing') {
+    return <LandingPage />;
+  }
 
   if (!isAuthenticated || route.name === 'login') {
     return (

@@ -30,6 +30,32 @@ describe('App web shell', () => {
     vi.restoreAllMocks();
   });
 
+  it('opens the public product site first, then enters login from the trial action', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/');
+    renderApp();
+
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /从招标材料到标书成果.*让每一步都有依据/,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: '主导航' })).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('link', { name: /立即试用/ })[0]);
+
+    expect(window.location.pathname).toBe('/login');
+    expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('邮箱'), 'manager@example.com');
+    await user.type(screen.getByLabelText('密码'), 'safe-password');
+    await user.click(screen.getByRole('button', { name: '登录' }));
+
+    expect(window.location.pathname).toBe('/projects');
+    expect(screen.getByRole('button', { name: '新增项目' })).toBeInTheDocument();
+  });
+
   it('renders and filters the project list', async () => {
     const user = userEvent.setup();
     renderApp();

@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { deliverableEditorPath, matchRoute } from './router';
 
 describe('matchRoute', () => {
+  it('keeps the public product landing page separate from the project workspace', () => {
+    expect(matchRoute('/')).toEqual({ name: 'landing' });
+    expect(matchRoute('/projects')).toEqual({ name: 'projects' });
+  });
+
   it('separates enterprise and project-scoped domains', () => {
     expect(matchRoute('/enterprise-assets')).toEqual({ name: 'enterprise-assets' });
     expect(matchRoute('/projects/BV-2026-018/materials')).toEqual({
