@@ -59,7 +59,7 @@ describe('LandingPage', () => {
       'tel:15312065105',
     );
     expect(
-      screen.getByRole('img', { name: 'AI电网投标助手联系人二维码，包含电话15312065105' }),
+      screen.getByRole('img', { name: 'AI电网投标助手联系人微信二维码' }),
     ).toHaveAttribute('src', '/contact-qr.png');
   });
 });

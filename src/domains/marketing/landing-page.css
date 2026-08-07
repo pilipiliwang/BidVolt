@@ -272,7 +272,7 @@
 .marketing-contact__hint { display: block; margin-top: 14px; color: #718078; font-size: 12px; }
 .marketing-contact__qr-card { justify-self: end; width: 100%; padding: 22px; margin: 0; border: 1px solid #d7e7df; border-radius: 24px; background: #fff; box-shadow: 0 25px 65px rgb(5 67 43 / 12%); }
 .marketing-contact__qr-frame { padding: 14px; border: 1px solid #e2ebe6; border-radius: 17px; background: #fff; }
-.marketing-contact__qr-frame img { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.marketing-contact__qr-frame img { display: block; width: 100%; height: auto; }
 .marketing-contact__qr-card figcaption { display: flex; align-items: center; gap: 12px; padding: 18px 4px 2px; }
 .marketing-contact__qr-card figcaption > span:first-child { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border-radius: 12px; color: #087b49; background: #e9f7ef; }
 .marketing-contact__qr-card figcaption > span:last-child { display: grid; gap: 4px; }

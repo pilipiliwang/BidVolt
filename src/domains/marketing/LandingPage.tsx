@@ -367,7 +367,7 @@ export function LandingPage() {
               <span className="marketing-eyebrow">联系我们</span>
               <h2 id="contact-title">想进一步了解产品或安排试用？</h2>
               <p>
-                扫描右侧二维码保存联系人，或直接拨打电话沟通产品试用、业务场景与合作需求。
+                扫描右侧微信二维码联系，或直接拨打电话沟通产品试用、业务场景与合作需求。
               </p>
               <a
                 className="marketing-contact__phone"
@@ -389,17 +389,17 @@ export function LandingPage() {
               <div className="marketing-contact__qr-frame">
                 <img
                   src="/contact-qr.png"
-                  alt="AI电网投标助手联系人二维码，包含电话15312065105"
-                  width="410"
-                  height="410"
+                  alt="AI电网投标助手联系人微信二维码"
+                  width="678"
+                  height="664"
                   loading="lazy"
                 />
               </div>
               <figcaption>
                 <span aria-hidden="true"><QrCode size={24} /></span>
                 <span>
-                  <strong>扫码保存联系人</strong>
-                  <small>二维码包含联系人名称和电话号码</small>
+                  <strong>扫码添加微信</strong>
+                  <small>也可直接拨打 153 1206 5105</small>
                 </span>
               </figcaption>
             </figure>
