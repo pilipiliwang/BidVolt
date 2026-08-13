@@ -27,9 +27,9 @@ type DeliverableEditorPageProps = {
   draftScopeId: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
-  onAssistantSend?: (value: string) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantSend?: (value: string) => void | Promise<void>;
   onSave?: (payload: OfficeEditorSavePayload) => Promise<void> | void;
   project?: ProjectSummary;
   projectId: string;

@@ -69,9 +69,9 @@ const riskLabel = (finding: ReviewFinding) => {
 type ReviewCenterProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAddFiles: (files: File[]) => void;
-  onAssistantSend?: (value: string) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles: (files: File[]) => void | Promise<void>;
+  onAssistantSend?: (value: string) => void | Promise<void>;
   projectId?: string;
   providers: ReviewProvider[];
   run: ReviewRunView;
@@ -431,7 +431,7 @@ type ReviewImpactProps = {
   selectedProviderId: string;
   onRun: () => Promise<void>;
   onSelect: (id: string) => void;
-  onAddFiles: (files: File[]) => void;
+  onAddFiles: (files: File[]) => void | Promise<void>;
 };
 
 function ReviewImpact({
@@ -451,7 +451,26 @@ function ReviewImpact({
 }: ReviewImpactProps) {
   const supplementInputRef = useRef<HTMLInputElement>(null);
   const [staleSnapshotId, setStaleSnapshotId] = useState<string | null>(null);
+  const [supplementState, setSupplementState] = useState<{ error: string | null; pending: boolean }>({
+    error: null,
+    pending: false,
+  });
   const needsNewSnapshot = staleSnapshotId === run.projectSnapshotId;
+
+  const addSupplementFiles = async (files: File[]) => {
+    if (supplementState.pending) return;
+    setSupplementState({ error: null, pending: true });
+    try {
+      await onAddFiles(files);
+      setStaleSnapshotId(run.projectSnapshotId);
+      setSupplementState({ error: null, pending: false });
+    } catch (error) {
+      setSupplementState({
+        error: error instanceof Error && error.message ? error.message : '补充资料上传失败，请重试',
+        pending: false,
+      });
+    }
+  };
 
   return (
     <section className={styles.impact} aria-label="提升效果预估">
@@ -528,27 +547,29 @@ function ReviewImpact({
 
       <button
         className={styles.improveButton}
+        disabled={supplementState.pending}
         onClick={() => supplementInputRef.current?.click()}
         type="button"
       >
         <UploadCloud aria-hidden="true" size={20} />
-        上传项目补充资料
+        {supplementState.pending ? '正在上传补充资料…' : '上传项目补充资料'}
       </button>
       <input
         ref={supplementInputRef}
         aria-label="上传当前项目补充资料"
         className="bv-visually-hidden"
+        disabled={supplementState.pending}
         multiple
         type="file"
         onChange={(event) => {
           const files = Array.from(event.currentTarget.files ?? []);
-          if (files.length > 0) {
-            onAddFiles(files);
-            setStaleSnapshotId(run.projectSnapshotId);
-          }
           event.currentTarget.value = '';
+          if (files.length > 0) void addSupplementFiles(files);
         }}
       />
+      {supplementState.error ? (
+        <p className={styles.runError} role="alert">{supplementState.error}</p>
+      ) : null}
       {needsNewSnapshot ? (
         <p className={styles.runBlocked} role="status">
           补充资料已加入当前项目；请冻结新快照后重新运行评审。

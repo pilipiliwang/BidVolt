@@ -73,8 +73,8 @@ export interface ProjectMaterialUploadProps {
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAssistantSend?: (value: string) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantSend?: (value: string) => void | Promise<void>;
   onImportTenderNoticeUrl?: (
     projectId: string,
     url: string,

@@ -30,8 +30,16 @@ export type WorkspaceMaterial = {
 type ProjectSourceRailProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
+};
+
+type UploadScope = 'enterprise' | 'project';
+
+type UploadState = {
+  error: string | null;
+  pending: boolean;
+  scope: UploadScope;
 };
 
 export function ProjectSourceRail({
@@ -44,9 +52,34 @@ export function ProjectSourceRail({
   const panelId = useId();
   const enterpriseTabId = `${panelId}-enterprise-tab`;
   const projectTabId = `${panelId}-project-tab`;
+  const [uploadState, setUploadState] = useState<UploadState>({
+    error: null,
+    pending: false,
+    scope: 'project',
+  });
   const showingEnterprise = activeSource === 'enterprise';
+  const activeScope: UploadScope = showingEnterprise ? 'enterprise' : 'project';
+  const activeUploadState = uploadState.scope === activeScope ? uploadState : undefined;
   const visibleMaterials = showingEnterprise ? enterpriseMaterials : materials;
   const heading = showingEnterprise ? '企业资料' : '当前招标材料';
+
+  const uploadFiles = async (
+    scope: UploadScope,
+    files: File[],
+    handler: (selectedFiles: File[]) => void | Promise<void>,
+  ) => {
+    setUploadState({ error: null, pending: true, scope });
+    try {
+      await handler(files);
+      setUploadState({ error: null, pending: false, scope });
+    } catch (error) {
+      setUploadState({
+        error: error instanceof Error && error.message ? error.message : '文件上传失败，请重试',
+        pending: false,
+        scope,
+      });
+    }
+  };
 
   return (
     <aside className="bv-source-rail" aria-label="项目资料">
@@ -109,17 +142,23 @@ export function ProjectSourceRail({
         )}
 
         {showingEnterprise && onAddEnterpriseFiles ? (
-          <label className="bv-source-rail__upload">
+          <label
+            aria-busy={activeUploadState?.pending || undefined}
+            className="bv-source-rail__upload"
+          >
             <UploadCloud aria-hidden="true" size={21} />
-            <span>上传企业资料</span>
+            <span>{activeUploadState?.pending ? '正在上传企业资料…' : '上传企业资料'}</span>
             <input
               aria-label="上传企业资料并同步资料库"
+              disabled={activeUploadState?.pending}
               multiple
               type="file"
               onChange={(event) => {
                 const files = Array.from(event.currentTarget.files ?? []);
-                if (files.length > 0) onAddEnterpriseFiles(files);
                 event.currentTarget.value = '';
+                if (files.length > 0) {
+                  void uploadFiles('enterprise', files, onAddEnterpriseFiles);
+                }
               }}
             />
           </label>
@@ -129,17 +168,21 @@ export function ProjectSourceRail({
             title="当前页面未提供企业资料上传能力"
           />
         ) : onAddFiles ? (
-          <label className="bv-source-rail__upload">
+          <label
+            aria-busy={activeUploadState?.pending || undefined}
+            className="bv-source-rail__upload"
+          >
             <UploadCloud aria-hidden="true" size={21} />
-            <span>上传资料</span>
+            <span>{activeUploadState?.pending ? '正在上传资料…' : '上传资料'}</span>
             <input
               aria-label="补充上传当前项目资料"
+              disabled={activeUploadState?.pending}
               multiple
               type="file"
               onChange={(event) => {
                 const files = Array.from(event.currentTarget.files ?? []);
-                if (files.length > 0) onAddFiles(files);
                 event.currentTarget.value = '';
+                if (files.length > 0) void uploadFiles('project', files, onAddFiles);
               }}
             />
           </label>
@@ -149,6 +192,11 @@ export function ProjectSourceRail({
             title="当前页面未提供项目文件上传能力"
           />
         )}
+        {activeUploadState?.error ? (
+          <p className="bv-source-rail__upload-error" role="alert">
+            {activeUploadState.error}
+          </p>
+        ) : null}
       </div>
     </aside>
   );
@@ -185,10 +233,10 @@ type ProjectWorkbenchProps = {
   footerHint?: string;
   heightMode?: 'content' | 'fill';
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantDraftChange?: (value: string) => void;
-  onAssistantSend?: (value: string) => void;
+  onAssistantSend?: (value: string) => void | Promise<void>;
   rightRail: ReactNode;
 };
 
@@ -238,15 +286,25 @@ export function ProjectChatBar({
 }: {
   focusRequest?: number;
   hint: string;
-  onAddFiles?: (files: File[]) => void;
-  onSend?: (value: string) => void;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
+  onSend?: (value: string) => void | Promise<void>;
   onValueChange?: (value: string) => void;
   value?: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assistantInputRef = useRef<HTMLTextAreaElement>(null);
   const [localValue, setLocalValue] = useState('');
+  const [attachmentState, setAttachmentState] = useState<{ error: string | null; pending: boolean }>({
+    error: null,
+    pending: false,
+  });
+  const [sendState, setSendState] = useState<{ error: string | null; pending: boolean }>({
+    error: null,
+    pending: false,
+  });
   const currentValue = value ?? localValue;
+  const currentValueRef = useRef(currentValue);
+  currentValueRef.current = currentValue;
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -262,16 +320,46 @@ export function ProjectChatBar({
     onValueChange?.(nextValue);
   };
 
+  const addFiles = async (files: File[]) => {
+    if (!onAddFiles || attachmentState.pending) return;
+    setAttachmentState({ error: null, pending: true });
+    try {
+      await onAddFiles(files);
+      setAttachmentState({ error: null, pending: false });
+    } catch (error) {
+      setAttachmentState({
+        error: error instanceof Error && error.message ? error.message : '文件添加失败，请重试',
+        pending: false,
+      });
+    }
+  };
+
+  const sendMessage = async () => {
+    const nextValue = currentValue.trim();
+    if (!onSend || !nextValue || sendState.pending) return;
+    setSendState({ error: null, pending: true });
+    try {
+      await onSend(nextValue);
+      if (currentValueRef.current.trim() === nextValue) updateValue('');
+      setSendState({ error: null, pending: false });
+    } catch (error) {
+      setSendState({
+        error: error instanceof Error && error.message ? error.message : '项目助手请求失败，请重试',
+        pending: false,
+      });
+    }
+  };
+
   return (
     <div className="bv-project-chat" aria-label="项目助手输入">
       <button
-        disabled={!onAddFiles}
+        disabled={!onAddFiles || attachmentState.pending}
         onClick={() => fileInputRef.current?.click()}
         title={onAddFiles ? '添加当前项目文件' : '当前页面未提供项目文件上传能力'}
         type="button"
       >
         <Paperclip aria-hidden="true" size={21} />
-        添加文件
+        {attachmentState.pending ? '添加中…' : '添加文件'}
       </button>
       {onAddFiles ? (
         <input
@@ -282,8 +370,8 @@ export function ProjectChatBar({
           type="file"
           onChange={(event) => {
             const files = Array.from(event.currentTarget.files ?? []);
-            if (files.length > 0) onAddFiles(files);
             event.currentTarget.value = '';
+            if (files.length > 0) void addFiles(files);
           }}
         />
       ) : null}
@@ -297,20 +385,20 @@ export function ProjectChatBar({
           value={currentValue}
           onChange={(event) => updateValue(event.currentTarget.value)}
         />
+        {sendState.error || attachmentState.error ? (
+          <span className="bv-project-chat__error" role="alert">
+            {sendState.error ?? attachmentState.error}
+          </span>
+        ) : null}
       </label>
       <button
         className="bv-project-chat__send"
-        disabled={!onSend || !currentValue.trim()}
+        disabled={!onSend || !currentValue.trim() || sendState.pending}
         title={onSend ? '发送给项目助手' : '项目助手接口尚未接入'}
         type="button"
-        onClick={() => {
-          const nextValue = currentValue.trim();
-          if (!nextValue) return;
-          onSend?.(nextValue);
-          updateValue('');
-        }}
+        onClick={() => void sendMessage()}
       >
-        发送
+        {sendState.pending ? '发送中…' : '发送'}
         <Send aria-hidden="true" size={19} />
       </button>
     </div>

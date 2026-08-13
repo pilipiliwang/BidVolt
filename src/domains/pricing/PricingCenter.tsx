@@ -21,10 +21,10 @@ type PricingCenterProps = {
   calculation: QuoteCalculationView;
   enterpriseMaterials?: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
   onApply?: (strategyId: string) => Promise<void> | void;
-  onAssistantSend?: (value: string) => void;
+  onAssistantSend?: (value: string) => void | Promise<void>;
 };
 
 const focusableSelector = [

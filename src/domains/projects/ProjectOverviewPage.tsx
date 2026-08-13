@@ -24,9 +24,9 @@ type ProjectOverviewPageProps = {
   deliverables?: ProjectDeliverableView[];
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
-  onAssistantSend?: (value: string) => void;
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantSend?: (value: string) => void | Promise<void>;
   onOpenTasks: () => void;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;

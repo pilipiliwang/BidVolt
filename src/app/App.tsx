@@ -638,7 +638,10 @@ export function App() {
         setStatusMessage({ tone: 'info', text: response.reply });
       });
     } catch (error) {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '项目助手请求失败');
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        setError(error, '项目助手请求失败');
+        throw error;
+      }
     }
   };
 
@@ -845,9 +848,15 @@ export function App() {
           deliverables={deliverableCards}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
-          onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id).catch((error) => setError(error, '成果下载失败'))}
           onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
           overview={activeData?.overview}
@@ -864,8 +873,11 @@ export function App() {
         <ProjectMaterialsPage
           enterpriseMaterials={workspaceEnterprise}
           materials={activeMaterials}
-          onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onConfirmRequirement={handleConfirmRequirement}
           onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
           onOpenSnapshot={handleOpenSnapshot}
@@ -884,9 +896,15 @@ export function App() {
         <ReviewCenter
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
-          onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onRun={(providerId) => handleRunReview(route.projectId, providerId)}
           onSaveSuggestion={(_runId, findingId, suggestion) => handleSaveSuggestion(route.projectId, findingId, suggestion)}
           projectId={route.projectId}
@@ -901,10 +919,16 @@ export function App() {
           calculation={activeData?.quote ?? emptyQuote(route.projectId)}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
           onApply={(strategyId) => handleApplyQuote(route.projectId, strategyId)}
-          onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           samples={activeData?.quoteSamples ?? []}
         />
       ) : null}
@@ -921,9 +945,15 @@ export function App() {
           initialQuoteRows={route.deliverableId === 'quote' ? backendQuoteRows(editor.content.model) : undefined}
           isBackendConnected
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
-          onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onDownload={() => downloadDeliverable(route.projectId, route.deliverableId)}
           onSave={handleSaveEditor}
           project={activeProject}

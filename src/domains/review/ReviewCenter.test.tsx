@@ -439,4 +439,28 @@ describe('ReviewCenter', () => {
     ).toHaveAttribute('role', 'status');
     expect(screen.getByRole('button', { name: '请先冻结新快照' })).toBeDisabled();
   });
+
+  it('does not mark the snapshot stale when supplement upload fails', async () => {
+    const user = userEvent.setup();
+    const onAddFiles = vi.fn(() => Promise.reject(new Error('补充资料上传失败')));
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={onAddFiles}
+        onRun={() => undefined}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText('上传当前项目补充资料'),
+      new File(['supplement'], '失败补充.pdf', { type: 'application/pdf' }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('补充资料上传失败');
+    expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeEnabled();
+    expect(screen.queryByText(/请冻结新快照后重新运行评审/)).not.toBeInTheDocument();
+  });
 });

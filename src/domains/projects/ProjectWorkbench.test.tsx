@@ -9,6 +9,16 @@ import {
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
+
 const projectMaterials: WorkspaceMaterial[] = [
   { id: 'project-1', name: '当前招标文件.pdf', status: '已识别', tone: 'blue' },
 ];
@@ -127,6 +137,30 @@ describe('ProjectSourceRail', () => {
     expect(onAddFiles).not.toHaveBeenCalled();
   });
 
+  it('shows project upload pending and failure states without an unhandled rejection', async () => {
+    const user = userEvent.setup();
+    const upload = deferred<void>();
+    const onAddFiles = vi.fn(() => upload.promise);
+    render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        materials={projectMaterials}
+        onAddFiles={onAddFiles}
+      />,
+    );
+
+    const input = screen.getByLabelText('补充上传当前项目资料');
+    await user.upload(input, new File(['project'], '失败补遗.pdf', { type: 'application/pdf' }));
+
+    expect(screen.getByText('正在上传资料…')).toBeInTheDocument();
+    expect(input).toBeDisabled();
+
+    upload.reject(new Error('项目材料上传接口不可用'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('项目材料上传接口不可用');
+    expect(screen.getByLabelText('补充上传当前项目资料')).toBeEnabled();
+  });
+
   it('shows a dedicated empty state for the enterprise source', async () => {
     const user = userEvent.setup();
     render(<ProjectSourceRail enterpriseMaterials={[]} materials={projectMaterials} />);
@@ -204,5 +238,69 @@ describe('ProjectChatBar', () => {
 
     await user.click(screen.getByRole('button', { name: '发送' }));
     expect(onSend).toHaveBeenCalledWith('请优化选中内容');
+  });
+
+  it('keeps a question until the assistant request succeeds', async () => {
+    const user = userEvent.setup();
+    const send = deferred<void>();
+    render(<ProjectChatBar hint="提问" onSend={() => send.promise} />);
+
+    const input = screen.getByRole('textbox', { name: '向项目助手提问' });
+    await user.type(input, '请检查资格条件');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(input).toHaveValue('请检查资格条件');
+    expect(screen.getByRole('button', { name: '发送中…' })).toBeDisabled();
+
+    send.resolve();
+
+    expect(await screen.findByRole('button', { name: '发送' })).toBeDisabled();
+    expect(input).toHaveValue('');
+  });
+
+  it('retains a failed assistant question and displays the request error', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn(() => Promise.reject(new Error('助手服务暂不可用')));
+    render(<ProjectChatBar hint="提问" onSend={onSend} />);
+
+    const input = screen.getByRole('textbox', { name: '向项目助手提问' });
+    await user.type(input, '解释第二条评审建议');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('助手服务暂不可用');
+    expect(input).toHaveValue('解释第二条评审建议');
+    expect(screen.getByRole('button', { name: '发送' })).toBeEnabled();
+    expect(onSend).toHaveBeenCalledWith('解释第二条评审建议');
+  });
+
+  it('does not erase text entered while the previous question is still sending', async () => {
+    const user = userEvent.setup();
+    const send = deferred<void>();
+    render(<ProjectChatBar hint="提问" onSend={() => send.promise} />);
+
+    const input = screen.getByRole('textbox', { name: '向项目助手提问' });
+    await user.type(input, '第一个问题');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    await user.type(input, '，以及补充问题');
+
+    send.resolve();
+
+    expect(await screen.findByRole('button', { name: '发送' })).toBeEnabled();
+    expect(input).toHaveValue('第一个问题，以及补充问题');
+  });
+
+  it('shows attachment pending and failure states in the bottom bar', async () => {
+    const user = userEvent.setup();
+    const upload = deferred<void>();
+    render(<ProjectChatBar hint="提问" onAddFiles={() => upload.promise} />);
+
+    const input = screen.getByLabelText('添加当前项目文件');
+    await user.upload(input, new File(['attachment'], '失败附件.docx'));
+
+    expect(screen.getByRole('button', { name: '添加中…' })).toBeDisabled();
+    upload.reject(new Error('附件上传失败'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('附件上传失败');
+    expect(screen.getByRole('button', { name: '添加文件' })).toBeEnabled();
   });
 });
