@@ -1,5 +1,5 @@
 import { idPath, type BackendApiClient } from './client';
-import type { BackendId, JsonObject, ReviewItem, ReviewProvider, ReviewRun, ReviewRunDetail, ScoreSummary } from './types';
+import type { BackendId, JsonObject, ReviewItem, ReviewProvider, ReviewRun, ReviewRunDetail, ReviewRunRequest, ScoreSummary } from './types';
 
 export const createReviewApi = (client: BackendApiClient) => ({
   listProviders: () => client.request<ReviewProvider[]>('/review-providers'),
@@ -9,8 +9,10 @@ export const createReviewApi = (client: BackendApiClient) => ({
     client.request<{ items: ReviewRun[] }>(`/projects/${idPath(projectId)}/reviews`),
   getRun: (projectId: BackendId, runId: BackendId) =>
     client.request<ReviewRunDetail>(`/projects/${idPath(projectId)}/reviews/${idPath(runId)}`),
-  evaluate: (projectId: BackendId) =>
-    client.request<Record<string, unknown>>(`/projects/${idPath(projectId)}/evaluate`, { method: 'POST' }),
+  evaluate: (projectId: BackendId, body: ReviewRunRequest = {}) =>
+    client.request<Record<string, unknown>>(`/projects/${idPath(projectId)}/evaluate`, {
+      method: 'POST', body,
+    }),
   latestScore: (projectId: BackendId) =>
     client.request<ScoreSummary>(`/projects/${idPath(projectId)}/scores`),
   listItems: (projectId: BackendId, scoreId: BackendId) =>

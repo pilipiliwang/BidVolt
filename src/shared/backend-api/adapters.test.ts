@@ -215,10 +215,21 @@ describe('backend DTO adapters', () => {
         action_type: 'edit_deliverable',
         evidence: { exact_quote: '不应直接展示', source_version_id: 3 },
         status: 1,
+        confidence: 0.91,
+        ruleset_version: 'builtin-code-1.0',
       }],
     });
 
     expect(view.status).toBe('succeeded');
+    expect(view.findings[0]).toMatchObject({
+      category: '完整性',
+      currentScore: 0,
+      fullScore: 10,
+      improvableScore: 10,
+      riskLevel: 'high',
+      confidence: 0.91,
+      ruleVersion: 'builtin-code-1.0',
+    });
     expect(view.findings[0].evidence).toEqual({
       sourceLabel: '成果版本 #3',
       locator: '证据未通过前端冻结快照校验，定位内容已隐藏',

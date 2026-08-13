@@ -49,13 +49,21 @@ const providerLabels: Record<ReviewProviderType, string> = {
 
 const outcomeMeta: Record<
   ReviewFindingOutcome,
-  { label: string; icon: typeof CheckCircle2; tone: string; lift: string }
+  { label: string; icon: typeof CheckCircle2; tone: string }
 > = {
-  fail: { label: '必须处理', icon: CircleX, tone: styles.fail, lift: '+5.0 分' },
-  risk: { label: '需额外资料', icon: AlertTriangle, tone: styles.risk, lift: '+3.0 分' },
-  pass: { label: '已通过', icon: CheckCircle2, tone: styles.pass, lift: '+0.0 分' },
-  unknown: { label: '可优化内容', icon: CircleHelp, tone: styles.unknown, lift: '+2.0 分' },
-  abstain: { label: '可以策略加分', icon: Ban, tone: styles.abstain, lift: '+1.0 分' },
+  fail: { label: '必须处理', icon: CircleX, tone: styles.fail },
+  risk: { label: '需额外资料', icon: AlertTriangle, tone: styles.risk },
+  pass: { label: '已通过', icon: CheckCircle2, tone: styles.pass },
+  unknown: { label: '可优化内容', icon: CircleHelp, tone: styles.unknown },
+  abstain: { label: '可以策略加分', icon: Ban, tone: styles.abstain },
+};
+
+const formatScore = (value: number | undefined) => value === undefined ? '—' : value.toFixed(1);
+const riskLabel = (finding: ReviewFinding) => {
+  if (finding.riskLevel === 'high') return '高';
+  if (finding.riskLevel === 'medium') return '中';
+  if (finding.riskLevel === 'low') return '低';
+  return '未知';
 };
 
 type ReviewCenterProps = {
@@ -220,7 +228,7 @@ export function ReviewCenter({
         ) : null}
 
         <div className={styles.findings}>
-          {visibleFindings.map((finding, index) => {
+          {visibleFindings.map((finding) => {
             const meta = outcomeMeta[finding.outcome];
             const OutcomeIcon = meta.icon;
             const isEditing = activeSuggestionEdit?.findingId === finding.id;
@@ -278,10 +286,10 @@ export function ReviewCenter({
                     {finding.evidence.verification === 'missing' ? ' · 未提供可核验的证据' : null}
                   </small>
                 </div>
-                <strong className={styles.currentScore}>{finding.outcome === 'pass' ? '5.0 / 5' : `${index + 1}.0 / 5`}</strong>
-                <strong className={styles.lift}>{meta.lift}</strong>
+                <strong className={styles.currentScore}>{formatScore(finding.currentScore)} / {formatScore(finding.fullScore)}</strong>
+                <strong className={styles.lift}>{finding.improvableScore === undefined ? '—' : `+${finding.improvableScore.toFixed(1)} 分`}</strong>
                 <span className={styles.reference}>规则 {finding.ruleVersion}<small>置信度 {finding.confidence == null ? '未知' : `${Math.round(finding.confidence * 100)}%`}</small></span>
-                <span className={`${styles.riskLevel} ${meta.tone}`}>{finding.outcome === 'fail' || finding.outcome === 'risk' ? '高' : finding.outcome === 'pass' ? '低' : '中'}</span>
+                <span className={`${styles.riskLevel} ${meta.tone}`}>{riskLabel(finding)}</span>
                 <button
                   aria-label={`编辑建议：${finding.title}`}
                   className={styles.modifyButton}

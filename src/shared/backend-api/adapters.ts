@@ -500,11 +500,18 @@ const backendFinding = (
 ): ReviewRunView['findings'][number] => {
   const evidence = asRecord(item.evidence);
   const sourceVersion = evidence?.source_version_id;
+  const risk = asNumber(item.risk_level);
   return {
     id: String(item.item_id),
+    category: item.category,
     title: item.problem_description,
     outcome: findingOutcome(item),
-    ruleVersion: providerVersion || '规则版本未提供',
+    ruleVersion: item.ruleset_version || providerVersion || '规则版本未提供',
+    confidence: item.confidence ?? undefined,
+    currentScore: item.got ?? undefined,
+    fullScore: item.full ?? undefined,
+    improvableScore: item.improvable ?? undefined,
+    riskLevel: risk === undefined ? undefined : risk >= 2 ? 'high' : risk >= 1 ? 'medium' : 'low',
     suggestion: item.effective_suggestion ?? item.suggestion ?? '请人工复核该评审项',
     evidence: evidence
       ? {

@@ -454,9 +454,9 @@ export function App() {
     }
   };
 
-  const handleRunReview = async (projectId: string) => {
+  const handleRunReview = async (projectId: string, providerId: string) => {
     try {
-      await backendApi.review.evaluate(projectId);
+      await backendApi.review.evaluate(projectId, { provider_id: providerId });
       await loadProject(projectId);
     } catch (error) {
       setError(error, '评审任务执行失败');
@@ -664,7 +664,7 @@ export function App() {
           onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
           onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
           onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
-          onRun={() => void handleRunReview(route.projectId)}
+          onRun={(providerId) => void handleRunReview(route.projectId, providerId)}
           onSaveSuggestion={(_runId, findingId, suggestion) => handleSaveSuggestion(route.projectId, findingId, suggestion)}
           projectId={route.projectId}
           providers={reviewProviders}

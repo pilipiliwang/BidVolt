@@ -15,10 +15,15 @@ export type ReviewEvidenceVerification = 'verified' | 'hidden_unverified' | 'mis
 
 export type ReviewFinding = {
   id: string;
+  category?: string;
   title: string;
   outcome: ReviewFindingOutcome;
   ruleVersion: string;
   confidence?: number;
+  currentScore?: number;
+  fullScore?: number;
+  improvableScore?: number;
+  riskLevel?: 'low' | 'medium' | 'high';
   suggestion: string;
   evidence: {
     sourceLabel: string;

@@ -66,6 +66,10 @@ const run: ReviewRunView = {
       outcome: 'risk',
       ruleVersion: 'rule-18',
       confidence: 0.96,
+      currentScore: 3,
+      fullScore: 5,
+      improvableScore: 2,
+      riskLevel: 'high',
       suggestion: '请确认资质证书在投标截止日仍然有效。',
       evidence: {
         sourceLabel: '招标文件',
@@ -94,6 +98,8 @@ describe('ReviewCenter', () => {
     expect(screen.getByText('snap_20260805')).toBeInTheDocument();
     expect(screen.getByText('评审结果不会直接修改成果')).toBeInTheDocument();
     expect(screen.getByText('第 12 页 · 资格条件 3.1')).toBeInTheDocument();
+    expect(screen.getByText('3.0 / 5.0')).toBeInTheDocument();
+    expect(screen.getByText('+2.0 分')).toBeInTheDocument();
     expect(screen.getByText(/共识别 1 项可提升点/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /商务标-投标函/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /商务标文件/ })).not.toBeInTheDocument();

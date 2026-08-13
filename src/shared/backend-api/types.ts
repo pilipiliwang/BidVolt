@@ -103,12 +103,13 @@ export type ReviewItem = {
   item_id: number; category: string; problem_description: string; got: number | null; full: number | null;
   improvable: number | null; risk_level: string | null; suggestion: string | null;
   suggestion_override: string | null; effective_suggestion: string | null; action_type: string | null;
-  evidence: JsonValue | null; status: number;
+  evidence: JsonValue | null; status: number; confidence?: number | null; ruleset_version?: string | null;
 };
 export type ReviewRunDetail = {
   run_id: number; status: number; snapshot_id: number | null; provider: ReviewProvider | null;
   score: JsonObject | null; items: ReviewItem[];
 };
+export type ReviewRunRequest = { provider_id?: BackendId };
 
 export type ScoreSummary = {
   score_id: number;
