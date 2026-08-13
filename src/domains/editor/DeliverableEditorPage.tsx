@@ -5,7 +5,7 @@ import {
   ShieldCheck,
   TrendingUp,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AppLink,
@@ -45,6 +45,8 @@ type DeliverableEditorPageProps = {
   editorContent?: unknown;
   isBackendConnected?: boolean;
   initialQuoteRows?: QuoteSheetRow[];
+  isReadOnly?: boolean;
+  readOnlyReason?: string;
   reviewOverview?: DeliverableReviewOverview;
 };
 
@@ -88,6 +90,8 @@ export function DeliverableEditorPage({
   editorContent,
   isBackendConnected = false,
   initialQuoteRows: initialBackendQuoteRows,
+  isReadOnly = false,
+  readOnlyReason,
   reviewOverview,
 }: DeliverableEditorPageProps) {
   const project = projectOverride;
@@ -107,6 +111,7 @@ export function DeliverableEditorPage({
   const [saveState, setSaveState] = useState<SaveState>('ready');
   const [assistantDraft, setAssistantDraft] = useState('');
   const [assistantFocusRequest, setAssistantFocusRequest] = useState(0);
+  const saveFlightRef = useRef<Promise<void> | null>(null);
   const resolvedVersions = useMemo(
     () => ({ ...versionIds, [deliverableId]: versionId }),
     [deliverableId, versionId, versionIds],
@@ -130,16 +135,28 @@ export function DeliverableEditorPage({
   }
 
   const persist = async (payload: OfficeEditorSavePayload) => {
-    setSaveState('saving');
-    try {
-      await onSave?.(payload);
-      if (payload.kind === 'spreadsheet') {
-        saveQuoteRows(quoteDraftKey, quoteRows);
-      }
-      setSaveState('saved');
-    } catch {
+    if (isReadOnly) {
       setSaveState('error');
+      return;
     }
+    if (saveFlightRef.current) return saveFlightRef.current;
+    setSaveState('saving');
+    const saveFlight = (async () => {
+      try {
+        await onSave?.(payload);
+        if (payload.kind === 'spreadsheet') {
+          saveQuoteRows(quoteDraftKey, quoteRows);
+        }
+        setSaveState('saved');
+      } catch {
+        setSaveState('error');
+      }
+    })();
+    const trackedFlight = saveFlight.finally(() => {
+      if (saveFlightRef.current === trackedFlight) saveFlightRef.current = null;
+    });
+    saveFlightRef.current = trackedFlight;
+    return trackedFlight;
   };
 
   const total = quoteRows.reduce(
@@ -212,9 +229,19 @@ export function DeliverableEditorPage({
           <div className="office-editor-meta">
             <span><strong>{definition.title}</strong> · {versionId}</span>
             <span className="office-editor-demo-badge">
-              {isBackendConnected ? '后端编辑会话 · 保存将创建受控成果版本' : '在线编辑器 · 保存到当前成果版本'}
+              {isReadOnly
+                ? '只读预览 · 不会创建成果版本'
+                : isBackendConnected
+                  ? '后端编辑会话 · 保存将创建受控成果版本'
+                  : '在线编辑器 · 保存到当前成果版本'}
             </span>
           </div>
+
+          {isReadOnly ? (
+            <div className="office-editor-readonly" role="note">
+              {readOnlyReason ?? '当前成果以只读方式打开，仅支持查看和下载。'}
+            </div>
+          ) : null}
 
           <div className={`office-editor-save-state office-editor-save-state--${saveState}`} role="status">
             {saveStateLabel(saveState)}
@@ -230,6 +257,7 @@ export function DeliverableEditorPage({
               downloadHref={downloadHref}
               downloadLabel={downloadLabel ?? `下载${definition.title}`}
               onDownload={onDownload}
+              readOnly={isReadOnly}
               onSendSelectionToAssistant={sendSelectionToAssistant}
               rows={quoteRows}
               onRowsChange={(rows) => {
@@ -254,6 +282,7 @@ export function DeliverableEditorPage({
               downloadHref={downloadHref}
               downloadLabel={downloadLabel ?? `下载${definition.title}`}
               onDownload={onDownload}
+              readOnly={isReadOnly}
               storageKey={officeDraftStorageKey(draftScopeId, deliverableId, versionId)}
               initialHtml={extractWordHtml(editorContent)}
               onDirty={() => setSaveState('dirty')}
@@ -321,8 +350,24 @@ function wordHtmlToBackendContent(html: string) {
 
 export function toBackendEditorContent(payload: OfficeEditorSavePayload) {
   if (payload.kind === 'word') return wordHtmlToBackendContent(payload.content);
+  const rows = payload.rows.map((row) => ({ ...row }));
   return {
-    rows: payload.rows,
+    rows,
+    sheets: [{
+      name: '报价明细',
+      rows: [
+        ['物料编码', '物料名称', '规格型号', '数量', '单位', '招标限价', '用户报价'],
+        ...rows.map((row) => [
+          row.code,
+          row.name,
+          row.specification,
+          row.quantity,
+          row.unit,
+          row.tenderPrice,
+          row.userPrice,
+        ]),
+      ],
+    }],
     total: payload.total,
   };
 }
@@ -330,6 +375,10 @@ export function toBackendEditorContent(payload: OfficeEditorSavePayload) {
 export function backendQuoteRows(content: unknown): QuoteSheetRow[] | undefined {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return undefined;
   const model = content as Record<string, unknown>;
+  if (Array.isArray(model.rows)) {
+    const directRows = model.rows.flatMap((candidate, index) => quoteRowFromRecord(candidate, index));
+    if (directRows.length > 0) return directRows;
+  }
   const sheet = Array.isArray(model.sheets) && model.sheets[0] && typeof model.sheets[0] === 'object'
     ? (model.sheets[0] as Record<string, unknown>)
     : undefined;
@@ -337,25 +386,58 @@ export function backendQuoteRows(content: unknown): QuoteSheetRow[] | undefined 
   const dataRows = sheet.rows.slice(1).filter((row) => Array.isArray(row));
   const rows = dataRows.flatMap((rawRow, index) => {
     const values = rawRow as unknown[];
-    const name = typeof values[0] === 'string' ? values[0] : '';
-    const quantity = Number(values[1]);
-    const price = Number(values[2]);
+    const isExpandedFormat = values.length >= 7;
+    const code = typeof values[0] === 'string' ? values[0] : '';
+    const name = isExpandedFormat && typeof values[1] === 'string'
+      ? values[1]
+      : code;
+    const specification = isExpandedFormat && typeof values[2] === 'string'
+      ? values[2]
+      : '后端成果未提供规格';
+    const quantity = Number(values[isExpandedFormat ? 3 : 1]);
+    const unit = isExpandedFormat && typeof values[4] === 'string' ? values[4] : '项';
+    const tenderPrice = Number(values[isExpandedFormat ? 5 : 2]);
+    const userPrice = Number(values[isExpandedFormat ? 6 : 2]);
     if (!name || !Number.isFinite(quantity)) return [];
-    const validPrice = Number.isFinite(price) ? price : 0;
     return [{
       id: `backend-row-${index + 1}`,
-      code: name,
+      code: code || name,
       name,
-      specification: '后端成果未提供规格',
+      specification,
       quantity,
-      unit: '项',
-      tenderPrice: validPrice,
+      unit,
+      tenderPrice: Number.isFinite(tenderPrice) ? tenderPrice : 0,
       historyPrice: 0,
-      suggestedPrice: validPrice,
-      userPrice: validPrice,
+      suggestedPrice: Number.isFinite(userPrice) ? userPrice : 0,
+      userPrice: Number.isFinite(userPrice) ? userPrice : 0,
     }];
   });
   return rows.length > 0 ? rows : undefined;
+}
+
+function quoteRowFromRecord(candidate: unknown, index: number): QuoteSheetRow[] {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+  const row = candidate as Record<string, unknown>;
+  const code = typeof row.code === 'string' ? row.code : '';
+  const name = typeof row.name === 'string' ? row.name : code;
+  const specification = typeof row.specification === 'string' ? row.specification : '后端成果未提供规格';
+  const unit = typeof row.unit === 'string' ? row.unit : '项';
+  const quantity = Number(row.quantity);
+  const tenderPrice = Number(row.tenderPrice ?? row.tender_price);
+  const userPrice = Number(row.userPrice ?? row.user_price);
+  if (!name || !Number.isFinite(quantity)) return [];
+  return [{
+    id: typeof row.id === 'string' && row.id ? row.id : `backend-row-${index + 1}`,
+    code: code || name,
+    name,
+    specification,
+    quantity,
+    unit,
+    tenderPrice: Number.isFinite(tenderPrice) ? tenderPrice : 0,
+    historyPrice: 0,
+    suggestedPrice: Number.isFinite(userPrice) ? userPrice : 0,
+    userPrice: Number.isFinite(userPrice) ? userPrice : 0,
+  }];
 }
 
 function cloneQuoteRows(rows: readonly QuoteSheetRow[] = []) {

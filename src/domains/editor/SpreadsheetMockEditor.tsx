@@ -17,6 +17,7 @@ export type SpreadsheetEditorProps = {
   onRowsChange: (rows: QuoteSheetRow[]) => void;
   onSave: () => void;
   onSendSelectionToAssistant: (selection: string) => void;
+  readOnly?: boolean;
   rows: QuoteSheetRow[];
 };
 
@@ -132,6 +133,7 @@ export function SpreadsheetEditor({
   onRowsChange,
   onSave,
   onSendSelectionToAssistant,
+  readOnly = false,
   rows,
 }: SpreadsheetEditorProps) {
   const [editorRows, setEditorRows] = useState<QuoteSheetRow[]>(() => cloneRows(rows));
@@ -148,6 +150,10 @@ export function SpreadsheetEditor({
   const [notice, setNotice] = useState('');
   const [showSuggestionConfirm, setShowSuggestionConfirm] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [downloadState, setDownloadState] = useState<{ error: string | null; pending: boolean }>({
+    error: null,
+    pending: false,
+  });
 
   const rowsRef = useRef(editorRows);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -158,6 +164,20 @@ export function SpreadsheetEditor({
   const suggestionTriggerRef = useRef<HTMLButtonElement>(null);
   const suggestionCancelRef = useRef<HTMLButtonElement>(null);
   const restoreSuggestionFocusRef = useRef(false);
+
+  const download = async () => {
+    if (!onDownload || downloadState.pending) return;
+    setDownloadState({ error: null, pending: true });
+    try {
+      await onDownload();
+      setDownloadState({ error: null, pending: false });
+    } catch (error) {
+      setDownloadState({
+        error: error instanceof Error && error.message ? error.message : '文件下载失败，请重试',
+        pending: false,
+      });
+    }
+  };
 
   const publishRows = useCallback(
     (nextRows: QuoteSheetRow[]) => {
@@ -547,6 +567,7 @@ export function SpreadsheetEditor({
         aria-invalid={Boolean(validationErrors[key])}
         aria-label={inputLabel(row, field)}
         className={isNumeric ? 'office-sheet-cell-input office-sheet-cell-input--number' : 'office-sheet-cell-input'}
+        readOnly={readOnly}
         min={field === 'quantity' ? '0.01' : isNumeric ? '0' : undefined}
         step={isNumeric ? '0.01' : undefined}
         title={validationErrors[key]}
@@ -562,21 +583,22 @@ export function SpreadsheetEditor({
   return (
     <div className="office-sheet-editor office-sheet-editor-v2" ref={editorRef}>
       <div className="office-editor-toolbar office-sheet-toolbar" role="toolbar" aria-label="在线表格编辑工具栏">
-        <button aria-label="撤销" disabled={!canUndo} title="撤销（Ctrl+Z）" type="button" onClick={undo}>
+        <button aria-label="撤销" disabled={readOnly || !canUndo} title="撤销（Ctrl+Z）" type="button" onClick={undo}>
           <Undo2 aria-hidden="true" size={17} />
         </button>
-        <button aria-label="重做" disabled={!canRedo} title="重做（Ctrl+Y）" type="button" onClick={redo}>
+        <button aria-label="重做" disabled={readOnly || !canRedo} title="重做（Ctrl+Y）" type="button" onClick={redo}>
           <Redo2 aria-hidden="true" size={17} />
         </button>
         <span className="office-sheet-toolbar__divider" aria-hidden="true" />
-        <button type="button" onClick={addRow}>新增行</button>
-        <button disabled={!selectedRow} type="button" onClick={duplicateRow}>复制行</button>
-        <button disabled={!selectedRow} type="button" onClick={deleteRow}>删除选中行</button>
+        <button disabled={readOnly} type="button" onClick={addRow}>新增行</button>
+        <button disabled={readOnly || !selectedRow} type="button" onClick={duplicateRow}>复制行</button>
+        <button disabled={readOnly || !selectedRow} type="button" onClick={deleteRow}>删除选中行</button>
         <button aria-label="自动求和" title="对当前数值列或合价求和" type="button" onClick={calculateSum}>
           <Sigma aria-hidden="true" size={17} /> 自动求和
         </button>
         <button
           aria-pressed={freezeHeader}
+          disabled={readOnly}
           type="button"
           onClick={() => setFreezeHeader((current) => !current)}
         >
@@ -586,12 +608,13 @@ export function SpreadsheetEditor({
           className="office-editor-toolbar__ai"
           title="将选中的单元格或整行作为上下文填入页面底部项目助手输入框（不会自动提交）"
           type="button"
+          disabled={readOnly}
           onClick={sendSelectionToAssistant}
         >
           <Sparkles aria-hidden="true" size={16} /> AI针对性修改
         </button>
         <button
-          disabled={!canApplySuggestions}
+          disabled={readOnly || !canApplySuggestions}
           ref={suggestionTriggerRef}
           title="将算法建议单价批量写入用户报价"
           type="button"
@@ -600,8 +623,8 @@ export function SpreadsheetEditor({
           应用算法建议价
         </button>
         {onDownload ? (
-          <button aria-label={downloadLabel} title={downloadLabel} type="button" onClick={() => void onDownload()}>
-            <Download aria-hidden="true" size={16} /> 下载原始文件
+          <button aria-label={downloadLabel} disabled={downloadState.pending} title={downloadLabel} type="button" onClick={() => void download()}>
+            <Download aria-hidden="true" size={16} /> {downloadState.pending ? '下载中…' : '下载原始文件'}
           </button>
         ) : downloadHref ? (
           <a download aria-label={downloadLabel} href={downloadHref} title={downloadLabel}>
@@ -612,10 +635,12 @@ export function SpreadsheetEditor({
             <Download aria-hidden="true" size={16} /> 下载原始文件
           </button>
         )}
-        <button className="office-editor-toolbar__save" title="保存（Ctrl+S）" type="button" onClick={save}>
+        <button className="office-editor-toolbar__save" disabled={readOnly} title="保存（Ctrl+S）" type="button" onClick={save}>
           <Save aria-hidden="true" size={16} /> 保存修改
         </button>
       </div>
+
+      {downloadState.error ? <p className="office-download-error" role="alert">{downloadState.error}</p> : null}
 
       <div className="office-sheet-formula-bar" aria-label="名称和公式栏">
         <input aria-label="名称框" placeholder="单元格" readOnly value={selectedCoordinate} />
@@ -624,7 +649,7 @@ export function SpreadsheetEditor({
           aria-invalid={Boolean(selectedKey && validationErrors[selectedKey])}
           aria-label="公式栏"
           placeholder="选择单元格后可编辑内容"
-          readOnly={!selectedCell || selectionMode === 'row' || !isEditableField(selectedCell.field)}
+          readOnly={readOnly || !selectedCell || selectionMode === 'row' || !isEditableField(selectedCell.field)}
           value={selectedValue}
           onBlur={() => {
             if (selectedCell) finishCellEdit(selectedCell.rowId, selectedCell.field);

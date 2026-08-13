@@ -73,6 +73,7 @@ import { mergeProjectPage, upsertProjectSummary } from './project-state';
 import { getEditorDraftScopeKey, type AppSession } from './session';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
+import { createEditorSaveGate } from './editor-save-gate';
 
 type ProjectData = {
   deliverables: Deliverable[];
@@ -97,7 +98,8 @@ type HistoryState = {
 type ActiveEditor = {
   content: DeliverableContent;
   deliverable: Deliverable;
-  session: EditorSession;
+  readOnlyReason?: string;
+  session?: EditorSession;
 };
 
 const emptyQuote = (projectId: string): QuoteCalculationView => ({
@@ -139,10 +141,13 @@ export function App() {
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [missingProjectId, setMissingProjectId] = useState<string | null>(null);
   const editorLoadKeyRef = useRef('');
+  const activeEditorRef = useRef<ActiveEditor | null>(null);
+  const editorSaveGateRef = useRef(createEditorSaveGate());
   const tenantGuardRef = useRef(createTenantGenerationGuard());
   const projectLoadGenerationRef = useRef(0);
   const routeProjectIdRef = useRef(routeProjectId);
   routeProjectIdRef.current = routeProjectId;
+  activeEditorRef.current = editor;
 
   const clearTenantDomainState = useCallback(() => {
     const empty = createEmptyTenantDomainState();
@@ -157,6 +162,8 @@ export function App() {
     setTaskDrawerProjectId(empty.taskDrawerProjectId);
     setSnapshotDetail(empty.snapshotDetail);
     setEditor(empty.editor);
+    activeEditorRef.current = null;
+    editorSaveGateRef.current.reset();
     setLoadingProjectId(empty.loadingProjectId);
     setMissingProjectId(null);
     setStatusMessage(empty.statusMessage);
@@ -714,13 +721,63 @@ export function App() {
       setEditor(null);
       return;
     }
-    const [content, editorSession] = await Promise.all([
-      backendApi.deliverables.getVersion(deliverable.deliverable_id, version),
-      backendApi.editor.createSession(deliverable.deliverable_id),
-    ]);
-    tenantGuardRef.current.commit(generation, () => {
-      setEditor({ content, deliverable, session: editorSession });
-    });
+    const content = await backendApi.deliverables.getVersion(deliverable.deliverable_id, version);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    if (version !== deliverable.current_version_no) {
+      tenantGuardRef.current.commit(generation, () => {
+        setEditor({
+          content,
+          deliverable,
+          readOnlyReason: `当前打开的是历史版本 V${version}，仅支持预览和下载。请打开最新版本 V${deliverable.current_version_no} 进行编辑。`,
+        });
+      });
+      return;
+    }
+
+    try {
+      const editorSession = await backendApi.editor.createSession(deliverable.deliverable_id);
+      if (editorSession.base_version_no !== version || !editorSession.lease_token) {
+        if (editorSession.lease_token) {
+          await backendApi.editor.cancel(
+            deliverable.deliverable_id,
+            editorSession.session_id,
+            editorSession.lease_token,
+          ).catch(() => undefined);
+        }
+        tenantGuardRef.current.commit(generation, () => {
+          setEditor({
+            content,
+            deliverable,
+            readOnlyReason: '编辑会话版本或租约与当前成果不匹配，已切换为只读预览。请刷新后重试。',
+          });
+        });
+        return;
+      }
+      tenantGuardRef.current.commit(generation, () => {
+        setEditor({ content, deliverable, session: editorSession });
+      });
+    } catch (error) {
+      if (!(error instanceof BackendApiError) || error.status !== 409) throw error;
+      const listed = await backendApi.editor.list(deliverable.deliverable_id).catch(() => ({ items: [] }));
+      const existing = listed.items.find((sessionItem) =>
+        sessionItem.status === 1 && sessionItem.base_version_no === version,
+      );
+      const existingDetail = existing
+        ? await backendApi.editor.get(deliverable.deliverable_id, existing.session_id).catch(() => undefined)
+        : undefined;
+      const checkpoint = existingDetail?.checkpoint;
+      tenantGuardRef.current.commit(generation, () => {
+        setEditor({
+          content: checkpoint
+            ? { ...content, model: checkpoint }
+            : content,
+          deliverable,
+          readOnlyReason: existingDetail
+            ? '该成果已有进行中的编辑会话；后端未返回可恢复租约，已加载其最近检查点并切换为只读预览。'
+            : '该成果已有进行中的编辑会话，当前页面无法安全恢复租约，已切换为只读预览。',
+        });
+      });
+    }
   }, [projectData]);
 
   useEffect(() => {
@@ -741,34 +798,90 @@ export function App() {
       });
   }, [loadEditor, projectData, route, setError]);
 
-  const handleSaveEditor = async (payload: OfficeMockSavePayload) => {
+  const editorRouteKey = route.name === 'deliverable-editor'
+    ? `${route.projectId}:${route.deliverableId}:${route.versionId}`
+    : '';
+  useEffect(() => {
+    if (!editorRouteKey) return;
+    return () => {
+      const activeEditor = activeEditorRef.current;
+      activeEditorRef.current = null;
+      editorSaveGateRef.current.reset();
+      if (!activeEditor?.session?.lease_token) return;
+      void backendApi.editor.cancel(
+        activeEditor.deliverable.deliverable_id,
+        activeEditor.session.session_id,
+        activeEditor.session.lease_token,
+      ).catch(() => undefined);
+    };
+  }, [editorRouteKey]);
+
+  const handleSaveEditor = (payload: OfficeMockSavePayload) => {
+    const activeEditor = activeEditorRef.current;
+    if (!activeEditor?.session?.lease_token || activeEditor.readOnlyReason) {
+      return Promise.reject(new Error(activeEditor?.readOnlyReason || '编辑会话缺少有效租约，请刷新页面后重试。'));
+    }
+    if (Number(payload.versionId) !== activeEditor.session.base_version_no) {
+      return Promise.reject(new Error('页面版本与编辑会话基础版本不一致，已阻止保存。'));
+    }
+    const content = toBackendEditorContent(payload) as JsonObject;
+    const signature = JSON.stringify({
+      content,
+      deliverableId: activeEditor.deliverable.deliverable_id,
+      sessionId: activeEditor.session.session_id,
+    });
     const generation = tenantGuardRef.current.capture();
-    if (!editor?.session.lease_token) throw new Error('编辑会话缺少有效租约，请刷新页面后重试。');
-    const completed = await backendApi.editor.complete(
-      editor.deliverable.deliverable_id,
-      editor.session.session_id,
-      {
-        lease_token: editor.session.lease_token,
-        content: toBackendEditorContent(payload) as JsonObject,
-        expected_version_no: editor.session.base_version_no,
-        idempotency_key: crypto.randomUUID(),
-      },
-    );
-    if (!tenantGuardRef.current.isCurrent(generation)) return;
-    setEditor(null);
-    await loadProject(payload.projectId);
-    tenantGuardRef.current.commit(generation, () => {
+    return editorSaveGateRef.current.run(signature, async (idempotencyKey) => {
+      await backendApi.editor.checkpoint(
+        activeEditor.deliverable.deliverable_id,
+        activeEditor.session!.session_id,
+        {
+          lease_token: activeEditor.session!.lease_token!,
+          content,
+        },
+      );
+      const completed = await backendApi.editor.complete(
+        activeEditor.deliverable.deliverable_id,
+        activeEditor.session!.session_id,
+        {
+          lease_token: activeEditor.session!.lease_token!,
+          content,
+          expected_version_no: activeEditor.session!.base_version_no,
+          idempotency_key: idempotencyKey,
+        },
+      );
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      activeEditorRef.current = null;
+      setEditor(null);
+      try {
+        await loadProject(payload.projectId);
+      } catch (error) {
+        if (tenantGuardRef.current.isCurrent(generation)) {
+          setStatusMessage({
+            tone: 'error',
+            text: `成果已保存为 V${completed.version_no}，但项目数据刷新失败；请刷新页面。${readableError(error, '')}`,
+          });
+        }
+      }
       navigate(deliverableEditorPath(payload.projectId, payload.deliverableId, String(completed.version_no)), { replace: true });
     });
   };
 
-  const downloadDeliverable = async (projectId: string, routeId: DeliverableRouteId) => {
+  const downloadDeliverable = async (
+    projectId: string,
+    routeId: DeliverableRouteId,
+    requestedVersion?: string | number,
+  ) => {
     const generation = tenantGuardRef.current.capture();
     const deliverable = projectData[projectId]?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
     if (!deliverable?.current_version_no) throw new Error('当前成果没有可下载版本。');
-    const blob = await backendApi.deliverables.downloadVersion(deliverable.deliverable_id, deliverable.current_version_no);
+    const version = requestedVersion === undefined
+      ? deliverable.current_version_no
+      : Number(requestedVersion);
+    if (!Number.isInteger(version) || version <= 0) throw new Error('成果版本号无效，无法下载。');
+    const blob = await backendApi.deliverables.downloadVersion(deliverable.deliverable_id, version);
     tenantGuardRef.current.commit(generation, () => {
-      downloadBlob(blob, `${deliverable.title || routeId}-V${deliverable.current_version_no}${routeId === 'quote' ? '.xlsx' : '.docx'}`);
+      downloadBlob(blob, `${deliverable.title || routeId}-V${version}${routeId === 'quote' ? '.xlsx' : '.docx'}`);
     });
   };
 
@@ -857,7 +970,7 @@ export function App() {
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
-          onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id).catch((error) => setError(error, '成果下载失败'))}
+          onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id, item.versionId).catch((error) => setError(error, '成果下载失败'))}
           onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
           overview={activeData?.overview}
           project={activeProject}
@@ -944,6 +1057,7 @@ export function App() {
           enterpriseMaterials={workspaceEnterprise}
           initialQuoteRows={route.deliverableId === 'quote' ? backendQuoteRows(editor.content.model) : undefined}
           isBackendConnected
+          isReadOnly={Boolean(editor.readOnlyReason)}
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
             setError(error, '企业资料上传失败');
@@ -954,12 +1068,13 @@ export function App() {
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
-          onDownload={() => downloadDeliverable(route.projectId, route.deliverableId)}
-          onSave={handleSaveEditor}
+          onDownload={() => downloadDeliverable(route.projectId, route.deliverableId, editor.content.version_no)}
+          onSave={editor.session && !editor.readOnlyReason ? handleSaveEditor : undefined}
           project={activeProject}
           projectId={route.projectId}
           versionId={String(editor.content.version_no)}
           versionIds={deliverableVersionIds}
+          readOnlyReason={editor.readOnlyReason}
         />
       ) : null}
       {route.name === 'deliverable-editor' && activeProject && !editor ? (

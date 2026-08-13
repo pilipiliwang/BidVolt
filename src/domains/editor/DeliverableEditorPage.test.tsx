@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProjectSummary } from '../projects/project-view-model';
-import { DeliverableEditorPage } from './DeliverableEditorPage';
+import {
+  DeliverableEditorPage,
+  backendQuoteRows,
+  toBackendEditorContent,
+} from './DeliverableEditorPage';
 import type { QuoteSheetRow } from './types';
 
 const project: ProjectSummary = {
@@ -91,6 +95,124 @@ describe('DeliverableEditorPage', () => {
       }),
     );
     expect(screen.getByRole('status')).toHaveTextContent('修改已保存');
+  });
+
+  it('renders a historical version as read-only while preserving its download action', async () => {
+    const user = userEvent.setup();
+    const onDownload = vi.fn();
+    const onSave = vi.fn();
+    render(
+      <DeliverableEditorPage
+        deliverableId="technical"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        isBackendConnected
+        isReadOnly
+        materials={projectMaterials}
+        onDownload={onDownload}
+        onSave={onSave}
+        project={project}
+        projectId="BV-2026-018"
+        readOnlyReason="当前打开的是历史版本 V5，仅支持预览和下载。"
+        versionId="5"
+      />,
+    );
+
+    expect(screen.getByText('只读预览 · 不会创建成果版本')).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent('历史版本 V5');
+    expect(screen.getByRole('textbox', { name: '技术标文档内容' })).toHaveAttribute('contenteditable', 'false');
+    expect(screen.getByRole('button', { name: '保存修改' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '下载技术标文件' }));
+    expect(onDownload).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('coalesces repeated save clicks while the same request is pending', async () => {
+    const user = userEvent.setup();
+    let resolveSave: (() => void) | undefined;
+    const onSave = vi.fn(() => new Promise<void>((resolve) => { resolveSave = resolve; }));
+    render(
+      <DeliverableEditorPage
+        deliverableId="technical"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        materials={projectMaterials}
+        onSave={onSave}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="6"
+      />,
+    );
+
+    const save = screen.getByRole('button', { name: '保存修改' });
+    await user.click(save);
+    await user.click(save);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent('正在保存修改');
+    resolveSave?.();
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修改已保存'));
+  });
+
+  it('shows Word and Excel download failures without an unhandled rejection', async () => {
+    const user = userEvent.setup();
+    const failingDownload = vi.fn(() => Promise.reject(new Error('指定版本下载失败')));
+    const { unmount } = render(
+      <DeliverableEditorPage
+        deliverableId="technical"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        materials={projectMaterials}
+        onDownload={failingDownload}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="6"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '下载技术标文件' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('指定版本下载失败');
+    unmount();
+
+    render(
+      <DeliverableEditorPage
+        deliverableId="quote"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        initialQuoteRows={quoteRows}
+        materials={projectMaterials}
+        onDownload={failingDownload}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="4"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '下载报价单文件' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('指定版本下载失败');
+  });
+
+  it('round-trips the quote rows model while retaining legacy sheets compatibility', () => {
+    const model = toBackendEditorContent({
+      kind: 'spreadsheet',
+      projectId: project.id,
+      deliverableId: 'quote',
+      versionId: '4',
+      rows: quoteRows.map(({ historyPrice: _historyPrice, suggestedPrice: _suggestedPrice, ...row }) => row),
+      total: 43800,
+    });
+    expect(model).toHaveProperty('rows');
+    expect(model).toHaveProperty('sheets');
+    expect(backendQuoteRows(model)).toEqual([
+      expect.objectContaining({
+        code: 'A-001',
+        name: '测试设备',
+        specification: 'TEST',
+        quantity: 3,
+        tenderPrice: 16000,
+        userPrice: 14600,
+      }),
+    ]);
+    expect(backendQuoteRows({ sheets: [{ rows: [['名称', '数量', '单价'], ['旧设备', 2, 99]] }] }))
+      .toEqual([expect.objectContaining({ name: '旧设备', quantity: 2, userPrice: 99 })]);
   });
 
   it('fills and focuses the project assistant with the selected Word text', async () => {

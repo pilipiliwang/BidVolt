@@ -105,6 +105,24 @@
 .office-editor-save-state--saved { color: #067647; background: #edfdf4; }
 .office-editor-save-state--error { color: #b42318; background: #fff1f0; }
 
+.office-editor-readonly {
+  padding: 8px 16px;
+  border-bottom: 1px solid #f3d69a;
+  color: #8a4b08;
+  background: #fff9e9;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.office-download-error {
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid #f2c2bd;
+  color: #b42318;
+  background: #fff1f0;
+  font-size: var(--font-size-sm);
+}
+
 .office-word-editor,
 .office-sheet-editor {
   display: flex;

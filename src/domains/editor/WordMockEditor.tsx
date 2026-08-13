@@ -35,6 +35,7 @@ export type WordEditorProps = {
   onSave: (content: string) => void;
   onSendSelectionToAssistant?: (selection: string) => void;
   initialHtml?: string;
+  readOnly?: boolean;
   /** When provided, saved rich text and comments are restored for this document. */
   storageKey?: string;
 };
@@ -75,6 +76,7 @@ export function WordEditor({
   onSave,
   onSendSelectionToAssistant,
   initialHtml,
+  readOnly = false,
   storageKey,
 }: WordEditorProps) {
   const editorRef = useRef<HTMLElement>(null);
@@ -108,6 +110,24 @@ export function WordEditor({
   const [fontSize, setFontSize] = useState('16px');
   const [announcement, setAnnouncement] = useState('');
   const [aiSelectionMode, setAiSelectionMode] = useState(false);
+  const [downloadState, setDownloadState] = useState<{ error: string | null; pending: boolean }>({
+    error: null,
+    pending: false,
+  });
+
+  const download = async () => {
+    if (!onDownload || downloadState.pending) return;
+    setDownloadState({ error: null, pending: true });
+    try {
+      await onDownload();
+      setDownloadState({ error: null, pending: false });
+    } catch (error) {
+      setDownloadState({
+        error: error instanceof Error && error.message ? error.message : '文件下载失败，请重试',
+        pending: false,
+      });
+    }
+  };
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -702,10 +722,10 @@ export function WordEditor({
     >
       <div className="office-editor-toolbar word-editor-v2__toolbar" role="toolbar" aria-label="Word 编辑工具栏">
         <div className="word-editor-v2__tool-group" aria-label="历史操作">
-          <button aria-label="撤销" disabled={!canUndo} title="撤销 (Ctrl+Z)" type="button" onClick={undo}>
+          <button aria-label="撤销" disabled={readOnly || !canUndo} title="撤销 (Ctrl+Z)" type="button" onClick={undo}>
             <Undo2 aria-hidden="true" size={17} />
           </button>
-          <button aria-label="重做" disabled={!canRedo} title="重做 (Ctrl+Y)" type="button" onClick={redo}>
+          <button aria-label="重做" disabled={readOnly || !canRedo} title="重做 (Ctrl+Y)" type="button" onClick={redo}>
             <Redo2 aria-hidden="true" size={17} />
           </button>
         </div>
@@ -713,6 +733,7 @@ export function WordEditor({
         <div className="word-editor-v2__tool-group" aria-label="段落和字体">
           <select
             aria-label="段落样式"
+            disabled={readOnly}
             value={paragraphStyle}
             onMouseDown={() => rememberCurrentSelection(editorRef.current, savedRangeRef)}
             onChange={(event) => {
@@ -726,6 +747,7 @@ export function WordEditor({
           </select>
           <select
             aria-label="字体"
+            disabled={readOnly}
             value={fontFamily}
             onMouseDown={() => rememberCurrentSelection(editorRef.current, savedRangeRef)}
             onChange={(event) => {
@@ -739,6 +761,7 @@ export function WordEditor({
           </select>
           <select
             aria-label="字号"
+            disabled={readOnly}
             value={fontSize}
             onMouseDown={() => rememberCurrentSelection(editorRef.current, savedRangeRef)}
             onChange={(event) => {
@@ -754,27 +777,27 @@ export function WordEditor({
         </div>
 
         <div className="word-editor-v2__tool-group" aria-label="文字格式">
-          <button aria-label="加粗" title="加粗" type="button" onMouseDown={holdEditorSelection} onClick={() => applyInlineFormat('strong')}>
+          <button aria-label="加粗" disabled={readOnly} title="加粗" type="button" onMouseDown={holdEditorSelection} onClick={() => applyInlineFormat('strong')}>
             <Bold aria-hidden="true" size={17} />
           </button>
-          <button aria-label="斜体" title="斜体" type="button" onMouseDown={holdEditorSelection} onClick={() => applyInlineFormat('em')}>
+          <button aria-label="斜体" disabled={readOnly} title="斜体" type="button" onMouseDown={holdEditorSelection} onClick={() => applyInlineFormat('em')}>
             <Italic aria-hidden="true" size={17} />
           </button>
-          <button aria-label="下划线" title="下划线" type="button" onMouseDown={holdEditorSelection} onClick={() => applyInlineFormat('u')}>
+          <button aria-label="下划线" disabled={readOnly} title="下划线" type="button" onMouseDown={holdEditorSelection} onClick={() => applyInlineFormat('u')}>
             <Underline aria-hidden="true" size={17} />
           </button>
         </div>
 
         <div className="word-editor-v2__tool-group" aria-label="列表和对齐">
-          <button type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('insertUnorderedList')}>项目符号</button>
-          <button type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('insertOrderedList')}>编号</button>
-          <button aria-label="左对齐" title="左对齐" type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('justifyLeft')}>左</button>
-          <button aria-label="居中对齐" title="居中对齐" type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('justifyCenter')}>中</button>
-          <button aria-label="右对齐" title="右对齐" type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('justifyRight')}>右</button>
+          <button disabled={readOnly} type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('insertUnorderedList')}>项目符号</button>
+          <button disabled={readOnly} type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('insertOrderedList')}>编号</button>
+          <button aria-label="左对齐" disabled={readOnly} title="左对齐" type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('justifyLeft')}>左</button>
+          <button aria-label="居中对齐" disabled={readOnly} title="居中对齐" type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('justifyCenter')}>中</button>
+          <button aria-label="右对齐" disabled={readOnly} title="右对齐" type="button" onMouseDown={holdEditorSelection} onClick={() => applyBlockCommand('justifyRight')}>右</button>
         </div>
 
         <div className="word-editor-v2__tool-group word-editor-v2__tool-group--actions" aria-label="审阅和文件">
-          <button type="button" onMouseDown={holdEditorSelection} onClick={beginComment}>添加批注</button>
+          <button disabled={readOnly} type="button" onMouseDown={holdEditorSelection} onClick={beginComment}>添加批注</button>
           <button
             aria-expanded={sidePanel === 'outline'}
             type="button"
@@ -802,8 +825,8 @@ export function WordEditor({
             <Search aria-hidden="true" size={16} />
           </button>
           {onDownload ? (
-            <button aria-label={downloadLabel} title={downloadLabel} type="button" onClick={() => void onDownload()}>
-              <Download aria-hidden="true" size={16} /> 下载原始文件
+            <button aria-label={downloadLabel} disabled={downloadState.pending} title={downloadLabel} type="button" onClick={() => void download()}>
+              <Download aria-hidden="true" size={16} /> {downloadState.pending ? '下载中…' : '下载原始文件'}
             </button>
           ) : downloadHref ? (
             <a download href={downloadHref} aria-label={downloadLabel} title={downloadLabel}>
@@ -816,6 +839,7 @@ export function WordEditor({
           )}
           <button
             className="office-editor-toolbar__save"
+            disabled={readOnly}
             title="保存 (Ctrl+S)"
             type="button"
             onClick={save}
@@ -824,6 +848,8 @@ export function WordEditor({
           </button>
         </div>
       </div>
+
+      {downloadState.error ? <p className="office-download-error" role="alert">{downloadState.error}</p> : null}
 
       {findOpen ? (
         <section className="word-editor-v2__find" aria-label="查找替换面板">
@@ -839,8 +865,8 @@ export function WordEditor({
             <span>替换为</span>
             <input value={replaceText} onChange={(event) => setReplaceText(event.target.value)} />
           </label>
-          <button type="button" onClick={replaceCurrent}>替换</button>
-          <button type="button" onClick={replaceAll}>全部替换</button>
+          <button disabled={readOnly} type="button" onClick={replaceCurrent}>替换</button>
+          <button disabled={readOnly} type="button" onClick={replaceAll}>全部替换</button>
           <button aria-label="关闭查找替换" type="button" onClick={() => setFindOpen(false)}>×</button>
         </section>
       ) : null}
@@ -857,16 +883,16 @@ export function WordEditor({
             aria-label={`${isTechnical ? '技术标' : '商务标'}文档内容`}
             aria-multiline="true"
             className="office-word-page"
-            contentEditable
+            contentEditable={!readOnly}
             data-placeholder="成果正文尚未加载，可在此开始编辑"
             role="textbox"
             suppressContentEditableWarning
-            onInput={handleEditorInput}
+            onInput={readOnly ? undefined : handleEditorInput}
             onKeyUp={handleEditorSelectionComplete}
             onMouseUp={handleEditorSelectionComplete}
-            onPaste={handlePaste}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleDrop}
+            onPaste={readOnly ? undefined : handlePaste}
+            onDragOver={readOnly ? undefined : (event) => event.preventDefault()}
+            onDrop={readOnly ? undefined : handleDrop}
           />
         </div>
 
