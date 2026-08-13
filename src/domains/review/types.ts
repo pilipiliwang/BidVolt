@@ -43,10 +43,10 @@ export type ReviewValidatedSummary = {
   currentScore: number;
   predictedScore: number;
   totalLift: number;
-  sectionLifts: {
-    business: number;
-    technical: number;
-    pricing: number;
+  sectionLifts?: {
+    business?: number;
+    technical?: number;
+    pricing?: number;
   };
 };
 

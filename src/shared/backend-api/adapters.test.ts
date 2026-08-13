@@ -200,7 +200,13 @@ describe('backend DTO adapters', () => {
         name: '外部评审',
         enabled: true,
       },
-      score: null,
+      score: {
+        score_id: 2,
+        total_score: 66.7,
+        missing_count: 1,
+        improvable: 10,
+        detail: { items_count: 1 },
+      },
       items: [{
         item_id: 99,
         category: '完整性',
@@ -221,6 +227,14 @@ describe('backend DTO adapters', () => {
     });
 
     expect(view.status).toBe('succeeded');
+    expect(view.validatedSummary).toMatchObject({
+      totalFindingCount: 1,
+      categoryCounts: [{ key: '完整性', label: '完整性', count: 1 }],
+      currentScore: 66.7,
+      predictedScore: 76.7,
+      totalLift: 10,
+    });
+    expect(view.validatedSummary?.sectionLifts).toBeUndefined();
     expect(view.findings[0]).toMatchObject({
       category: '完整性',
       currentScore: 0,

@@ -535,6 +535,22 @@ export function adaptBackendReviewRun(run: ReviewRunDetail): ReviewRunView {
     2: 'succeeded',
     3: 'failed',
   };
+  const score = asRecord(run.score);
+  const detail = asRecord(score?.detail);
+  const currentScore = asNumber(score?.total_score);
+  const totalLift = asNumber(score?.improvable);
+  const categoryCounts = [...new Set(run.items.map((item) => item.category).filter(Boolean))]
+    .map((category) => ({
+      key: category,
+      label: category,
+      count: run.items.filter((item) => item.category === category).length,
+    }));
+  const sectionLifts = {
+    business: asNumber(detail?.biz_improvable) ?? asNumber(detail?.business_lift),
+    technical: asNumber(detail?.tech_improvable) ?? asNumber(detail?.technical_lift),
+    pricing: asNumber(detail?.quote_improvable) ?? asNumber(detail?.pricing_lift),
+  };
+  const hasSectionLift = Object.values(sectionLifts).some((value) => value !== undefined);
   return {
     id: String(run.run_id),
     status: statusMap[run.status] ?? 'idle',
@@ -543,7 +559,16 @@ export function adaptBackendReviewRun(run: ReviewRunDetail): ReviewRunView {
     providerId: run.provider ? String(run.provider.provider_id) : undefined,
     providerVersion: run.provider?.provider_version,
     findings: run.items.map((item) => backendFinding(item, run.provider?.provider_version)),
-    // Section-level validated summary is not present in ReviewRunDetail; do not derive fake scores.
+    validatedSummary: currentScore === undefined || totalLift === undefined
+      ? undefined
+      : {
+          totalFindingCount: run.items.length,
+          categoryCounts,
+          currentScore,
+          predictedScore: Math.min(100, currentScore + totalLift),
+          totalLift,
+          sectionLifts: hasSectionLift ? sectionLifts : undefined,
+        },
   };
 }
 

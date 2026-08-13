@@ -365,11 +365,13 @@ function ReviewImpact({
           </div>
           <strong className={styles.totalLift}>+{run.validatedSummary.totalLift.toFixed(1)} 分</strong>
 
-          <div className={styles.impactCards}>
-            <article><span><FileCheck2 size={18} /> 商务标可提升</span><strong>+{run.validatedSummary.sectionLifts.business.toFixed(1)} 分</strong><p>资信文件完整性优化、格式规范修正等</p></article>
-            <article><span><Lightbulb size={18} /> 技术标可提升</span><strong>+{run.validatedSummary.sectionLifts.technical.toFixed(1)} 分</strong><p>方案匹配度提升、安全措施完善等</p></article>
-            <article><span><Sparkles size={18} /> 报价单可提升</span><strong>+{run.validatedSummary.sectionLifts.pricing.toFixed(1)} 分</strong><p>金额一致性修正、细节规范优化等</p></article>
-          </div>
+          {run.validatedSummary.sectionLifts ? (
+            <div className={styles.impactCards}>
+              <article><span><FileCheck2 size={18} /> 商务标可提升</span><strong>{run.validatedSummary.sectionLifts.business === undefined ? '—' : `+${run.validatedSummary.sectionLifts.business.toFixed(1)} 分`}</strong><p>来自后端评审汇总</p></article>
+              <article><span><Lightbulb size={18} /> 技术标可提升</span><strong>{run.validatedSummary.sectionLifts.technical === undefined ? '—' : `+${run.validatedSummary.sectionLifts.technical.toFixed(1)} 分`}</strong><p>来自后端评审汇总</p></article>
+              <article><span><Sparkles size={18} /> 报价单可提升</span><strong>{run.validatedSummary.sectionLifts.pricing === undefined ? '—' : `+${run.validatedSummary.sectionLifts.pricing.toFixed(1)} 分`}</strong><p>来自后端评审汇总</p></article>
+            </div>
+          ) : null}
         </>
       ) : (
         <div className={styles.impactPending} role="status">
