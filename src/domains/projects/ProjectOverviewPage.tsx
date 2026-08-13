@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 import { AppLink, deliverableEditorPath } from '../../app/router';
-import { getProjectSummary, type ProjectSummary } from './project-view-model';
+import type { ProjectSummary } from './project-view-model';
 import {
   ProjectWorkbench,
   ResultCover,
@@ -21,10 +21,12 @@ import {
 import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
+  deliverables?: ProjectDeliverableView[];
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
+  onAssistantSend?: (value: string) => void;
   onOpenTasks: () => void;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
@@ -34,6 +36,8 @@ type ProjectOverviewPageProps = {
     percent: number;
     title: string;
   };
+  downloadHrefFor?: (deliverable: ProjectDeliverableView) => string;
+  onDownloadDeliverable?: (deliverable: ProjectDeliverableView) => void | Promise<void>;
 };
 
 export type ProjectDeliverableView = {
@@ -61,24 +65,23 @@ export type ProjectOverviewView = {
   };
 };
 
-const mockDownloadHref: Record<ProjectDeliverableView['id'], string> = {
-  business: '/mock-files/商务标文件-Mock.docx',
-  technical: '/mock-files/技术标文件-Mock.docx',
-  quote: '/mock-files/报价单-Mock.xlsx',
-};
-
 export function ProjectOverviewPage({
+  deliverables,
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantSend,
   onOpenTasks,
   overview,
   project: projectOverride,
   projectId,
   taskSummary,
+  downloadHrefFor,
+  onDownloadDeliverable,
 }: ProjectOverviewPageProps) {
-  const project = projectOverride ?? getProjectSummary(projectId);
+  const project = projectOverride;
+  const visibleDeliverables = deliverables ?? overview?.deliverables;
 
   if (!project) {
     return (
@@ -101,6 +104,7 @@ export function ProjectOverviewPage({
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
+      onAssistantSend={onAssistantSend}
       rightRail={
         <section className="bv-review-summary" aria-labelledby="overview-score-title">
           <header>
@@ -163,16 +167,16 @@ export function ProjectOverviewPage({
               <TrendingUp aria-hidden="true" size={18} />
               报价分析
             </AppLink>
-            <label>版本号 <select aria-label="成果版本"><option>V3.2</option></select></label>
-            <label><ShieldCheck aria-hidden="true" size={18} /><select aria-label="版本时间"><option>最新版本</option></select></label>
+            <label>版本号 <select aria-label="成果版本"><option>各成果当前版本</option></select></label>
+            <label><ShieldCheck aria-hidden="true" size={18} /><select aria-label="版本时间"><option>最新受控版本</option></select></label>
           </div>
         </header>
 
-        {overview ? (
+        {visibleDeliverables ? (
           <div className="bv-deliverable-grid">
-          {overview.deliverables.map((item) => (
+          {visibleDeliverables.map((item) => (
             <article className="bv-deliverable-card" key={item.id}>
-              <span className="bv-deliverable-card__status">已生成</span>
+              <span className="bv-deliverable-card__status">{item.versionId ? `V${item.versionId}` : '尚无版本'}</span>
               <ResultCover title={item.title} tone={item.tone} />
               <h2>{item.title}</h2>
               <dl>
@@ -183,15 +187,35 @@ export function ProjectOverviewPage({
                 <div className={item.missing > 0 ? 'is-warning' : ''}><dt>缺资料份数</dt><dd>{item.missing} 份</dd></div>
               </dl>
               <div className="bv-deliverable-card__actions">
-                <AppLink
-                  aria-label={`预览${item.title}`}
-                  to={deliverableEditorPath(projectId, item.id, item.versionId ?? 'latest')}
-                >
-                  预览文件 <Eye aria-hidden="true" size={17} />
-                </AppLink>
-                <a aria-label={`下载${item.title}`} download href={mockDownloadHref[item.id]}>
-                  <Download aria-hidden="true" size={18} />
-                </a>
+                {item.versionId ? (
+                  <AppLink
+                    aria-label={`预览${item.title}`}
+                    to={deliverableEditorPath(projectId, item.id, item.versionId)}
+                  >
+                    预览文件 <Eye aria-hidden="true" size={17} />
+                  </AppLink>
+                ) : (
+                  <button aria-label={`${item.title}尚无可预览版本`} disabled type="button">
+                    尚无版本 <Eye aria-hidden="true" size={17} />
+                  </button>
+                )}
+                {onDownloadDeliverable ? (
+                  <button
+                    aria-label={`下载${item.title}`}
+                    type="button"
+                    onClick={() => void onDownloadDeliverable(item)}
+                  >
+                    <Download aria-hidden="true" size={18} />
+                  </button>
+                ) : downloadHrefFor ? (
+                  <a aria-label={`下载${item.title}`} download href={downloadHrefFor(item)}>
+                    <Download aria-hidden="true" size={18} />
+                  </a>
+                ) : (
+                  <button aria-label={`下载${item.title}`} disabled type="button">
+                    <Download aria-hidden="true" size={18} />
+                  </button>
+                )}
               </div>
             </article>
           ))}

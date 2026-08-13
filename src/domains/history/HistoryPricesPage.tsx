@@ -1,7 +1,6 @@
 import { ArrowLeft, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 
-import { historyRecordsDemo } from './demo-data';
 import type { HistoricalQuoteRecord, HistoryPricesPageProps } from './types';
 import './history-prices.css';
 
@@ -15,15 +14,16 @@ type Filters = {
 };
 
 const initialFilters: Filters = {
-  materialName: '10kV开关柜',
+  materialName: '',
   materialCode: '',
-  specification: 'KYN28A-12',
+  specification: '',
   tenderer: '',
   region: '',
-  years: '2021—2024',
+  years: '',
 };
 
 const HISTORY_PAGE_SIZE = 5;
+const EMPTY_HISTORY_RECORDS: HistoricalQuoteRecord[] = [];
 
 const currencyFormatter = new Intl.NumberFormat('zh-CN', {
   minimumFractionDigits: 2,
@@ -32,6 +32,10 @@ const currencyFormatter = new Intl.NumberFormat('zh-CN', {
 
 function price(value: number) {
   return currencyFormatter.format(value);
+}
+
+function optionalPrice(value: number | null) {
+  return value === null ? '—' : price(value);
 }
 
 function matchesText(value: string, query: string) {
@@ -71,18 +75,30 @@ function calculateStats(records: HistoricalQuoteRecord[]) {
   const latest = [...records].sort((a, b) => b.awardedAt.localeCompare(a.awardedAt))[0];
 
   return {
-    min: values[0] ?? 0,
-    max: values.at(-1) ?? 0,
-    median,
-    average: values.length ? total / values.length : 0,
-    latest: latest?.unitPrice ?? 0,
+    min: values[0] ?? null,
+    max: values.at(-1) ?? null,
+    median: values.length ? median : null,
+    average: values.length ? total / values.length : null,
+    latest: latest?.unitPrice ?? null,
   };
 }
 
+function calculatePriceChange(records: HistoricalQuoteRecord[]) {
+  const ordered = [...records]
+    .filter((record) => Number.isFinite(record.unitPrice) && record.unitPrice > 0)
+    .sort((a, b) => a.awardedAt.localeCompare(b.awardedAt));
+  const first = ordered[0];
+  const last = ordered.at(-1);
+  if (!first || !last || first.id === last.id) return null;
+  return ((last.unitPrice - first.unitPrice) / first.unitPrice) * 100;
+}
+
 export function HistoryPricesPage({
-  records = historyRecordsDemo,
-  totalCount = 1268,
+  records,
+  totalCount,
 }: HistoryPricesPageProps) {
+  const resolvedRecords = records ?? EMPTY_HISTORY_RECORDS;
+  const resolvedTotalCount = totalCount ?? resolvedRecords.length;
   const [draftFilters, setDraftFilters] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
   const [detailMaterial, setDetailMaterial] = useState<HistoricalQuoteRecord | null>(null);
@@ -90,8 +106,8 @@ export function HistoryPricesPage({
 
   const visibleRecords = useMemo(
     () =>
-      records.filter((record) => {
-        const materialQuery = filters.materialName.replace('开关柜', '').trim();
+      resolvedRecords.filter((record) => {
+        const materialQuery = filters.materialName.trim();
         return (
           (!materialQuery || matchesText(record.materialName, materialQuery)) &&
           (!filters.materialCode || matchesText(record.materialCode, filters.materialCode)) &&
@@ -101,7 +117,7 @@ export function HistoryPricesPage({
           matchesYear(record.year, filters.years)
         );
       }),
-    [filters, records],
+    [filters, resolvedRecords],
   );
   const pageCount = Math.max(1, Math.ceil(visibleRecords.length / HISTORY_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -114,15 +130,14 @@ export function HistoryPricesPage({
     return (
       <HistoryPriceDetail
         focus={detailMaterial}
-        records={records.filter((record) => record.materialCode === detailMaterial.materialCode)}
+        records={resolvedRecords.filter((record) => record.materialCode === detailMaterial.materialCode)}
         onBack={() => setDetailMaterial(null)}
       />
     );
   }
 
   const stats = calculateStats(visibleRecords);
-  const isReferenceOverview =
-    records === historyRecordsDemo && visibleRecords.length === historyRecordsDemo.length;
+  const priceChange = calculatePriceChange(visibleRecords);
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFilters(draftFilters);
@@ -190,13 +205,17 @@ export function HistoryPricesPage({
 
       <section className="history-results" aria-label="历史报价查询结果">
         <div className="history-stats" aria-label="历史报价统计">
-          <Stat label="历史样本数量" value={(isReferenceOverview ? totalCount : visibleRecords.length).toLocaleString('zh-CN')} />
-          <Stat accent label="最低中标价" value={isReferenceOverview ? '10,200' : price(stats.min)} />
-          <Stat accent label="最高中标价" value={isReferenceOverview ? '15,800' : price(stats.max)} />
-          <Stat label="中位数" value={isReferenceOverview ? '12,450' : price(stats.median)} />
-          <Stat label="平均价" value={isReferenceOverview ? '12,610' : price(stats.average)} />
-          <Stat label="最近一次中标价" value={price(stats.latest)} />
-          <Stat accent label="近一年价格变化" value="−2.35%" />
+          <Stat label="历史样本数量" value={visibleRecords.length.toLocaleString('zh-CN')} />
+          <Stat accent label="最低中标价" value={optionalPrice(stats.min)} />
+          <Stat accent label="最高中标价" value={optionalPrice(stats.max)} />
+          <Stat label="中位数" value={optionalPrice(stats.median)} />
+          <Stat label="平均价" value={optionalPrice(stats.average)} />
+          <Stat label="最近一次中标价" value={optionalPrice(stats.latest)} />
+          <Stat
+            accent
+            label="样本区间价格变化"
+            value={priceChange === null ? '—' : `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`}
+          />
         </div>
 
         <div className="history-table-wrap">
@@ -247,7 +266,7 @@ export function HistoryPricesPage({
 
         <footer className="history-pagination">
           <span>
-            当前匹配 {visibleRecords.length} 条 · 外部总计 {totalCount.toLocaleString('zh-CN')} 条
+            当前匹配 {visibleRecords.length} 条 · 外部总计 {resolvedTotalCount.toLocaleString('zh-CN')} 条
           </span>
           <div aria-label="历史报价分页">
             <button
@@ -295,6 +314,13 @@ function HistoryPriceDetail({
   records: HistoricalQuoteRecord[];
   onBack: () => void;
 }) {
+  const stats = calculateStats(records);
+  const orderedRecords = [...records].sort((a, b) => a.awardedAt.localeCompare(b.awardedAt));
+  const firstRecord = orderedRecords[0];
+  const lastRecord = orderedRecords.at(-1);
+  const highSimilarityCount = records.filter((record) => record.similarity === 'high').length;
+  const regions = [...new Set(records.map((record) => record.region).filter(Boolean))];
+  const sources = [...new Set(records.map((record) => record.source).filter(Boolean))];
   return (
     <section className="history-page history-detail-page">
       <button className="history-detail-back" type="button" onClick={onBack}>
@@ -315,29 +341,27 @@ function HistoryPriceDetail({
           <dl>
             <div><dt>物料编码</dt><dd>{focus.materialCode}</dd></div>
             <div><dt>规格型号</dt><dd>{focus.specification}</dd></div>
-            <div><dt>额定电压</dt><dd>12kV</dd></div>
-            <div><dt>额定电流</dt><dd>1250A</dd></div>
-            <div><dt>短路开断</dt><dd>31.5kA</dd></div>
-            <div><dt>关键参数</dt><dd>真空断路器、金属铠装、空气绝缘</dd></div>
-            <div><dt>数据时间</dt><dd>2021-01 至 2024-08</dd></div>
+            <div><dt>覆盖地区</dt><dd>{regions.join('、') || '—'}</dd></div>
+            <div><dt>数据来源</dt><dd>{sources.join('、') || '—'}</dd></div>
+            <div><dt>数据时间</dt><dd>{firstRecord && lastRecord ? `${firstRecord.awardedAt} 至 ${lastRecord.awardedAt}` : '—'}</dd></div>
           </dl>
           <div className="history-sample-summary">
             <span>历史样本数量</span>
-            <strong>128 <small>条</small></strong>
-            <em>高度相似样本 56 条</em>
+            <strong>{records.length} <small>条</small></strong>
+            <em>高度相似样本 {highSimilarityCount} 条</em>
           </div>
         </aside>
 
         <div className="history-detail-main">
-          <PriceTrendChart />
+          <PriceTrendChart records={records} materialName={focus.materialName} />
           <ComparableTable records={records.slice(0, 5)} />
         </div>
 
         <aside className="history-detail-aside">
-          <Stat label="最高价" value="15,800.00" />
-          <Stat label="最低价" value="10,200.00" />
-          <Stat accent label="中位数" value="12,450.00" />
-          <Stat label="平均价" value="12,610.00" />
+          <Stat label="最高价" value={optionalPrice(stats.max)} />
+          <Stat label="最低价" value={optionalPrice(stats.min)} />
+          <Stat accent label="中位数" value={optionalPrice(stats.median)} />
+          <Stat label="平均价" value={optionalPrice(stats.average)} />
           <section className="history-similarity-legend">
             <h3>相似度说明</h3>
             <div><span className="history-dot history-dot--high" /><p><strong>高度相似</strong><small>规格型号与关键参数一致</small></p></div>
@@ -350,15 +374,49 @@ function HistoryPriceDetail({
   );
 }
 
-function PriceTrendChart() {
-  const medianPoints = '52,196 128,178 204,188 280,150 356,169 432,132 508,146 584,112 660,136 736,91 812,105 888,72 964,85 1040,55 1116,69 1190,42';
-  const averagePoints = '52,222 128,210 204,218 280,195 356,205 432,178 508,190 584,172 660,181 736,162 812,171 888,150 964,158 1040,137 1116,146 1190,126';
+function PriceTrendChart({ records, materialName }: { records: HistoricalQuoteRecord[]; materialName: string }) {
+  const grouped = new Map<string, number[]>();
+  records.forEach((record) => {
+    const month = record.awardedAt.slice(0, 7);
+    const values = grouped.get(month) ?? [];
+    values.push(record.unitPrice);
+    grouped.set(month, values);
+  });
+  const series = [...grouped.entries()]
+    .sort(([first], [second]) => first.localeCompare(second))
+    .map(([month, values]) => {
+      const ordered = [...values].sort((a, b) => a - b);
+      const middle = Math.floor(ordered.length / 2);
+      const median = ordered.length % 2
+        ? ordered[middle]
+        : (ordered[middle - 1] + ordered[middle]) / 2;
+      return {
+        average: values.reduce((sum, value) => sum + value, 0) / values.length,
+        median,
+        month,
+      };
+    });
+  const values = series.flatMap((point) => [point.average, point.median]);
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const spread = maximum - minimum || Math.max(maximum * 0.1, 1);
+  const lowerBound = minimum - spread * 0.1;
+  const upperBound = maximum + spread * 0.1;
+  const chartWidth = 1138;
+  const chartHeight = 200;
+  const xFor = (index: number) => 52 + (series.length === 1 ? chartWidth / 2 : (index / (series.length - 1)) * chartWidth);
+  const yFor = (value: number) => 42 + ((upperBound - value) / (upperBound - lowerBound)) * chartHeight;
+  const averagePoints = series.map((point, index) => `${xFor(index)},${yFor(point.average)}`).join(' ');
+  const medianPoints = series.map((point, index) => `${xFor(index)},${yFor(point.median)}`).join(' ');
+  const labels = series.length <= 3
+    ? series.map((_, index) => index)
+    : [0, Math.floor((series.length - 1) / 2), series.length - 1];
   return (
     <section className="history-chart-card" aria-labelledby="history-chart-title">
       <h3 id="history-chart-title">价格趋势（单位：元 / 台）</h3>
       <svg className="history-chart" viewBox="0 0 1240 300" role="img" aria-labelledby="price-chart-svg-title price-chart-svg-desc">
-        <title id="price-chart-svg-title">10kV高压开关柜历史中标价趋势</title>
-        <desc id="price-chart-svg-desc">2023年1月至2024年8月，中标价中位数与平均价整体呈上升趋势。</desc>
+        <title id="price-chart-svg-title">{materialName}历史中标价趋势</title>
+        <desc id="price-chart-svg-desc">根据当前加载的 {records.length} 条历史样本按月计算中位数与平均价。</desc>
         <defs>
           <linearGradient id="history-chart-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#2db57c" stopOpacity="0.22" />
@@ -368,21 +426,27 @@ function PriceTrendChart() {
         {[42, 92, 142, 192, 242].map((y, index) => (
           <g key={y}>
             <line x1="52" x2="1190" y1={y} y2={y} stroke="#e4eaec" strokeWidth="1" />
-            <text x="42" y={y + 4} textAnchor="end">{(20 - index * 4).toLocaleString()},000</text>
+            <text x="42" y={y + 4} textAnchor="end">
+              {Math.round(upperBound - ((upperBound - lowerBound) * index) / 4).toLocaleString('zh-CN')}
+            </text>
           </g>
         ))}
-        <polygon points={`52,242 ${medianPoints} 1190,242`} fill="url(#history-chart-fill)" />
+        {medianPoints ? <polygon points={`52,242 ${medianPoints} 1190,242`} fill="url(#history-chart-fill)" /> : null}
         <polyline points={medianPoints} fill="none" stroke="#09905b" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
         <polyline points={averagePoints} fill="none" stroke="#3b82e6" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
-        {['52,196', '280,150', '584,112', '1040,55', '1190,42'].map((point) => {
-          const [cx, cy] = point.split(',');
-          return <circle key={point} cx={cx} cy={cy} r="6" fill="#09905b" />;
-        })}
-        <text x="52" y="270">2023-01</text>
-        <text x="330" y="270">2023-06</text>
-        <text x="625" y="270">2023-12</text>
-        <text x="910" y="270">2024-05</text>
-        <text x="1190" y="270" textAnchor="end">2024-08</text>
+        {series.map((point, index) => (
+          <circle key={point.month} cx={xFor(index)} cy={yFor(point.median)} r="5" fill="#09905b" />
+        ))}
+        {labels.map((index) => (
+          <text
+            key={series[index].month}
+            x={xFor(index)}
+            y="270"
+            textAnchor={index === 0 ? 'start' : index === series.length - 1 ? 'end' : 'middle'}
+          >
+            {series[index].month}
+          </text>
+        ))}
       </svg>
       <div className="history-chart-legend">
         <span><i className="history-chart-line history-chart-line--median" />中标价中位数</span>

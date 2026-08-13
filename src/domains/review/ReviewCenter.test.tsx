@@ -2,7 +2,6 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { reviewProvidersDemo, reviewRunDemo } from '../../app/demo-data';
 import { ReviewCenter } from './ReviewCenter';
 import type { ReviewProvider, ReviewRunView } from './types';
 
@@ -24,6 +23,34 @@ const providers: ReviewProvider[] = [
     available: true,
   },
 ];
+
+const reviewProvidersDemo = providers;
+const reviewRunDemo: ReviewRunView = {
+  id: 'review-1',
+  status: 'succeeded',
+  projectSnapshotId: 'snapshot-1',
+  deliverableVersions: ['技术标 V1'],
+  findings: runFindings(),
+  validatedSummary: {
+    totalFindingCount: 18,
+    categoryCounts: [
+      { key: 'letter', label: '商务标-投标函', count: 4 },
+      { key: 'business', label: '商务标文件', count: 4 },
+    ],
+    currentScore: 76,
+    predictedScore: 91.6,
+    totalLift: 15.6,
+    sectionLifts: { business: 6.2, technical: 6.8, pricing: 2.6 },
+  },
+};
+
+function runFindings(): ReviewRunView['findings'] {
+  return [{
+    id: 'fixture-finding', title: '测试提升项', outcome: 'risk', ruleVersion: 'fixture-v1',
+    suggestion: '请复核该项内容。',
+    evidence: { sourceLabel: '测试文件', locator: '测试定位', verification: 'verified' },
+  }];
+}
 
 const run: ReviewRunView = {
   id: 'review_01',

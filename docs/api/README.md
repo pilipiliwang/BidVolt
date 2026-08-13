@@ -1,7 +1,7 @@
 # AI电网投标助手 Web API Contract v0.2
 
-本目录是网页端与后端协作的契约基线。`openapi.yaml` 描述 HTTP 接口，运行时 Zod Schema 位于
-`src/shared/api`，MSW 实现位于 `src/mocks`。三者必须同步演进。
+本目录保留前端需求基线与历史契约评审稿。生产联调以后端运行时 `/openapi.json` 与
+`src/shared/backend-api` 的真实 client/DTO 适配为准；历史 `openapi.yaml` 不再启动运行时 Mock。
 
 现有网页页面、用户动作、接口状态和最小字段需求见
 [`FRONTEND_API_REQUIREMENTS.md`](./FRONTEND_API_REQUIREMENTS.md)。该文档是前端需求清单，

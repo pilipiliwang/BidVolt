@@ -454,3 +454,8 @@
   .word-editor-v2__statusbar > span:nth-child(3) { display: none; }
   .word-editor-v2__announcement { text-align: left; }
 }
+.office-word-page:empty::before {
+  color: #98a2b3;
+  content: attr(data-placeholder);
+  pointer-events: none;
+}

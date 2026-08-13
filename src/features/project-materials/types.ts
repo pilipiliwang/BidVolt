@@ -67,16 +67,21 @@ export interface ProjectSnapshot {
 export interface ProjectMaterialUploadProps {
   projectId: string;
   projectName: string;
-  onUpload?: (projectId: string, files: File[]) => void;
+  onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
 }
 
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void;
+  onAssistantSend?: (value: string) => void;
+  onImportTenderNoticeUrl?: (
+    projectId: string,
+    url: string,
+  ) => Promise<{ message?: string; status?: 'queued' | 'processing' | 'completed' } | void>;
   requirements: ProjectRequirement[];
   snapshots: ProjectSnapshot[];
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
-  onStartTask: (projectId: string, mode: 'generate' | 'validate') => void;
+  onStartTask: (projectId: string, mode: 'generate' | 'validate') => Promise<void> | void;
 }

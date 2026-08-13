@@ -63,10 +63,12 @@ type ReviewCenterProps = {
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles: (files: File[]) => void;
+  onAssistantSend?: (value: string) => void;
   projectId?: string;
   providers: ReviewProvider[];
   run: ReviewRunView;
   onRun?: (providerId: string) => void;
+  onSaveSuggestion?: (runId: string, findingId: string, suggestion: string) => void | Promise<void>;
   runAllowed?: boolean;
   runBlockReason?: string;
 };
@@ -83,10 +85,12 @@ export function ReviewCenter({
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantSend,
   projectId,
   providers,
   run,
   onRun,
+  onSaveSuggestion,
   runAllowed = true,
   runBlockReason,
 }: ReviewCenterProps) {
@@ -125,7 +129,7 @@ export function ReviewCenter({
     );
   };
 
-  const saveSuggestion = (finding: ReviewFinding) => {
+  const saveSuggestion = async (finding: ReviewFinding) => {
     if (!activeSuggestionEdit || activeSuggestionEdit.findingId !== finding.id) return;
     const nextSuggestion = activeSuggestionEdit.draft.trim();
     if (!nextSuggestion) {
@@ -133,11 +137,19 @@ export function ReviewCenter({
       return;
     }
 
-    setSuggestionOverrides((current) => ({
-      ...current,
-      [suggestionOverrideKey(run.id, finding.id)]: nextSuggestion,
-    }));
-    setSuggestionEdit(null);
+    try {
+      await onSaveSuggestion?.(run.id, finding.id, nextSuggestion);
+      setSuggestionOverrides((current) => ({
+        ...current,
+        [suggestionOverrideKey(run.id, finding.id)]: nextSuggestion,
+      }));
+      setSuggestionEdit(null);
+    } catch (saveError) {
+      setSuggestionEdit({
+        ...activeSuggestionEdit,
+        error: saveError instanceof Error ? saveError.message : '建议保存失败，请重试',
+      });
+    }
   };
 
   return (
@@ -147,6 +159,7 @@ export function ReviewCenter({
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
+      onAssistantSend={onAssistantSend}
       rightRail={
         <ReviewImpact
           actualProvider={actualProvider}
@@ -240,7 +253,7 @@ export function ReviewCenter({
                           aria-label={`保存建议：${finding.title}`}
                           disabled={!activeSuggestionEdit.draft.trim()}
                           type="button"
-                          onClick={() => saveSuggestion(finding)}
+                          onClick={() => void saveSuggestion(finding)}
                         >
                           保存
                         </button>

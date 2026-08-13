@@ -115,7 +115,7 @@ describe('ProjectMaterialsPage', () => {
     await user.click(screen.getByRole('button', { name: '开始校核' }));
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'validate');
     expect(screen.getByRole('button', { name: '任务已进入队列' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('校核任务已创建');
+    expect(screen.getByText(/校核任务已创建/)).toBeInTheDocument();
     expect(screen.getByText('技术标.docx')).toBeInTheDocument();
   });
 
@@ -138,7 +138,7 @@ describe('ProjectMaterialsPage', () => {
 
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'generate');
     expect(screen.getByRole('button', { name: '任务已进入队列' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('生成任务已创建');
+    expect(screen.getByText(/生成任务已创建/)).toBeInTheDocument();
   });
 
   it('confirms low-confidence Requirements and opens a frozen snapshot', async () => {

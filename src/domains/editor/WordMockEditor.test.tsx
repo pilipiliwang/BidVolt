@@ -33,6 +33,15 @@ function selectText(text: Text, start: number, end: number) {
 }
 
 describe('WordMockEditor', () => {
+  it('starts with an editable empty document when no backend content is supplied', () => {
+    renderEditor({ downloadHref: undefined });
+    const editor = screen.getByRole('textbox', { name: '技术标文档内容' });
+
+    expect(editor).toBeEmptyDOMElement();
+    expect(editor).toHaveAttribute('data-placeholder', '成果正文尚未加载，可在此开始编辑');
+    expect(screen.getByRole('button', { name: '暂无可下载的原始文件' })).toBeDisabled();
+  });
+
   it('uses its own history for undo/redo and supports Ctrl+Z, Ctrl+Y and Ctrl+S', () => {
     const onDirty = vi.fn();
     const onSave = vi.fn();
@@ -51,8 +60,8 @@ describe('WordMockEditor', () => {
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
 
     expect(onDirty).toHaveBeenCalled();
-    expect(onSave).toHaveBeenCalledWith('第二稿方案');
-    expect(screen.getByRole('link', { name: '下载原始 Mock Word' })).toHaveAttribute(
+    expect(onSave).toHaveBeenCalledWith('<p>第二稿方案</p>');
+    expect(screen.getByRole('link', { name: '下载技术标' })).toHaveAttribute(
       'title',
       '下载技术标',
     );
@@ -228,7 +237,7 @@ describe('WordMockEditor', () => {
 
     await user.click(screen.getByRole('button', { name: '目录/页面预览' }));
     expect(screen.getByRole('region', { name: '文档目录' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '页面预览（演示画布）' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '页面预览' })).toBeInTheDocument();
     expect(screen.getByText('原生分页需文档服务')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '编辑目录标题 1' })).toHaveValue('总方案');
     expect(screen.getByRole('textbox', { name: '编辑目录标题 2' })).toHaveValue('实施安排');
@@ -261,8 +270,8 @@ describe('WordMockEditor', () => {
     const editor = screen.getByRole('textbox', { name: '技术标文档内容' });
     editor.innerHTML = '<h2><strong>保存后的富文本</strong></h2>';
     fireEvent.input(editor);
-    fireEvent.click(screen.getByRole('button', { name: '保存演示修改' }));
-    expect(onSave).toHaveBeenCalledWith('保存后的富文本');
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onSave).toHaveBeenCalledWith('<h2><strong>保存后的富文本</strong></h2>');
     first.unmount();
 
     renderEditor({ storageKey: 'word-draft:test' });
@@ -313,7 +322,7 @@ describe('WordMockEditor', () => {
 
     view.rerender(<WordMockEditor {...props} storageKey="project-a:technical:v2" />);
     expect(editor).not.toHaveTextContent('版本一独立草稿');
-    expect(editor).toHaveTextContent('供货与实施方案');
+    expect(editor).toBeEmptyDOMElement();
     expect(window.localStorage.getItem('project-a:technical:v2')).toBeNull();
   });
 

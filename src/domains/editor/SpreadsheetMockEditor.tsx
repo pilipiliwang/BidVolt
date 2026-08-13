@@ -10,9 +10,10 @@ import { Download, Redo2, Save, Sigma, Sparkles, Undo2 } from 'lucide-react';
 import type { QuoteSheetRow } from './types';
 import './spreadsheet-editor-v2.css';
 
-type SpreadsheetMockEditorProps = {
-  downloadHref: string;
+export type SpreadsheetEditorProps = {
+  downloadHref?: string;
   downloadLabel: string;
+  onDownload?: () => Promise<void> | void;
   onRowsChange: (rows: QuoteSheetRow[]) => void;
   onSave: () => void;
   onSendSelectionToAssistant: (selection: string) => void;
@@ -124,14 +125,15 @@ function isEditableField(field: SheetField): field is EditableField {
   return !['historyPrice', 'suggestedPrice', 'total'].includes(field);
 }
 
-export function SpreadsheetMockEditor({
+export function SpreadsheetEditor({
   downloadHref,
   downloadLabel,
+  onDownload,
   onRowsChange,
   onSave,
   onSendSelectionToAssistant,
   rows,
-}: SpreadsheetMockEditorProps) {
+}: SpreadsheetEditorProps) {
   const [editorRows, setEditorRows] = useState<QuoteSheetRow[]>(() => cloneRows(rows));
   const [selectedCell, setSelectedCell] = useState<CellSelection | null>(null);
   const [selectionMode, setSelectionMode] = useState<'cell' | 'row'>('cell');
@@ -597,16 +599,21 @@ export function SpreadsheetMockEditor({
         >
           应用算法建议价
         </button>
-        <a
-          download
-          aria-label={`下载原始 Mock Excel（${downloadLabel}）`}
-          href={downloadHref}
-          title={`原始文件：${downloadLabel}`}
-        >
-          <Download aria-hidden="true" size={16} /> 下载原始 Mock Excel
-        </a>
+        {onDownload ? (
+          <button aria-label={downloadLabel} title={downloadLabel} type="button" onClick={() => void onDownload()}>
+            <Download aria-hidden="true" size={16} /> 下载原始文件
+          </button>
+        ) : downloadHref ? (
+          <a download aria-label={downloadLabel} href={downloadHref} title={downloadLabel}>
+            <Download aria-hidden="true" size={16} /> 下载原始文件
+          </a>
+        ) : (
+          <button aria-label="暂无可下载的原始文件" disabled title="暂无可下载的原始文件" type="button">
+            <Download aria-hidden="true" size={16} /> 下载原始文件
+          </button>
+        )}
         <button className="office-editor-toolbar__save" title="保存（Ctrl+S）" type="button" onClick={save}>
-          <Save aria-hidden="true" size={16} /> 保存演示修改
+          <Save aria-hidden="true" size={16} /> 保存修改
         </button>
       </div>
 
@@ -744,7 +751,11 @@ export function SpreadsheetMockEditor({
               </tr>
             </tfoot>
           </table>
-          {visibleRows.length === 0 ? <p className="office-sheet-empty">没有符合筛选条件的报价行</p> : null}
+          {visibleRows.length === 0 ? (
+            <p className="office-sheet-empty">
+              {editorRows.length === 0 ? '报价单暂无明细，请点击“新增行”开始编辑' : '没有符合筛选条件的报价行'}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -857,3 +868,6 @@ export function SpreadsheetMockEditor({
     </div>
   );
 }
+
+/** @deprecated Use SpreadsheetEditor. */
+export const SpreadsheetMockEditor = SpreadsheetEditor;

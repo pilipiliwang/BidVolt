@@ -17,10 +17,7 @@ import {
 } from 'lucide-react';
 
 import { BrandLogo } from '../shared/ui/BrandLogo';
-import {
-  getProjectSummary,
-  type ProjectSummary,
-} from '../domains/projects/project-view-model';
+import type { ProjectSummary } from '../domains/projects/project-view-model';
 import '../styles/ui0802-shell.css';
 import { AppLink, type AppRoute } from './router';
 import './AppShell.css';
@@ -319,8 +316,7 @@ export function AppShell({
     ].includes(
       currentRoute,
     );
-  const projectSummary =
-    projectSummaryOverride ?? (currentProjectId ? getProjectSummary(currentProjectId) : undefined);
+  const projectSummary = projectSummaryOverride;
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileNavId = useId();
   const mobileNavRef = useRef<HTMLElement>(null);

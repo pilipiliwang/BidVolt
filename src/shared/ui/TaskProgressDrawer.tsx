@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Check, Clock3, FileCheck2, LoaderCircle, X } from 'lucide-react';
 
-import type { PublicTaskEvent } from '../api/task-events';
+import type { PublicTaskEvent } from '../task-events';
 
 type TaskProgressDrawerProps = {
   isOpen: boolean;

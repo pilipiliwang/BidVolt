@@ -2,10 +2,22 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { projectSummaries } from '../projects/project-view-model';
+import type { ProjectSummary } from '../projects/project-view-model';
 import { DeliverableEditorPage } from './DeliverableEditorPage';
+import type { QuoteSheetRow } from './types';
 
-const project = projectSummaries[0];
+const project: ProjectSummary = {
+  buyer: '测试采购单位',
+  code: 'TEST-001',
+  deadline: '2026-12-31',
+  id: 'BV-2026-018',
+  materialCount: 1,
+  progress: 50,
+  riskCount: 0,
+  stage: '方案编制',
+  title: '编辑器测试项目',
+  updatedAt: '2026-08-14T00:00:00Z',
+};
 const draftScopeId = 'enterprise-test::BV-2026-018::user-test';
 
 const projectMaterials = [
@@ -14,13 +26,25 @@ const projectMaterials = [
 const enterpriseMaterials = [
   { id: 'enterprise-file', name: '企业资质证书.pdf', status: '有效' },
 ];
+const quoteRows: QuoteSheetRow[] = [{
+  id: 'row-1',
+  code: 'A-001',
+  name: '测试设备',
+  specification: 'TEST',
+  quantity: 3,
+  unit: '台',
+  tenderPrice: 16000,
+  historyPrice: 14850,
+  suggestedPrice: 14680,
+  userPrice: 14600,
+}];
 
 describe('DeliverableEditorPage', () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
 
-  it('edits and saves a version-scoped Mock Word document', async () => {
+  it('edits and saves a version-scoped Word document without runtime fixture content', async () => {
     const onSave = vi.fn();
     render(
       <DeliverableEditorPage
@@ -32,10 +56,11 @@ describe('DeliverableEditorPage', () => {
         project={project}
         projectId="BV-2026-018"
         versionId="technical-v6"
+        versionIds={{ business: 'business-v8', quote: 'quote-v4' }}
       />,
     );
 
-    expect(screen.getByText('演示编辑器 · 不会回写真实 Office 文件')).toBeInTheDocument();
+    expect(screen.getByText('在线编辑器 · 保存到当前成果版本')).toBeInTheDocument();
     const deliverableTabs = within(
       screen.getByRole('navigation', { name: '成果文件' }),
     ).getAllByRole('link');
@@ -47,17 +72,14 @@ describe('DeliverableEditorPage', () => {
       'href',
       '/projects/BV-2026-018/deliverables/business/versions/business-v8',
     );
-    expect(screen.getByRole('link', { name: '下载原始 Mock Word' })).toHaveAttribute(
-      'href',
-      '/mock-files/技术标文件-Mock.docx',
-    );
+    expect(screen.getByRole('button', { name: '暂无可下载的原始文件' })).toBeDisabled();
 
     const editor = screen.getByRole('textbox', { name: '技术标文档内容' });
     editor.textContent = '修改后的技术方案正文';
     fireEvent.input(editor);
-    expect(screen.getByRole('status')).toHaveTextContent('有未保存的演示修改');
+    expect(screen.getByRole('status')).toHaveTextContent('有未保存的修改');
 
-    fireEvent.click(screen.getByRole('button', { name: '保存演示修改' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
 
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledWith({
@@ -68,7 +90,7 @@ describe('DeliverableEditorPage', () => {
         content: '修改后的技术方案正文',
       }),
     );
-    expect(screen.getByRole('status')).toHaveTextContent('演示修改已保存');
+    expect(screen.getByRole('status')).toHaveTextContent('修改已保存');
   });
 
   it('fills and focuses the project assistant with the selected Word text', async () => {
@@ -151,6 +173,7 @@ describe('DeliverableEditorPage', () => {
     render(
       <DeliverableEditorPage
         deliverableId="quote"
+        initialQuoteRows={quoteRows}
         draftScopeId={draftScopeId}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
@@ -161,21 +184,18 @@ describe('DeliverableEditorPage', () => {
       />,
     );
 
-    const quoteInput = screen.getByRole('spinbutton', { name: '高压断路器用户报价' });
+    const quoteInput = screen.getByRole('spinbutton', { name: '测试设备用户报价' });
     fireEvent.change(quoteInput, { target: { value: '15000' } });
 
-    const firstRow = screen.getByText('高压断路器').closest('tr');
+    const firstRow = screen.getByText('测试设备').closest('tr');
     expect(firstRow).not.toBeNull();
     expect(within(firstRow!).getByText('45,000.00')).toBeInTheDocument();
-    expect(screen.getByText('337,080.00')).toBeInTheDocument();
-    expect(screen.getByText('363,620.00')).toBeInTheDocument();
+    expect(screen.getAllByText('45,000.00')).toHaveLength(2);
+    expect(screen.getByText('48,000.00')).toBeInTheDocument();
     expect(screen.getAllByText('待服务端测算')).toHaveLength(2);
-    expect(screen.getByRole('link', { name: '下载原始 Mock Excel（下载报价单 Mock Excel）' })).toHaveAttribute(
-      'href',
-      '/mock-files/报价单-Mock.xlsx',
-    );
+    expect(screen.getByRole('button', { name: '暂无可下载的原始文件' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: '保存演示修改' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -183,7 +203,7 @@ describe('DeliverableEditorPage', () => {
           projectId: 'BV-2026-018',
           deliverableId: 'quote',
           versionId: 'quote-v4',
-          total: 337080,
+          total: 45000,
         }),
       ),
     );
@@ -197,6 +217,7 @@ describe('DeliverableEditorPage', () => {
     render(
       <DeliverableEditorPage
         deliverableId="quote"
+        initialQuoteRows={quoteRows}
         draftScopeId={draftScopeId}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
@@ -206,7 +227,7 @@ describe('DeliverableEditorPage', () => {
       />,
     );
 
-    const historyCell = screen.getByLabelText('高压断路器历史中标价（元）');
+    const historyCell = screen.getByLabelText('测试设备历史中标价（元）');
     await user.click(historyCell);
     await user.click(screen.getByRole('button', { name: 'AI针对性修改' }));
 
@@ -221,6 +242,7 @@ describe('DeliverableEditorPage', () => {
     const { unmount } = render(
       <DeliverableEditorPage
         deliverableId="quote"
+        initialQuoteRows={quoteRows}
         draftScopeId={draftScopeId}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
@@ -230,11 +252,11 @@ describe('DeliverableEditorPage', () => {
       />,
     );
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: '高压断路器用户报价' }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: '测试设备用户报价' }), {
       target: { value: '15100' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存演示修改' }));
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('可在刷新后恢复'));
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修改已保存'));
     const storageKey = window.localStorage.key(0);
     expect(storageKey).not.toBeNull();
     const stored = JSON.parse(window.localStorage.getItem(storageKey!) ?? '{}');
@@ -248,6 +270,7 @@ describe('DeliverableEditorPage', () => {
     render(
       <DeliverableEditorPage
         deliverableId="quote"
+        initialQuoteRows={quoteRows}
         draftScopeId={draftScopeId}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
@@ -257,11 +280,11 @@ describe('DeliverableEditorPage', () => {
       />,
     );
 
-    expect(screen.getByRole('spinbutton', { name: '高压断路器用户报价' })).toHaveValue(15100);
-    expect(screen.getByLabelText('高压断路器历史中标价（元）')).toHaveTextContent(
+    expect(screen.getByRole('spinbutton', { name: '测试设备用户报价' })).toHaveValue(15100);
+    expect(screen.getByLabelText('测试设备历史中标价（元）')).toHaveTextContent(
       '14,850.00',
     );
-    expect(screen.getByLabelText('高压断路器算法建议单价（元）')).toHaveTextContent(
+    expect(screen.getByLabelText('测试设备算法建议单价（元）')).toHaveTextContent(
       '14,680.00',
     );
   });
@@ -293,6 +316,7 @@ describe('DeliverableEditorPage', () => {
     render(
       <DeliverableEditorPage
         deliverableId="quote"
+        initialQuoteRows={quoteRows}
         draftScopeId={draftScopeId}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
@@ -302,7 +326,7 @@ describe('DeliverableEditorPage', () => {
       />,
     );
 
-    expect(screen.getByRole('spinbutton', { name: '高压断路器用户报价' })).toHaveValue(14600);
+    expect(screen.getByRole('spinbutton', { name: '测试设备用户报价' })).toHaveValue(14600);
     expect(screen.queryByDisplayValue('TAMPERED')).not.toBeInTheDocument();
   });
 

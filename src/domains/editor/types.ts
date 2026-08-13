@@ -25,7 +25,7 @@ export type QuoteSheetWritableRow = Pick<
   | 'userPrice'
 >;
 
-export type OfficeMockSavePayload =
+export type OfficeEditorSavePayload =
   | {
       kind: 'word';
       projectId: string;
@@ -41,3 +41,6 @@ export type OfficeMockSavePayload =
       rows: QuoteSheetWritableRow[];
       total: number;
     };
+
+/** @deprecated Use OfficeEditorSavePayload. */
+export type OfficeMockSavePayload = OfficeEditorSavePayload;

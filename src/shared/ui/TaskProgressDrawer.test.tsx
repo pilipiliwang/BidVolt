@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
-import type { PublicTaskEvent } from '../api/task-events';
+import type { PublicTaskEvent } from '../task-events';
 import { TaskProgressDrawer } from './TaskProgressDrawer';
 
 const publicEvents: PublicTaskEvent[] = [

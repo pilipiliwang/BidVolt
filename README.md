@@ -31,7 +31,7 @@ npm run build
 npm run api:check
 ```
 
-开发默认使用 `VITE_API_MODE=mock`。真实接口根地址通过 `VITE_API_BASE_URL` 配置。
+开发默认使用真实后端模式。接口根地址通过 `VITE_API_BASE_URL` 配置，本地跨域由 `VITE_API_PROXY_TARGET` 同源代理处理。
 
 当前页面数据使用显式的演示 Session，并按 `enterpriseId + projectId` 分区保存；全局页面不会隐式继承“上一次项目”。真实后端接入时，认证与租户/项目资源归属校验仍必须由服务端完成。
 
@@ -57,11 +57,11 @@ npm run api:check
 - 前端接口需求清单：[`docs/api/FRONTEND_API_REQUIREMENTS.md`](docs/api/FRONTEND_API_REQUIREMENTS.md)
 - 登录、上传与在线编辑联调草案：[`docs/api/FRONTEND_INTEGRATION.md`](docs/api/FRONTEND_INTEGRATION.md)
 - 在线编辑 P0/P1 能力边界：[`docs/product/ONLINE_EDITOR_CAPABILITIES.md`](docs/product/ONLINE_EDITOR_CAPABILITIES.md)
-- 运行时 Zod Schema/API client：[`src/shared/api`](src/shared/api)
+- 真实后端 API client 与 DTO 适配：[`src/shared/backend-api`](src/shared/backend-api)
 - API 到页面模型的穷尽适配层：[`src/shared/view-model-adapters`](src/shared/view-model-adapters)
 - 本地 Mock：[`src/mocks`](src/mocks)
 
-修改接口时必须同步更新 OpenAPI、Zod Schema、MSW handler 和 Contract 测试，再运行：
+修改接口时必须同步更新后端运行时 OpenAPI、真实 client、DTO 适配器和 Contract 测试，再运行：
 
 ```bash
 npm run api:generate

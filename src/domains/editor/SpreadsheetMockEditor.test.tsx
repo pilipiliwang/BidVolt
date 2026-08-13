@@ -347,11 +347,23 @@ describe('SpreadsheetMockEditor', () => {
     expect(detailTab).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('labels the download as the untouched original mock workbook', () => {
+  it('downloads the original workbook without runtime mock wording', () => {
     renderEditor();
-    const download = screen.getByRole('link', { name: '下载原始 Mock Excel（下载测试报价单）' });
-    expect(download).toHaveTextContent('下载原始 Mock Excel');
+    const download = screen.getByRole('link', { name: '下载测试报价单' });
+    expect(download).toHaveTextContent('下载原始文件');
     expect(download).toHaveAttribute('href', '/quote.xlsx');
     expect(download).toHaveAttribute('download');
+  });
+
+  it('keeps an empty workbook editable and can add its first row', async () => {
+    const user = userEvent.setup();
+    const { onRowsChange } = renderEditor({ rows: [] });
+
+    expect(screen.getByText('报价单暂无明细，请点击“新增行”开始编辑')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '新增行' }));
+
+    expect(onRowsChange).toHaveBeenCalledWith([
+      expect.objectContaining({ quantity: 1, historyPrice: 0, suggestedPrice: 0 }),
+    ]);
   });
 });

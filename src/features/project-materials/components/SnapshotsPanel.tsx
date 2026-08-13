@@ -8,6 +8,12 @@ interface SnapshotsPanelProps {
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
 }
 
+export type SnapshotDetailView = {
+  id: string;
+  manifest: string;
+  type: string;
+};
+
 export function SnapshotsPanel({ projectId, snapshots, onOpenSnapshot }: SnapshotsPanelProps) {
   return (
     <section className="project-snapshots" aria-labelledby="project-snapshots-title">

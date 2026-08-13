@@ -314,7 +314,12 @@ export function ProjectChatBar({
         disabled={!onSend || !currentValue.trim()}
         title={onSend ? '发送给项目助手' : '项目助手接口尚未接入'}
         type="button"
-        onClick={() => onSend?.(currentValue.trim())}
+        onClick={() => {
+          const nextValue = currentValue.trim();
+          if (!nextValue) return;
+          onSend?.(nextValue);
+          updateValue('');
+        }}
       >
         发送
         <Send aria-hidden="true" size={19} />

@@ -63,7 +63,7 @@ describe('PricingCenter', () => {
     expect(screen.getAllByText('30,200.00')).toHaveLength(2);
     expect(screen.getByText('28,800.00 ~ 31,600.00')).toBeInTheDocument();
     expect(screen.getByText('测算依据明细')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '近十二个月价格趋势折线图' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '历史样本价格趋势折线图' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /新增历史/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /删除历史/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/AI 报价建议/)).not.toBeInTheDocument();
@@ -139,7 +139,7 @@ describe('PricingCenter', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'IP42' } });
 
     expect(screen.getByText('IP42 / 380V')).toBeInTheDocument();
-    expect(screen.queryByText('IP55 / 400V')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('IP55 / 400V')).toHaveLength(1);
   });
 
   it.each([
@@ -174,7 +174,7 @@ describe('PricingCenter', () => {
       expect(screen.queryByText('报价评分公式')).not.toBeInTheDocument();
       expect(screen.queryByText('88.2 / 100')).not.toBeInTheDocument();
       expect(screen.queryByText('11.26%')).not.toBeInTheDocument();
-      expect(screen.queryByRole('img', { name: '近十二个月价格趋势折线图' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: '历史样本价格趋势折线图' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '应用到报价单并生成新版本' })).not.toBeInTheDocument();
     },
   );

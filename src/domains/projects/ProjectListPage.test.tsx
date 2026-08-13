@@ -3,7 +3,34 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProjectListPage } from './ProjectListPage';
-import { projectSummaries } from './project-view-model';
+import type { ProjectSummary } from './project-view-model';
+
+const projectSummaries: ProjectSummary[] = [
+  {
+    id: 'BV-2026-018',
+    code: 'BV-2026-018',
+    title: '海上平台电气设备采购项目',
+    buyer: '海上能源建设有限公司',
+    stage: '材料解析',
+    progress: 10,
+    deadline: '2099-08-21 10:00',
+    materialCount: 3,
+    riskCount: 0,
+    updatedAt: '2099-08-01 09:00',
+  },
+  {
+    id: 'BV-2026-015',
+    code: 'BV-2026-015',
+    title: '风电场升压站设备项目',
+    buyer: '沿海新能源有限公司',
+    stage: '方案编制',
+    progress: 50,
+    deadline: '2020-08-21 10:00',
+    materialCount: 5,
+    riskCount: 1,
+    updatedAt: '2020-08-01 09:00',
+  },
+];
 
 function renderProjectList(onCreateProject = vi.fn()) {
   render(
@@ -22,32 +49,28 @@ async function openCreateProjectDialog() {
 }
 
 describe('ProjectListPage', () => {
-  it('only offers a workspace link for projects backed by accessible project data', () => {
+  it('only renders projects supplied by the backend and links each workspace', () => {
     renderProjectList();
 
     expect(
       screen.getByRole('link', { name: '进入海上平台电气设备采购项目工作台' }),
     ).toHaveAttribute('href', '/projects/BV-2026-018/overview');
 
-    const supplementalRow = screen.getByText('±800kV特高压直流输电工程换流站设备采购').closest('tr');
-    expect(supplementalRow).not.toBeNull();
-    expect(
-      within(supplementalRow!).queryByRole('link', { name: /进入.*工作台/ }),
-    ).not.toBeInTheDocument();
-    expect(within(supplementalRow!).getByText('暂未接入')).toHaveAttribute(
-      'aria-label',
-      '±800kV特高压直流输电工程换流站设备采购工作台暂未接入',
+    expect(screen.getByRole('link', { name: '进入风电场升压站设备项目工作台' })).toHaveAttribute(
+      'href',
+      '/projects/BV-2026-015/overview',
     );
+    expect(screen.queryByText('±800kV特高压直流输电工程换流站设备采购')).not.toBeInTheDocument();
   });
 
-  it('labels the single loaded demo page without exposing fake pagination controls', async () => {
+  it('labels the single loaded backend page without exposing fake pagination controls', async () => {
     const user = userEvent.setup();
     renderProjectList();
 
     const paginationStatus = screen.getByRole('status', { name: '项目分页状态' });
-    expect(paginationStatus).toHaveTextContent('当前演示页');
+    expect(paginationStatus).toHaveTextContent('后端数据');
     expect(paginationStatus).toHaveTextContent('第 1 / 1 页');
-    expect(paginationStatus).toHaveTextContent('展示 8 条');
+    expect(paginationStatus).toHaveTextContent('展示 2 条');
     expect(screen.queryByRole('button', { name: '下一页' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '第2页' })).not.toBeInTheDocument();
 

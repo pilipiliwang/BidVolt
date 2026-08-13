@@ -2,6 +2,13 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProjectOverviewPage, type ProjectOverviewView } from './ProjectOverviewPage';
+import type { ProjectSummary } from './project-view-model';
+
+const project: ProjectSummary = {
+  id: 'BV-2026-018', code: 'BV-2026-018', title: '测试项目', buyer: '测试招标人',
+  stage: '材料解析', progress: 0, deadline: '2026-08-20 10:00', materialCount: 0,
+  riskCount: 0, updatedAt: '2026-08-14',
+};
 
 const overview: ProjectOverviewView = {
   deliverables: [
@@ -27,6 +34,7 @@ describe('ProjectOverviewPage', () => {
         enterpriseMaterials={[]}
         materials={[]}
         onOpenTasks={vi.fn()}
+        project={project}
         projectId="BV-2026-018"
       />,
     );
@@ -38,7 +46,7 @@ describe('ProjectOverviewPage', () => {
 
   it('shows a visible project-material entry for regular users', () => {
     render(
-      <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} projectId="BV-2026-018" onOpenTasks={vi.fn()} />,
+      <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} project={project} projectId="BV-2026-018" onOpenTasks={vi.fn()} />,
     );
 
     const materialsLink = screen.getByRole('link', { name: '打开项目材料' });
@@ -48,7 +56,7 @@ describe('ProjectOverviewPage', () => {
 
   it('shows a project-scoped pending state when no overview data exists', () => {
     render(
-      <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} projectId="BV-2026-015" onOpenTasks={vi.fn()} />,
+      <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} project={{ ...project, id: 'BV-2026-015' }} projectId="BV-2026-015" onOpenTasks={vi.fn()} />,
     );
 
     expect(screen.getByText('项目成果尚未生成')).toBeInTheDocument();
@@ -63,6 +71,7 @@ describe('ProjectOverviewPage', () => {
         materials={[]}
         onOpenTasks={vi.fn()}
         overview={overview}
+        project={project}
         projectId="BV-2026-018"
       />,
     );

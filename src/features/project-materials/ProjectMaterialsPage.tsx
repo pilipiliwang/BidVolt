@@ -58,14 +58,12 @@ function ParseStatusIcon({ status }: { status: ProjectMaterialParseStatus }) {
 function SimulatedReviewPanel({
   materialCount,
   parsedCount,
-  requirementCount,
-  pendingRequirementCount,
+  requirements,
   snapshotCount,
 }: {
   materialCount: number;
   parsedCount: number;
-  requirementCount: number;
-  pendingRequirementCount: number;
+  requirements: ProjectMaterialsPageProps['requirements'];
   snapshotCount: number;
 }) {
   if (materialCount === 0) {
@@ -84,11 +82,14 @@ function SimulatedReviewPanel({
     );
   }
 
-  const matchedAssets = Math.max(0, Math.min(16, parsedCount * 4));
-  const missingAssets = Math.max(0, pendingRequirementCount + 2);
-  const matchRate = requirementCount
-    ? Math.round((matchedAssets / Math.max(matchedAssets + missingAssets, 1)) * 100)
-    : 64;
+  const scoreRuleCount = requirements.filter((item) => item.type === 'score_rule').length;
+  const rejectClauseCount = requirements.filter((item) => item.type === 'reject_clause').length;
+  const materialChecklistCount = requirements.filter((item) => item.type === 'material_checklist').length;
+  const pendingRequirementCount = requirements.filter(
+    (item) => item.confirmationStatus === 'needs_confirmation',
+  ).length;
+  const identifiedRequirementCount = requirements.length;
+  const parseRate = materialCount > 0 ? Math.round((parsedCount / materialCount) * 100) : 0;
 
   return (
     <section className="project-review-preview">
@@ -110,7 +111,7 @@ function SimulatedReviewPanel({
           </span>
           <div>
             <small>已识别评分项</small>
-            <strong>{Math.max(18, requirementCount)}<em>项</em></strong>
+            <strong>{scoreRuleCount}<em>项</em></strong>
           </div>
         </article>
         <article>
@@ -119,7 +120,7 @@ function SimulatedReviewPanel({
           </span>
           <div>
             <small>已识别否决条款</small>
-            <strong>{Math.max(6, pendingRequirementCount)}<em>项</em></strong>
+            <strong>{rejectClauseCount}<em>项</em></strong>
           </div>
         </article>
         <article>
@@ -128,7 +129,7 @@ function SimulatedReviewPanel({
           </span>
           <div>
             <small>需要交材料</small>
-            <strong>{Math.max(25, materialCount)}<em>项</em></strong>
+            <strong>{materialChecklistCount}<em>项</em></strong>
           </div>
         </article>
         <article>
@@ -136,8 +137,8 @@ function SimulatedReviewPanel({
             <FileCheck2 aria-hidden="true" size={23} />
           </span>
           <div>
-            <small>已匹配企业资料</small>
-            <strong>{matchedAssets}<em>项</em></strong>
+            <small>已识别 Requirement</small>
+            <strong>{identifiedRequirementCount}<em>项</em></strong>
           </div>
         </article>
       </div>
@@ -145,17 +146,17 @@ function SimulatedReviewPanel({
       <div className="project-review-summary">
         <article>
           <BadgeCheck aria-hidden="true" size={20} />
-          <span><small>已匹配企业资料</small><strong>{matchedAssets} 项</strong></span>
+          <span><small>材料解析完成</small><strong>{parsedCount} / {materialCount} 项</strong></span>
         </article>
         <article>
           <ShieldAlert aria-hidden="true" size={20} />
-          <span><small>可能缺失资料</small><strong>{missingAssets} 项</strong></span>
+          <span><small>待人工确认</small><strong>{pendingRequirementCount} 项</strong></span>
         </article>
         <article>
-          <span className="project-match-ring" style={{ '--match': `${matchRate * 3.6}deg` } as React.CSSProperties}>
-            {matchRate}%
+          <span className="project-match-ring" style={{ '--match': `${parseRate * 3.6}deg` } as React.CSSProperties}>
+            {parseRate}%
           </span>
-          <span><small>匹配率</small><strong>{matchRate}%</strong></span>
+          <span><small>解析完成率</small><strong>{parseRate}%</strong></span>
         </article>
       </div>
 
@@ -170,6 +171,8 @@ function SimulatedReviewPanel({
 export function ProjectMaterialsPage({
   enterpriseMaterials = [],
   onAddEnterpriseFiles,
+  onAssistantSend,
+  onImportTenderNoticeUrl,
   projectId,
   projectName,
   materials,
@@ -182,7 +185,11 @@ export function ProjectMaterialsPage({
 }: ProjectMaterialsPageProps) {
   const [activeTab, setActiveTab] = useState<ProjectMaterialsTab>('materials');
   const [completedBidNames, setCompletedBidNames] = useState<string[]>([]);
-  const [startedTaskMode, setStartedTaskMode] = useState<'generate' | 'validate' | null>(null);
+  const [taskState, setTaskState] = useState<{
+    message: string;
+    mode: 'generate' | 'validate' | null;
+    status: 'error' | 'idle' | 'loading' | 'success';
+  }>({ message: '', mode: null, status: 'idle' });
   const parsingCount = materials.filter((material) =>
     ['queued', 'parsing'].includes(material.parseStatus),
   ).length;
@@ -201,15 +208,33 @@ export function ProjectMaterialsPage({
     [materials],
   );
 
-  const uploadProjectFiles = (files: File[]) => onUpload?.(projectId, files);
-  const uploadCompletedBidFiles = (files: File[]) => {
-    setCompletedBidNames((current) => [...current, ...files.map((file) => file.name)]);
-    onUpload?.(projectId, files);
+  const uploadProjectFiles = async (files: File[]) => onUpload?.(projectId, files);
+  const uploadCompletedBidFiles = async (files: File[]) => {
+    await onUpload?.(projectId, files);
+    setCompletedBidNames((current) => [
+      ...current,
+      ...files.map((file) => file.name).filter((name) => !current.includes(name)),
+    ]);
   };
-  const startTask = () => {
+  const startTask = async () => {
     const mode = completedBidNames.length > 0 ? 'validate' : 'generate';
-    setStartedTaskMode(mode);
-    onStartTask(projectId, mode);
+    setTaskState({ message: '正在创建任务…', mode, status: 'loading' });
+    try {
+      await onStartTask(projectId, mode);
+      setTaskState({
+        message: `${mode === 'validate' ? '校核' : '生成'}任务已创建，可在任务进度中查看。`,
+        mode,
+        status: 'success',
+      });
+    } catch (error) {
+      setTaskState({
+        message: error instanceof Error && error.message
+          ? error.message
+          : `${mode === 'validate' ? '校核' : '生成'}任务创建失败，请重试。`,
+        mode: null,
+        status: 'error',
+      });
+    }
   };
 
   return (
@@ -218,13 +243,13 @@ export function ProjectMaterialsPage({
       materials={workspaceMaterials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onUpload ? uploadProjectFiles : undefined}
+      onAssistantSend={onAssistantSend}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       rightRail={
         <SimulatedReviewPanel
           materialCount={materials.length}
           parsedCount={parsedCount}
-          requirementCount={requirements.length}
-          pendingRequirementCount={pendingRequirementCount}
+          requirements={requirements}
           snapshotCount={snapshots.length}
         />
       }
@@ -292,6 +317,7 @@ export function ProjectMaterialsPage({
                 projectName={projectName}
                 existingBidFileNames={completedBidNames}
                 onExistingBidUpload={uploadCompletedBidFiles}
+                onImportTenderNoticeUrl={onImportTenderNoticeUrl}
                 onUpload={onUpload}
               />
 
@@ -362,20 +388,25 @@ export function ProjectMaterialsPage({
                 <div className="project-start-task-wrap">
                   <button
                     className="project-start-task"
-                    disabled={startedTaskMode !== null}
-                    onClick={startTask}
+                    disabled={taskState.status === 'loading' || taskState.status === 'success'}
+                    onClick={() => void startTask()}
                     type="button"
                   >
                     <Sparkles aria-hidden="true" size={18} />
-                    {startedTaskMode
-                      ? '任务已进入队列'
+                    {taskState.status === 'loading'
+                      ? '正在创建任务…'
+                      : taskState.status === 'success'
+                        ? '任务已进入队列'
                       : completedBidNames.length > 0
                         ? '开始校核'
                         : '开始生成'}
                   </button>
-                  {startedTaskMode ? (
-                    <p className="project-start-task-status" role="status">
-                      {startedTaskMode === 'validate' ? '校核' : '生成'}任务已创建，可在任务进度中查看。
+                  {taskState.status !== 'idle' ? (
+                    <p
+                      className={`project-start-task-status project-start-task-status--${taskState.status}`}
+                      role={taskState.status === 'error' ? 'alert' : 'status'}
+                    >
+                      {taskState.message}
                     </p>
                   ) : null}
                 </div>

@@ -2,7 +2,17 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules', '.worktrees'] },
+  {
+    ignores: [
+      'dist',
+      'dist-*',
+      'coverage',
+      'node_modules',
+      '.worktrees',
+      // Local backend checkout used only for contract verification.
+      'references',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

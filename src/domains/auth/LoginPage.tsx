@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   BarChart3,
   ClipboardCheck,
+  Building2,
   Eye,
   EyeOff,
   LockKeyhole,
@@ -19,8 +20,17 @@ export type LoginCredentials = {
   remember: boolean;
 };
 
+export type RegisterCredentials = {
+  email: string;
+  enterpriseName: string;
+  password: string;
+};
+
 type LoginPageProps = {
-  onLogin?: (credentials: LoginCredentials) => void;
+  error?: string;
+  isSubmitting?: boolean;
+  onLogin?: (credentials: LoginCredentials) => void | Promise<void>;
+  onRegister?: (credentials: RegisterCredentials) => void | Promise<void>;
 };
 
 const featureItems = [
@@ -91,18 +101,26 @@ function LoginWaveScenery() {
   );
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage({
+  error,
+  isSubmitting = false,
+  onLogin,
+  onRegister,
+}: LoginPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [enterpriseName, setEnterpriseName] = useState('');
   const [remember, setRemember] = useState(true);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (mode === 'login') {
-      onLogin?.({ email, password, remember });
+      void onLogin?.({ email, password, remember });
+      return;
     }
+    void onRegister?.({ email, enterpriseName, password });
   };
 
   return (
@@ -161,6 +179,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <h1 id="login-panel-title" className="sr-only">
             {mode === 'login' ? '登录AI电网投标助手' : '注册AI电网投标助手'}
           </h1>
+          {mode === 'register' && onRegister ? (
+            <label>
+              <span>企业名称</span>
+              <span className="login0802__input">
+                <Building2 size={22} aria-hidden="true" />
+                <input
+                  type="text"
+                  autoComplete="organization"
+                  value={enterpriseName}
+                  required
+                  maxLength={200}
+                  placeholder="请输入企业名称"
+                  onChange={(event) => setEnterpriseName(event.target.value)}
+                />
+              </span>
+            </label>
+          ) : null}
           <label>
             <span>邮箱</span>
             <span className="login0802__input">
@@ -184,7 +219,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 value={password}
                 required
-                minLength={6}
+                minLength={mode === 'register' ? 8 : 1}
                 placeholder="请输入密码"
                 onChange={(event) => setPassword(event.target.value)}
               />
@@ -212,12 +247,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 忘记密码？
               </button>
             </div>
-          ) : (
+          ) : !onRegister ? (
             <p className="login0802__register-note">注册入口将在企业管理员审核后开放。</p>
-          )}
+          ) : null}
 
-          <button className="login0802__submit" type="submit" disabled={mode === 'register'}>
-            {mode === 'login' ? '登录' : '提交注册申请'}
+          {error ? <p className="login0802__register-note" role="alert">{error}</p> : null}
+
+          <button
+            className="login0802__submit"
+            type="submit"
+            disabled={isSubmitting || (mode === 'register' && !onRegister)}
+          >
+            {isSubmitting
+              ? '请稍候…'
+              : mode === 'login'
+                ? '登录'
+                : onRegister
+                  ? '注册并进入'
+                  : '提交注册申请'}
           </button>
         </form>
       </section>

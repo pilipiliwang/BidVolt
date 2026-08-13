@@ -24,6 +24,7 @@ type PricingCenterProps = {
   onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
   onApply?: (strategyId: string) => void;
+  onAssistantSend?: (value: string) => void;
 };
 
 const focusableSelector = [
@@ -42,10 +43,46 @@ function getFocusableElements(container: HTMLElement) {
 }
 
 function formatCurrencyAmount(amount: string) {
-  return Number(amount).toLocaleString('zh-CN', {
+  if (!amount.trim()) return '—';
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount)) return '—';
+  return numericAmount.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function formatOptionalCurrency(amount: number | null) {
+  return amount === null
+    ? '—'
+    : amount.toLocaleString('zh-CN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+}
+
+function calculateSampleStats(samples: HistoryPriceSample[]) {
+  const pricedSamples = samples
+    .map((sample) => ({ ...sample, numericPrice: Number(sample.price) }))
+    .filter((sample) => Number.isFinite(sample.numericPrice));
+  const orderedPrices = pricedSamples.map((sample) => sample.numericPrice).sort((a, b) => a - b);
+  const middle = Math.floor(orderedPrices.length / 2);
+  const median = orderedPrices.length
+    ? orderedPrices.length % 2
+      ? orderedPrices[middle]
+      : (orderedPrices[middle - 1] + orderedPrices[middle]) / 2
+    : null;
+  const latest = [...pricedSamples].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0];
+  return {
+    average: orderedPrices.length
+      ? orderedPrices.reduce((sum, amount) => sum + amount, 0) / orderedPrices.length
+      : null,
+    latest: latest?.numericPrice ?? null,
+    latestAt: latest?.occurredAt ?? '',
+    maximum: orderedPrices.at(-1) ?? null,
+    median,
+    minimum: orderedPrices[0] ?? null,
+  };
 }
 
 const riskLabels = {
@@ -62,6 +99,7 @@ export function PricingCenter({
   onAddEnterpriseFiles,
   onAddFiles,
   onApply,
+  onAssistantSend,
 }: PricingCenterProps) {
   const recommendedStrategy = calculation.strategies.find((strategy) => strategy.recommended);
   const hasCalculatedResult = calculation.status === 'calculated' && Boolean(recommendedStrategy);
@@ -75,6 +113,15 @@ export function PricingCenter({
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   const usableSamples = useMemo(() => samples.filter((sample) => sample.usable), [samples]);
+  const sampleStats = useMemo(() => calculateSampleStats(usableSamples), [usableSamples]);
+  const sampleScope = useMemo(() => {
+    const materialNames = [...new Set(usableSamples.map((sample) => sample.materialName).filter(Boolean))];
+    const specifications = [...new Set(usableSamples.map((sample) => sample.specification).filter(Boolean))];
+    return {
+      material: materialNames.length === 1 ? materialNames[0] : materialNames.length ? `${materialNames.length} 种材料` : '—',
+      specification: specifications.length === 1 ? specifications[0] : specifications.length ? `${specifications.length} 种规格` : '—',
+    };
+  }, [usableSamples]);
   const visibleSamples = useMemo(() => {
     const normalizedQuery = sampleQuery.trim().toLocaleLowerCase();
     if (!normalizedQuery) return samples;
@@ -85,6 +132,10 @@ export function PricingCenter({
     );
   }, [sampleQuery, samples]);
   const selectedStrategy = calculation.strategies.find((strategy) => strategy.id === selectedStrategyId);
+
+  useEffect(() => {
+    setSelectedStrategyId(defaultStrategy);
+  }, [defaultStrategy]);
 
   useEffect(() => {
     if (!confirmOpen) return undefined;
@@ -143,6 +194,7 @@ export function PricingCenter({
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
+      onAssistantSend={onAssistantSend}
       rightRail={
         <section className={styles.strategies} aria-labelledby="strategy-title">
           <header><h2 id="strategy-title">报价策略</h2><CircleHelp aria-hidden="true" size={15} /></header>
@@ -212,10 +264,9 @@ export function PricingCenter({
 
         {hasCalculatedResult && recommendedStrategy ? (
           <div className={styles.materialSummary}>
-            <div><span>当前材料（已选中）</span><strong>高压开关柜（KYN28A-12）</strong></div>
-            <div><span>编码</span><strong>10GY-DZ-006</strong></div>
-            <div><span>型号规格</span><strong>KYN28A-12/1250A 31.5kA</strong></div>
-            <div><span>当前报价（元）</span><strong>30,000.00</strong></div>
+            <div><span>测算样本材料</span><strong>{sampleScope.material}</strong></div>
+            <div><span>样本规格口径</span><strong>{sampleScope.specification}</strong></div>
+            <div><span>可用样本</span><strong>{usableSamples.length} 条</strong></div>
             <div className={styles.suggested}><span>算法建议报价（元）</span><strong>{formatCurrencyAmount(recommendedStrategy.amount)}</strong></div>
             <div><span>建议范围（元）</span><strong>{formatCurrencyAmount(recommendedStrategy.confidenceLow)} ~ {formatCurrencyAmount(recommendedStrategy.confidenceHigh)}</strong></div>
           </div>
@@ -225,33 +276,26 @@ export function PricingCenter({
           <>
             <div className={styles.detailTitle}>测算依据明细</div>
             <div className={styles.metrics}>
-              <Metric label="历史中标价中位数（元）" value="29,600.00" source="来源：历史中标库" />
-              <Metric label="近半年中标价均价" value="30,050.00" source="来源：历史中标库" />
-              <Metric label="同地区均价（元）" value="29,850.00" source="来源：华东地区样本" />
-              <Metric label="同规格均价（元）" value="29,900.00" source="来源：同规格样本" />
-              <Metric label="时间趋势调整" value="+1.20%" source="依据：原材料指数上涨" />
-              <Metric label="地区调整" value="+0.80%" source="依据：华东地区溢价系数" />
-              <Metric label="规格调整" value="+0.50%" source="额定电流/开断能力" />
-              <Metric label="内部成本（元）" value="26,800.00" source="来源：成本测算模型" />
-              <Metric label="最低毛利要求" value="8.00%" source="公司策略设置" />
-              <Metric label="投标上限（元）" value="31,600.00" source="依据：成本+毛利上限" />
-              <div className={styles.formula}><span>报价评分公式</span><strong>价格得分 = 100 ×（1 −（报价 − 最低价）/（最高可接受价 − 最低价））</strong></div>
+              <Metric label="历史中标价中位数（元）" value={formatOptionalCurrency(sampleStats.median)} source="当前可用历史样本" />
+              <Metric label="历史中标价平均值（元）" value={formatOptionalCurrency(sampleStats.average)} source="当前可用历史样本" />
+              <Metric label="历史中标价最低值（元）" value={formatOptionalCurrency(sampleStats.minimum)} source="当前可用历史样本" />
+              <Metric label="历史中标价最高值（元）" value={formatOptionalCurrency(sampleStats.maximum)} source="当前可用历史样本" />
+              <Metric label="最近样本中标价（元）" value={formatOptionalCurrency(sampleStats.latest)} source={sampleStats.latestAt ? `样本日期：${sampleStats.latestAt}` : '当前无可用样本'} />
+              <Metric label="建议区间下限（元）" value={recommendedStrategy ? formatCurrencyAmount(recommendedStrategy.confidenceLow) : '—'} source="算法返回结果" />
+              <Metric label="建议区间上限（元）" value={recommendedStrategy ? formatCurrencyAmount(recommendedStrategy.confidenceHigh) : '—'} source="算法返回结果" />
+              <Metric label="算法版本" value={calculation.algorithmVersion || '—'} source="报价算法服务" />
+              <div className={styles.formula}><span>测算追溯信息</span><strong>样本快照：{calculation.sampleSnapshotId || '—'} · 查询快照：{calculation.querySnapshotId || '—'}</strong></div>
             </div>
 
             <div className={styles.analysisGrid}>
               <section aria-label="价格趋势">
-                <header><span>价格趋势（近12个月 同规格中标价）</span><small><i /> 中标价均值 <b /> 中位数</small></header>
-                <svg className={styles.chart} viewBox="0 0 450 185" role="img" aria-label="近十二个月价格趋势折线图">
-                  <g className={styles.gridLines}><path d="M44 28H435M44 65H435M44 102H435M44 139H435" /></g>
-                  <polyline className={styles.meanLine} points="44,118 80,113 116,111 152,104 188,105 224,92 260,96 296,94 332,96 368,76 404,62 435,51" />
-                  <polyline className={styles.medianLine} points="44,137 80,133 116,129 152,127 188,126 224,121 260,119 296,117 332,118 368,107 404,102 435,94" />
-                  <g className={styles.axisLabels}><text x="2" y="31">34,000</text><text x="2" y="68">32,000</text><text x="2" y="105">30,000</text><text x="2" y="142">28,000</text><text x="44" y="170">2025-07</text><text x="185" y="170">2025-11</text><text x="360" y="170">2026-05</text></g>
-                </svg>
+                <header><span>价格趋势（按可用历史样本）</span><small><i /> 样本中标价</small></header>
+                <SamplePriceChart samples={usableSamples} />
               </section>
 
               <section className={styles.samplePanel} aria-labelledby="samples-title">
                 <header>
-                  <span id="samples-title">可比历史中标样本（同规格 KYN28A-12）</span>
+                  <span id="samples-title">可比历史中标样本</span>
                   <label className={styles.searchBox}>
                     <Search aria-hidden="true" size={13} />
                     <span className="bv-visually-hidden">筛选历史样本</span>
@@ -299,6 +343,65 @@ export function PricingCenter({
 
 function Metric({ label, source, value }: { label: string; source: string; value: string }) {
   return <div><span>{label}</span><strong>{value}</strong><small>{source}</small></div>;
+}
+
+function SamplePriceChart({ samples }: { samples: HistoryPriceSample[] }) {
+  const points = [...samples]
+    .map((sample) => ({
+      date: sample.occurredAt,
+      id: sample.id,
+      value: Number(sample.price),
+    }))
+    .filter((sample) => Number.isFinite(sample.value))
+    .sort((first, second) => first.date.localeCompare(second.date));
+
+  if (points.length === 0) {
+    return <div className={styles.insufficient} role="status"><p>暂无可用于绘制价格趋势的历史样本。</p></div>;
+  }
+
+  const values = points.map((point) => point.value);
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const spread = maximum - minimum || Math.max(maximum * 0.1, 1);
+  const lowerBound = minimum - spread * 0.1;
+  const upperBound = maximum + spread * 0.1;
+  const width = 391;
+  const height = 111;
+  const xFor = (index: number) => 44 + (points.length === 1 ? width / 2 : (index / (points.length - 1)) * width);
+  const yFor = (value: number) => 28 + ((upperBound - value) / (upperBound - lowerBound)) * height;
+  const linePoints = points.map((point, index) => `${xFor(index)},${yFor(point.value)}`).join(' ');
+  const labelIndexes = points.length <= 3
+    ? points.map((_, index) => index)
+    : [0, Math.floor((points.length - 1) / 2), points.length - 1];
+
+  return (
+    <svg className={styles.chart} viewBox="0 0 450 185" role="img" aria-label="历史样本价格趋势折线图">
+      <title>历史样本价格趋势</title>
+      <desc>根据当前加载且可用于测算的 {points.length} 条历史报价样本绘制。</desc>
+      <g className={styles.gridLines}><path d="M44 28H435M44 65H435M44 102H435M44 139H435" /></g>
+      <polyline className={styles.meanLine} points={linePoints} />
+      {points.map((point, index) => (
+        <circle key={point.id} cx={xFor(index)} cy={yFor(point.value)} r="3.5" fill="#278965" />
+      ))}
+      <g className={styles.axisLabels}>
+        {[0, 1, 2, 3].map((index) => (
+          <text key={index} x="2" y={31 + index * 37}>
+            {Math.round(upperBound - ((upperBound - lowerBound) * index) / 3).toLocaleString('zh-CN')}
+          </text>
+        ))}
+        {labelIndexes.map((index) => (
+          <text
+            key={points[index].id}
+            x={xFor(index)}
+            y="170"
+            textAnchor={index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'}
+          >
+            {points[index].date}
+          </text>
+        ))}
+      </g>
+    </svg>
+  );
 }
 
 function InsufficientState({ calculation }: { calculation: QuoteCalculationView }) {

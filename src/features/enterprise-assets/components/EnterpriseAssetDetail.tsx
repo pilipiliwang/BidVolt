@@ -23,14 +23,14 @@ const statusLabel = {
 
 interface EnterpriseAssetDetailProps {
   asset: EnterpriseAsset;
-  onCorrectFact?: (assetId: string, factKey: string, value: string) => void;
+  onCorrectFact?: (assetId: string, factId: string, value: string) => void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }
 
 interface FactRowProps {
   assetId: string;
   fact: EnterpriseFact;
-  onCorrectFact?: (assetId: string, factKey: string, value: string) => void;
+  onCorrectFact?: (assetId: string, factId: string, value: string) => void;
 }
 
 function confidencePercent(value: number) {
@@ -45,7 +45,7 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
     event.preventDefault();
     const nextValue = draftValue.trim();
     if (!nextValue) return;
-    onCorrectFact?.(assetId, fact.key, nextValue);
+    onCorrectFact?.(assetId, fact.id ?? fact.key, nextValue);
     setIsEditing(false);
   };
 

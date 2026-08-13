@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'rea
 import { Archive, CalendarDays, CircleAlert, Hourglass, Plus, Search, X } from 'lucide-react';
 
 import { AppLink } from '../../app/router';
-import { projectSummaries, type ProjectSummary } from './project-view-model';
+import type { ProjectSummary } from './project-view-model';
 import './ProjectListPage.css';
 
 type ProjectTableRow = ProjectSummary & {
@@ -11,8 +11,14 @@ type ProjectTableRow = ProjectSummary & {
 };
 
 type ProjectListPageProps = {
-  onCreateProject: (project: ProjectSummary) => void;
+  error?: string;
+  /** Kept for call-site compatibility; this page now always renders supplied backend records only. */
+  isLive?: boolean;
+  onArchiveProject?: (projectId: string) => void | Promise<void>;
+  onCreateProject: (project: ProjectSummary) => void | Promise<void>;
   projects: ProjectSummary[];
+  scores?: Record<string, number | string>;
+  total?: number;
 };
 
 type NewProjectDraft = {
@@ -55,80 +61,26 @@ function getMinimumDeadline() {
   return toDateTimeLocalValue(minimum);
 }
 
-const supplementalProjects: ProjectTableRow[] = [
-  {
-    id: 'BV-2026-006',
-    code: 'BV-2026-006',
-    title: '±800kV特高压直流输电工程换流站设备采购',
-    buyer: '国家电网特高压建设分公司',
-    stage: '材料解析',
-    progress: 18,
-    deadline: '2026-08-08 10:00',
-    deadlineHint: '3天后截止',
-    materialCount: 18,
-    riskCount: 2,
-    updatedAt: '今天 09:48',
-    score: '-',
-  },
-  {
-    id: 'BV-2026-005',
-    code: 'BV-2026-005',
-    title: '华东电网调峰火电机组灵活性改造项目',
-    buyer: '华东电力设计研究院',
-    stage: '内部评审',
-    progress: 81,
-    deadline: '2026-08-15 09:00',
-    deadlineHint: '10天后截止',
-    materialCount: 36,
-    riskCount: 1,
-    updatedAt: '昨天 14:12',
-    score: '82.5',
-  },
-  {
-    id: 'BV-2026-003',
-    code: 'BV-2026-003',
-    title: '220kV变电站智能化改造工程',
-    buyer: '南网数智电网建设有限公司',
-    stage: '方案编制',
-    progress: 64,
-    deadline: '2026-08-18 14:00',
-    deadlineHint: '13天后截止',
-    materialCount: 22,
-    riskCount: 4,
-    updatedAt: '昨天 11:08',
-    score: '76.8',
-  },
-  {
-    id: 'BV-2026-001',
-    code: 'BV-2026-001',
-    title: '储能电站建设项目（100MW/200MWh）',
-    buyer: '华中新能源投资集团',
-    stage: '待提交',
-    progress: 94,
-    deadline: '2026-08-27 10:00',
-    deadlineHint: '22天后截止',
-    materialCount: 29,
-    riskCount: 0,
-    updatedAt: '07-31 16:05',
-    score: '92.1',
-  },
-];
+function deadlineState(deadlineValue: string, now = Date.now()) {
+  const deadline = new Date(deadlineValue.replace(' ', 'T')).getTime();
+  if (!Number.isFinite(deadline)) return { hint: '截止时间待确认', state: 'unknown' as const };
+  const difference = deadline - now;
+  if (difference <= 0) return { hint: '已截止', state: 'expired' as const };
+  const days = Math.ceil(difference / 86_400_000);
+  return {
+    hint: days === 1 ? '1天内截止' : `${days}天后截止`,
+    state: days <= 7 ? 'imminent' as const : 'active' as const,
+  };
+}
 
-const scoreByProjectId: Record<string, string> = {
-  'BV-2026-018': '-',
-  'BV-2026-015': '86.2',
-  'BV-2026-012': '75.6',
-  'BV-2026-009': '88.3',
-};
-
-const hintByProjectId: Record<string, string> = {
-  'BV-2026-018': '7天后截止',
-  'BV-2026-015': '4天后截止',
-  'BV-2026-012': '15天后截止',
-  'BV-2026-009': '2天后截止',
-};
-
-export function ProjectListPage({ onCreateProject, projects }: ProjectListPageProps) {
+export function ProjectListPage({
+  error,
+  onArchiveProject,
+  onCreateProject,
+  projects,
+  scores = {},
+  total,
+}: ProjectListPageProps) {
   const [query, setQuery] = useState('');
   const [deletedProjectIds, setDeletedProjectIds] = useState<string[]>([]);
   const [isCreateOpen, setCreateOpen] = useState(false);
@@ -143,21 +95,26 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
   const deadlineHelpId = useId();
 
   const projectRows = useMemo<ProjectTableRow[]>(
-    () => [
-      ...projects.map((project) => ({
+    () => projects.map((project) => ({
         ...project,
-        deadlineHint: hintByProjectId[project.id] ?? '新建项目',
-        score: scoreByProjectId[project.id] ?? '-',
+        deadlineHint: deadlineState(project.deadline).hint,
+        score: scores[project.id] === undefined ? '-' : String(scores[project.id]),
       })),
-      ...supplementalProjects,
-    ],
+    [projects, scores],
+  );
+  const projectTotal = total ?? projects.length;
+  const deadlineSummary = useMemo(
+    () => projects.reduce(
+      (summary, project) => {
+        const state = deadlineState(project.deadline).state;
+        if (state === 'imminent') summary.imminent += 1;
+        if (state === 'expired') summary.expired += 1;
+        return summary;
+      },
+      { expired: 0, imminent: 0 },
+    ),
     [projects],
   );
-  const accessibleProjectIds = useMemo(
-    () => new Set(projects.map((project) => project.id)),
-    [projects],
-  );
-  const projectTotal = 36 + Math.max(0, projects.length - projectSummaries.length);
 
   const visibleProjects = useMemo(() => {
     const normalisedQuery = query.trim().toLocaleLowerCase('zh-CN');
@@ -226,7 +183,7 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
     };
   }, [isCreateOpen]);
 
-  const submitProject = (event: FormEvent<HTMLFormElement>) => {
+  const submitProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalized = {
       buyer: draft.buyer.trim(),
@@ -252,25 +209,31 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
       return;
     }
 
-    onCreateProject({
-      id: normalized.code,
-      code: normalized.code,
-      title: normalized.title,
-      buyer: normalized.buyer,
-      stage: '材料解析',
-      progress: 0,
-      deadline: normalized.deadline.replace('T', ' '),
-      materialCount: 0,
-      riskCount: 0,
-      updatedAt: '刚刚',
-    });
-    closeCreateDialog();
+    try {
+      await onCreateProject({
+        id: normalized.code,
+        code: normalized.code,
+        title: normalized.title,
+        buyer: normalized.buyer,
+        stage: '材料解析',
+        progress: 0,
+        deadline: normalized.deadline.replace('T', ' '),
+        materialCount: 0,
+        riskCount: 0,
+        updatedAt: '刚刚',
+      });
+      closeCreateDialog();
+    } catch (creationError) {
+      setFormError(
+        creationError instanceof Error ? creationError.message : '项目创建失败，请稍后重试。',
+      );
+    }
   };
 
   const summaryItems = [
     { label: '全部项目', value: projectTotal, icon: Archive, tone: 'green' },
-    { label: '临近截止', value: 5, icon: Hourglass, tone: 'orange' },
-    { label: '已截止', value: 8, icon: CircleAlert, tone: 'red' },
+    { label: '临近截止', value: deadlineSummary.imminent, icon: Hourglass, tone: 'orange' },
+    { label: '已截止', value: deadlineSummary.expired, icon: CircleAlert, tone: 'red' },
   ] as const;
 
   return (
@@ -316,6 +279,7 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
       </section>
 
       <section className="ui0802-project-table-card" aria-label="投标项目列表">
+        {error ? <p className="ui0802-project-form-error" role="alert">{error}</p> : null}
         {visibleProjects.length ? (
           <div className="ui0802-project-table-scroll">
             <table className="ui0802-project-table">
@@ -324,7 +288,7 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
                   <th scope="col">项目名称</th>
                   <th scope="col">招标编号</th>
                   <th scope="col">截止时间</th>
-                  <th scope="col">模拟得分</th>
+                  <th scope="col">评审得分</th>
                   <th scope="col">最近更新时间</th>
                   <th scope="col">操作</th>
                 </tr>
@@ -345,25 +309,22 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
                     <td>{project.updatedAt}</td>
                     <td>
                       <div className="ui0802-row-actions">
-                        {accessibleProjectIds.has(project.id) ? (
-                          <AppLink
-                            to={`/projects/${encodeURIComponent(project.id)}/overview`}
-                            aria-label={`进入${project.title}工作台`}
-                          >
-                            进入
-                          </AppLink>
-                        ) : (
-                          <span
-                            aria-label={`${project.title}工作台暂未接入`}
-                            title="演示数据尚未接入可访问的项目工作台"
-                          >
-                            暂未接入
-                          </span>
-                        )}
+                        <AppLink
+                          to={`/projects/${encodeURIComponent(project.id)}/overview`}
+                          aria-label={`进入${project.title}工作台`}
+                        >
+                          进入
+                        </AppLink>
                         <button
                           type="button"
                           aria-label={`从列表删除${project.title}`}
-                          onClick={() => setDeletedProjectIds((current) => [...current, project.id])}
+                          onClick={() => {
+                            if (onArchiveProject) {
+                              void Promise.resolve(onArchiveProject(project.id)).catch(() => undefined);
+                              return;
+                            }
+                            setDeletedProjectIds((current) => [...current, project.id]);
+                          }}
                         >
                           删除
                         </button>
@@ -389,7 +350,7 @@ export function ProjectListPage({ onCreateProject, projects }: ProjectListPagePr
             role="status"
             aria-label="项目分页状态"
           >
-            <span>当前演示页</span>
+            <span>后端数据</span>
             <strong>第 1 / 1 页</strong>
             <span>展示 {visibleProjects.length} 条</span>
           </div>

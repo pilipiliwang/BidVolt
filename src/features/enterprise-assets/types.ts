@@ -11,6 +11,7 @@ export type EnterpriseAssetCategory =
 export type EnterpriseAssetStatus = 'processing' | 'needs_review' | 'ready' | 'failed';
 
 export interface EnterpriseFact {
+  id?: string;
   key: string;
   label: string;
   value: string;
@@ -56,6 +57,6 @@ export interface EnterpriseAssetUploadProps {
 
 export interface EnterpriseAssetPageProps extends EnterpriseAssetUploadProps {
   assets: EnterpriseAsset[];
-  onCorrectFact?: (assetId: string, factKey: string, value: string) => void;
+  onCorrectFact?: (assetId: string, factId: string, value: string) => void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }

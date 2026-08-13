@@ -26,13 +26,15 @@ import type { DeliverableRouteId } from '../../app/router';
 
 import './word-editor-v2.css';
 
-type WordMockEditorProps = {
+export type WordEditorProps = {
   deliverableId: Exclude<DeliverableRouteId, 'quote'>;
-  downloadHref: string;
+  downloadHref?: string;
   downloadLabel: string;
+  onDownload?: () => Promise<void> | void;
   onDirty: () => void;
   onSave: (content: string) => void;
   onSendSelectionToAssistant?: (selection: string) => void;
+  initialHtml?: string;
   /** When provided, saved rich text and comments are restored for this document. */
   storageKey?: string;
 };
@@ -64,15 +66,17 @@ type OutlineItem = {
 const MAX_HISTORY_LENGTH = 80;
 const MAX_ASSISTANT_SELECTION_LENGTH = 4_000;
 
-export function WordMockEditor({
+export function WordEditor({
   deliverableId,
   downloadHref,
   downloadLabel,
+  onDownload,
   onDirty,
   onSave,
   onSendSelectionToAssistant,
+  initialHtml,
   storageKey,
-}: WordMockEditorProps) {
+}: WordEditorProps) {
   const editorRef = useRef<HTMLElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
@@ -112,7 +116,9 @@ export function WordMockEditor({
     if (initialTemplateHtmlRef.current === null) {
       initialTemplateHtmlRef.current = sanitizeRichTextHtml(editor.innerHTML);
     }
-    editor.innerHTML = initialTemplateHtmlRef.current;
+    editor.innerHTML = initialHtml
+      ? sanitizeRichTextHtml(initialHtml)
+      : initialTemplateHtmlRef.current;
 
     let restoredComments: CommentRecord[] = [];
     let shouldRewriteRestoredDraft = false;
@@ -152,7 +158,7 @@ export function WordMockEditor({
     };
     setHistoryRevision((revision) => revision + 1);
     setDocumentRevision((revision) => revision + 1);
-  }, [storageKey]);
+  }, [initialHtml, storageKey]);
 
   useEffect(() => {
     const rememberSelection = () => {
@@ -310,7 +316,7 @@ export function WordMockEditor({
         setAnnouncement('内容已提交，但浏览器本地草稿保存失败。');
       }
     }
-    onSave(getEditorText(editor).trim());
+    onSave(sanitizeRichTextHtml(editor.innerHTML));
   };
 
   const handleKeyboardShortcut = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -795,21 +801,26 @@ export function WordMockEditor({
           >
             <Search aria-hidden="true" size={16} />
           </button>
-          <a
-            download
-            href={downloadHref}
-            aria-label="下载原始 Mock Word"
-            title={downloadLabel}
-          >
-            <Download aria-hidden="true" size={16} /> 下载原始 Mock Word
-          </a>
+          {onDownload ? (
+            <button aria-label={downloadLabel} title={downloadLabel} type="button" onClick={() => void onDownload()}>
+              <Download aria-hidden="true" size={16} /> 下载原始文件
+            </button>
+          ) : downloadHref ? (
+            <a download href={downloadHref} aria-label={downloadLabel} title={downloadLabel}>
+              <Download aria-hidden="true" size={16} /> 下载原始文件
+            </a>
+          ) : (
+            <button aria-label="暂无可下载的原始文件" disabled title="暂无可下载的原始文件" type="button">
+              <Download aria-hidden="true" size={16} /> 下载原始文件
+            </button>
+          )}
           <button
             className="office-editor-toolbar__save"
             title="保存 (Ctrl+S)"
             type="button"
             onClick={save}
           >
-            <Save aria-hidden="true" size={16} /> 保存演示修改
+            <Save aria-hidden="true" size={16} /> 保存修改
           </button>
         </div>
       </div>
@@ -847,6 +858,7 @@ export function WordMockEditor({
             aria-multiline="true"
             className="office-word-page"
             contentEditable
+            data-placeholder="成果正文尚未加载，可在此开始编辑"
             role="textbox"
             suppressContentEditableWarning
             onInput={handleEditorInput}
@@ -855,9 +867,7 @@ export function WordMockEditor({
             onPaste={handlePaste}
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleDrop}
-          >
-            {isTechnical ? <TechnicalDocument /> : <BusinessDocument />}
-          </article>
+          />
         </div>
 
         {sidePanel === 'comments' ? (
@@ -907,7 +917,7 @@ export function WordMockEditor({
         {sidePanel === 'outline' ? (
           <aside className="word-editor-v2__side-panel" aria-label="目录与页面预览">
             <header>
-              <div><strong>目录与页面预览</strong><span>{outline.length} 个标题 · 1 个演示页面</span></div>
+              <div><strong>目录与页面预览</strong><span>{outline.length} 个标题 · 当前页面</span></div>
               <button aria-label="关闭目录与页面预览" type="button" onClick={() => setSidePanel(null)}>×</button>
             </header>
             <section className="word-editor-v2__outline" aria-label="文档目录">
@@ -934,8 +944,8 @@ export function WordMockEditor({
               ))}
               {!outline.length ? <p className="word-editor-v2__empty">正文中暂无标题</p> : null}
             </section>
-            <section className="word-editor-v2__pages" aria-label="页面预览（演示画布）">
-              <h3>页面预览（演示画布）</h3>
+            <section className="word-editor-v2__pages" aria-label="页面预览">
+              <h3>页面预览</h3>
               <p>原生分页需文档服务</p>
               <button type="button" onClick={focusFirstPage}>
                 <span>第 1 页</span>
@@ -948,7 +958,7 @@ export function WordMockEditor({
       </div>
 
       <footer className="word-editor-v2__statusbar">
-        <span>演示画布 · 第 1 页</span>
+        <span>在线文档 · 第 1 页</span>
         <span aria-label={`字数 ${wordCount}`}>字数 {wordCount}</span>
         <span>字符 {characterCount}</span>
         <span className="word-editor-v2__announcement" aria-live="polite">{announcement}</span>
@@ -967,6 +977,8 @@ export function WordMockEditor({
     </div>
   );
 }
+/** @deprecated Use WordEditor. */
+export const WordMockEditor = WordEditor;
 
 function cloneComments(comments: CommentRecord[]) {
   return comments.map((comment) => ({ ...comment }));
@@ -1416,46 +1428,4 @@ function unwrapElement(element: HTMLElement) {
   while (element.firstChild) parent.insertBefore(element.firstChild, element);
   parent.removeChild(element);
   parent.normalize();
-}
-
-function TechnicalDocument() {
-  return (
-    <>
-      <h2>4&nbsp;&nbsp;供货与实施方案</h2>
-      <h3>4.1&nbsp;&nbsp;供货范围</h3>
-      <p>本项目的供货范围包括但不限于：汽轮机本体及其附属设备、DCS控制系统、DEH系统、汽机旁路减温减压装置、给水泵组、阀门及管道附件等。</p>
-      <h3>4.2&nbsp;&nbsp;实施方案</h3>
-      <p>我公司将严格按照招标文件要求及国家相关规范标准，制定详细的实施计划，合理安排资源，确保项目按期、高质量完成。主要实施步骤如下：</p>
-      <table>
-        <thead><tr><th>序号</th><th>实施阶段</th><th>主要工作内容</th><th>计划工期</th></tr></thead>
-        <tbody>
-          <tr><td>1</td><td>前期准备</td><td>技术交底、图纸会审、施工方案编制、现场勘查</td><td>7天</td></tr>
-          <tr><td>2</td><td>设备供货</td><td>设备制造、出厂检验、运输及到货验收</td><td>45天</td></tr>
-          <tr><td>3</td><td>现场施工</td><td>设备安装、管道连接、电气接线、系统调试</td><td>30天</td></tr>
-          <tr><td>4</td><td>试运行与验收</td><td>单体试运、联动试运、性能验收、资料移交</td><td>15天</td></tr>
-        </tbody>
-      </table>
-      <p>我们将配备经验丰富的项目团队，建立完善的质量、进度、安全管理体系，确保项目顺利实施并达到预期目标。</p>
-    </>
-  );
-}
-
-function BusinessDocument() {
-  return (
-    <>
-      <h2>2&nbsp;&nbsp;商务响应与投标函</h2>
-      <h3>2.1&nbsp;&nbsp;投标函</h3>
-      <p>我方已认真研究本项目招标文件、补遗及澄清文件，愿按照招标文件规定承担合同范围内的全部工作。</p>
-      <h3>2.2&nbsp;&nbsp;商务条款响应</h3>
-      <table>
-        <thead><tr><th>序号</th><th>条款</th><th>招标要求</th><th>响应情况</th></tr></thead>
-        <tbody>
-          <tr><td>1</td><td>交付周期</td><td>合同生效后 90 日内</td><td>完全响应</td></tr>
-          <tr><td>2</td><td>质量保证</td><td>验收后 24 个月</td><td>完全响应</td></tr>
-          <tr><td>3</td><td>付款方式</td><td>按合同节点支付</td><td>无偏离</td></tr>
-        </tbody>
-      </table>
-      <p>本文件中的修改仅作为当前项目成果版本的演示草稿，保存不会回写企业资料库。</p>
-    </>
-  );
 }
