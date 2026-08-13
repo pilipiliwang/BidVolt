@@ -1,13 +1,21 @@
 export type TokenProvider = () => string | null | undefined;
 export type BackendRequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown | FormData;
-  headers?: HeadersInit; signal?: AbortSignal;
+  headers?: HeadersInit; signal?: AbortSignal; skipAuthRefresh?: boolean;
 };
+export type RefreshHandler = () => Promise<boolean>;
 export class BackendApiError extends Error {
   readonly status: number; readonly detail: unknown; readonly retryable: boolean;
-  constructor(status: number, message: string, detail?: unknown, options?: ErrorOptions) {
+  readonly accessToken?: string | null;
+  constructor(
+    status: number,
+    message: string,
+    detail?: unknown,
+    options?: ErrorOptions & { accessToken?: string | null },
+  ) {
     super(message, options); this.name = 'BackendApiError'; this.status = status; this.detail = detail;
     this.retryable = status === 0 || status >= 500;
+    this.accessToken = options?.accessToken;
   }
 }
 export type BackendApiClient = {
@@ -31,39 +39,133 @@ const validationMessage = (detail: unknown): string => {
   }
   return '后端请求失败';
 };
-const errorFromResponse = async (response: Response): Promise<BackendApiError> => {
+const errorFromResponse = async (
+  response: Response,
+  accessToken?: string | null,
+): Promise<BackendApiError> => {
   const payload = parseTextAsJson(await response.text());
   const detail = isRecord(payload) && 'detail' in payload ? payload.detail : payload;
-  return new BackendApiError(response.status, validationMessage(detail) || response.statusText, detail);
+  return new BackendApiError(
+    response.status,
+    validationMessage(detail) || response.statusText,
+    detail,
+    { accessToken },
+  );
 };
-const buildRequest = (options: BackendRequestOptions, tokenProvider?: TokenProvider): RequestInit => {
-  const headers = new Headers(options.headers); const token = tokenProvider?.();
+const buildRequest = (
+  options: BackendRequestOptions,
+  tokenProvider?: TokenProvider,
+): { accessToken: string | null; init: RequestInit } => {
+  const headers = new Headers(options.headers); const token = tokenProvider?.() ?? null;
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let body: BodyInit | undefined;
   if (options.body instanceof FormData) body = options.body;
   else if (options.body !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(options.body); }
-  return { method: options.method ?? 'GET', headers, body, signal: options.signal };
+  return {
+    accessToken: token,
+    init: { method: options.method ?? 'GET', headers, body, signal: options.signal },
+  };
 };
 export const createBackendApiClient = ({
-  baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1', tokenProvider, fetchImpl = fetch,
-}: { baseUrl?: string; tokenProvider?: TokenProvider; fetchImpl?: typeof fetch } = {}): BackendApiClient => {
+  baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1',
+  tokenProvider,
+  fetchImpl = fetch,
+  onAuthExpired,
+  refreshHandler,
+}: {
+  baseUrl?: string;
+  tokenProvider?: TokenProvider;
+  fetchImpl?: typeof fetch;
+  onAuthExpired?: (accessToken: string | null) => void;
+  refreshHandler?: RefreshHandler;
+} = {}): BackendApiClient => {
+  let refreshFlight: Promise<boolean> | null = null;
+  let refreshedTokenTransition: { from: string; to: string } | null = null;
   const call = async (path: string, options: BackendRequestOptions = {}) => {
-    try { return await fetchImpl(`${trimTrailingSlash(baseUrl)}${path}`, buildRequest(options, tokenProvider)); }
-    catch (cause) { throw new BackendApiError(0, '无法连接后端服务', cause, { cause }); }
+    const request = buildRequest(options, tokenProvider);
+    try {
+      return {
+        accessToken: request.accessToken,
+        response: await fetchImpl(`${trimTrailingSlash(baseUrl)}${path}`, request.init),
+      };
+    }
+    catch (cause) {
+      throw new BackendApiError(0, '无法连接后端服务', cause, {
+        accessToken: request.accessToken,
+        cause,
+      });
+    }
   };
+
+  const recoverUnauthorized = async (
+    path: string,
+    options: BackendRequestOptions,
+    failedAccessToken: string | null,
+  ) => {
+    if (options.skipAuthRefresh || !refreshHandler || !failedAccessToken) return null;
+
+    const latestAccessToken = tokenProvider?.() ?? null;
+    let expectedReplayToken: string;
+    if (latestAccessToken !== failedAccessToken) {
+      const wasRotatedByThisClient = refreshedTokenTransition?.from === failedAccessToken
+        && refreshedTokenTransition.to === latestAccessToken;
+      if (!wasRotatedByThisClient) return null;
+      expectedReplayToken = latestAccessToken;
+    } else {
+      if (!refreshFlight) {
+        refreshFlight = Promise.resolve()
+          .then(refreshHandler)
+          .then((refreshed) => {
+            const nextAccessToken = tokenProvider?.() ?? null;
+            if (refreshed && nextAccessToken && nextAccessToken !== failedAccessToken) {
+              refreshedTokenTransition = { from: failedAccessToken, to: nextAccessToken };
+            }
+            return refreshed;
+          })
+          .catch(() => false)
+          .finally(() => { refreshFlight = null; });
+      }
+      if (!await refreshFlight) return null;
+      const transition = refreshedTokenTransition;
+      if (!transition || transition.from !== failedAccessToken) return null;
+      expectedReplayToken = transition.to;
+    }
+
+    // Switching accounts after refresh but before replay must never send the old
+    // operation with the new tenant's bearer token.
+    if (!expectedReplayToken || tokenProvider?.() !== expectedReplayToken) return null;
+    const replay = await call(path, options);
+    if (replay.response.status === 401) onAuthExpired?.(replay.accessToken);
+    return replay;
+  };
+
+  const execute = async (path: string, options: BackendRequestOptions = {}) => {
+    const first = await call(path, options);
+    if (first.response.status !== 401) return first;
+    const recovered = await recoverUnauthorized(path, options, first.accessToken);
+    return recovered ?? first;
+  };
+
   return {
     async request<T>(path: string, options: BackendRequestOptions = {}): Promise<T> {
-      const response = await call(path, options); if (!response.ok) throw await errorFromResponse(response);
+      const result = await execute(path, options); const { response } = result;
+      if (!response.ok) throw await errorFromResponse(response, result.accessToken);
       const text = await response.text(); if (!text) return undefined as T;
       const payload = parseTextAsJson(text);
-      if (payload === undefined) throw new BackendApiError(502, '后端返回了无法解析的 JSON');
+      if (payload === undefined) {
+        throw new BackendApiError(502, '后端返回了无法解析的 JSON', undefined, {
+          accessToken: result.accessToken,
+        });
+      }
       return payload as T;
     },
     async requestVoid(path: string, options: BackendRequestOptions = {}): Promise<void> {
-      const response = await call(path, options); if (!response.ok) throw await errorFromResponse(response);
+      const result = await execute(path, options); const { response } = result;
+      if (!response.ok) throw await errorFromResponse(response, result.accessToken);
     },
     async requestBlob(path: string, options: BackendRequestOptions = {}): Promise<Blob> {
-      const response = await call(path, options); if (!response.ok) throw await errorFromResponse(response);
+      const result = await execute(path, options); const { response } = result;
+      if (!response.ok) throw await errorFromResponse(response, result.accessToken);
       return response.blob();
     },
   };

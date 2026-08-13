@@ -1,5 +1,16 @@
 import { createAuthApi } from './auth';
-import { createBackendApiClient, type TokenProvider } from './client';
+import {
+  BackendApiError,
+  createBackendApiClient,
+  type RefreshHandler,
+  type TokenProvider,
+} from './client';
+import {
+  expireBackendSessionIfCurrent,
+  getBackendAccessToken,
+  getBackendRefreshToken,
+  replaceBackendSessionTokens,
+} from '../../app/backend-session';
 import { createChatApi } from './chat';
 import { createDeliverablesApi } from './deliverables';
 import { createEditorApi } from './editor';
@@ -21,9 +32,17 @@ export type { EditorSession } from './editor';
 export * from './adapters';
 
 export const createBackendApi = ({
-  baseUrl, tokenProvider, fetchImpl,
-}: { baseUrl?: string; tokenProvider?: TokenProvider; fetchImpl?: typeof fetch } = {}) => {
-  const client = createBackendApiClient({ baseUrl, tokenProvider, fetchImpl });
+  baseUrl, tokenProvider, fetchImpl, onAuthExpired, refreshHandler,
+}: {
+  baseUrl?: string;
+  tokenProvider?: TokenProvider;
+  fetchImpl?: typeof fetch;
+  onAuthExpired?: (accessToken: string | null) => void;
+  refreshHandler?: RefreshHandler;
+} = {}) => {
+  const client = createBackendApiClient({
+    baseUrl, tokenProvider, fetchImpl, onAuthExpired, refreshHandler,
+  });
   return {
     client,
     auth: createAuthApi(client), projects: createProjectsApi(client), files: createFilesApi(client),
@@ -40,4 +59,34 @@ const runtimeTokenProvider: TokenProvider = () => {
   return window.localStorage.getItem('bidvolt.access-token') ?? window.sessionStorage.getItem('bidvolt.access-token');
 };
 
-export const backendApi = createBackendApi({ tokenProvider: runtimeTokenProvider });
+const runtimeBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+const refreshClient = createBackendApiClient({ baseUrl: runtimeBaseUrl });
+const refreshApi = createAuthApi(refreshClient);
+
+const runtimeRefreshHandler: RefreshHandler = async () => {
+  const accessToken = getBackendAccessToken();
+  const refreshToken = getBackendRefreshToken();
+  if (!accessToken || !refreshToken) return false;
+
+  try {
+    const tokens = await refreshApi.refresh(refreshToken);
+    return replaceBackendSessionTokens(tokens, { accessToken, refreshToken });
+  } catch (error) {
+    if (error instanceof BackendApiError && [400, 401, 403].includes(error.status)) {
+      expireBackendSessionIfCurrent({ accessToken, refreshToken });
+    }
+    return false;
+  }
+};
+
+export const backendApi = createBackendApi({
+  baseUrl: runtimeBaseUrl,
+  onAuthExpired: (accessToken) => {
+    const refreshToken = getBackendRefreshToken();
+    if (accessToken && refreshToken) {
+      expireBackendSessionIfCurrent({ accessToken, refreshToken });
+    }
+  },
+  refreshHandler: runtimeRefreshHandler,
+  tokenProvider: runtimeTokenProvider,
+});

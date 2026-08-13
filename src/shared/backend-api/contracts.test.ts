@@ -38,6 +38,26 @@ describe('real backend endpoint contracts', () => {
     expect(JSON.parse(String(init?.body))).toEqual({ email: 'user@example.com', password: 'secret123' });
   });
 
+  it('uses the backend refresh body and does not recursively refresh auth mutations', async () => {
+    const refreshHandler = vi.fn(async () => true);
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ detail: 'refresh token 无效或已过期' }, 401),
+    );
+    const api = createBackendApi({
+      fetchImpl,
+      refreshHandler,
+      tokenProvider: () => 'expired-access',
+    });
+
+    await expect(api.auth.refresh('rotating-refresh-token')).rejects.toMatchObject({ status: 401 });
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('/api/v1/auth/refresh');
+    expect(JSON.parse(String(init?.body))).toEqual({ refresh_token: 'rotating-refresh-token' });
+    expect(refreshHandler).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
   it('builds project archive and requirement query paths with numeric ids', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(undefined, 204))

@@ -61,6 +61,7 @@ import {
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
 import { AppShell } from './AppShell';
 import {
+  BACKEND_SESSION_EXPIRED_EVENT,
   clearBackendSession,
   getBackendAccessToken,
   getBackendRefreshToken,
@@ -69,6 +70,7 @@ import {
 } from './backend-session';
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
 import { getEditorDraftScopeKey, type AppSession } from './session';
+import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 
 type ProjectData = {
   deliverables: Deliverable[];
@@ -134,18 +136,50 @@ export function App() {
   const [editor, setEditor] = useState<ActiveEditor | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const editorLoadKeyRef = useRef('');
+  const tenantGuardRef = useRef(createTenantGenerationGuard());
 
-  const setError = useCallback((error: unknown, fallback: string) => {
-    if (error instanceof BackendApiError && error.status === 401) {
-      clearBackendSession();
-      setSession(null);
-      setAuthState('anonymous');
-      navigate('/login', { replace: true });
-    }
-    setStatusMessage({ tone: 'error', text: readableError(error, fallback) });
+  const clearTenantDomainState = useCallback(() => {
+    const empty = createEmptyTenantDomainState();
+    tenantGuardRef.current.invalidate();
+    setProjects(empty.projects);
+    setProjectsTotal(empty.projectsTotal);
+    setHistory(empty.history);
+    setProjectData(empty.projectData);
+    setEnterpriseAssets(empty.enterpriseAssets);
+    setEnterpriseIngestions(empty.enterpriseIngestions);
+    setReviewProviders(empty.reviewProviders);
+    setTaskDrawerProjectId(empty.taskDrawerProjectId);
+    setSnapshotDetail(empty.snapshotDetail);
+    setEditor(empty.editor);
+    setLoadingProjectId(empty.loadingProjectId);
+    setStatusMessage(empty.statusMessage);
+    editorLoadKeyRef.current = '';
   }, []);
 
-  const establishSession = useCallback(async (me?: MeResponse) => {
+  const becomeAnonymous = useCallback((options: { clearStoredSession?: boolean } = {}) => {
+    if (options.clearStoredSession !== false) clearBackendSession();
+    clearTenantDomainState();
+    setAuthSubmitting(false);
+    setSession(null);
+    setAuthState('anonymous');
+  }, [clearTenantDomainState]);
+
+  const setError = useCallback((error: unknown, fallback: string) => {
+    if (error instanceof BackendApiError
+      && error.accessToken
+      && error.accessToken !== getBackendAccessToken()) return;
+    if (error instanceof BackendApiError && error.status === 401) {
+      becomeAnonymous();
+      navigate('/login', { replace: true });
+      return;
+    }
+    setStatusMessage({ tone: 'error', text: readableError(error, fallback) });
+  }, [becomeAnonymous]);
+
+  const establishSession = useCallback(async (
+    me?: MeResponse,
+    generation = tenantGuardRef.current.capture(),
+  ) => {
     const profile = me ?? await backendApi.auth.me();
     const nextSession: AppSession = {
       enterpriseId: String(profile.enterprise_id),
@@ -156,9 +190,11 @@ export function App() {
         role: profile.permissions.includes('admin.user') ? '企业管理员' : '投标用户',
       },
     };
-    setSession(nextSession);
-    setAuthState('authenticated');
-    return nextSession;
+    const established = tenantGuardRef.current.commit(generation, () => {
+      setSession(nextSession);
+      setAuthState('authenticated');
+    });
+    return established ? nextSession : null;
   }, []);
 
   useEffect(() => {
@@ -167,24 +203,36 @@ export function App() {
       setAuthState('anonymous');
       return undefined;
     }
+    const generation = tenantGuardRef.current.capture();
     backendApi.auth.me().then((me) => {
-      if (!cancelled) void establishSession(me);
+      if (!cancelled) void establishSession(me, generation);
     }).catch(() => {
-      if (cancelled) return;
-      clearBackendSession();
-      setSession(null);
-      setAuthState('anonymous');
+      if (cancelled || !tenantGuardRef.current.isCurrent(generation)) return;
+      becomeAnonymous();
     });
     return () => { cancelled = true; };
-  }, [establishSession]);
+  }, [becomeAnonymous, establishSession]);
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      becomeAnonymous({ clearStoredSession: false });
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
+    return () => window.removeEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
+  }, [becomeAnonymous]);
 
   const loadProjects = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
     const response = await backendApi.projects.list({ page: 1, size: 100 });
-    setProjects(adaptBackendProjects(response.items));
-    setProjectsTotal(response.total);
+    tenantGuardRef.current.commit(generation, () => {
+      setProjects(adaptBackendProjects(response.items));
+      setProjectsTotal(response.total);
+    });
   }, []);
 
   const loadEnterprise = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
     const [categories, assets, ingestionResponse] = await Promise.all([
       backendApi.enterprise.listCategories(),
       backendApi.enterprise.listAssets(),
@@ -197,11 +245,14 @@ export function App() {
       ]);
       return { asset, detail, revisions };
     }));
-    setEnterpriseAssets(adaptBackendEnterpriseAssets(bundles, categories));
-    setEnterpriseIngestions(ingestionResponse.items.map(adaptIngestion));
+    tenantGuardRef.current.commit(generation, () => {
+      setEnterpriseAssets(adaptBackendEnterpriseAssets(bundles, categories));
+      setEnterpriseIngestions(ingestionResponse.items.map(adaptIngestion));
+    });
   }, []);
 
   const loadHistory = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
     const payload = await backendApi.quotes.history();
     const parsed = readHistorySamples(payload);
     const samples = adaptBackendHistorySamples(parsed.samples, parsed.snapshotIds);
@@ -209,18 +260,26 @@ export function App() {
       ? payload as Record<string, unknown>
       : {};
     const total = typeof record.sample_count === 'number' ? record.sample_count : samples.length;
-    setHistory({ records: toHistoryRecords(samples), samples, total });
+    tenantGuardRef.current.commit(generation, () => {
+      setHistory({ records: toHistoryRecords(samples), samples, total });
+    });
   }, []);
 
   useEffect(() => {
     if (authState !== 'authenticated') return;
+    const generation = tenantGuardRef.current.capture();
     void Promise.all([loadProjects(), loadEnterprise(), loadHistory(), backendApi.review.listProviders()])
-      .then(([, , , providers]) => setReviewProviders(adaptBackendReviewProviders(providers)))
-      .catch((error) => setError(error, '基础数据加载失败'));
+      .then(([, , , providers]) => tenantGuardRef.current.commit(generation, () => {
+        setReviewProviders(adaptBackendReviewProviders(providers));
+      }))
+      .catch((error) => {
+        if (tenantGuardRef.current.isCurrent(generation)) setError(error, '基础数据加载失败');
+      });
   }, [authState, loadEnterprise, loadHistory, loadProjects, setError]);
 
   const loadProject = useCallback(async (projectId: string) => {
-    setLoadingProjectId(projectId);
+    const generation = tenantGuardRef.current.capture();
+    tenantGuardRef.current.commit(generation, () => setLoadingProjectId(projectId));
     try {
       const [filesResponse, requirements, snapshotsResponse, tasksResponse, deliverables, reviewRuns, score, quoteList] = await Promise.all([
         backendApi.files.list({ target: 'project', project_id: projectId, page: 1, size: 100 }),
@@ -246,9 +305,10 @@ export function App() {
         : emptyQuote(projectId);
       const samples = history.samples;
       const adaptedMaterials = adaptBackendFiles(filesResponse.items);
-      setProjectData((current) => ({
-        ...current,
-        [projectId]: {
+      tenantGuardRef.current.commit(generation, () => {
+        setProjectData((current) => ({
+          ...current,
+          [projectId]: {
           deliverables,
           historyRecords: history.records,
           materials: adaptedMaterials,
@@ -265,15 +325,20 @@ export function App() {
             projectId,
             sequence: index + 1,
           })),
-        },
-      }));
+          },
+        }));
+      });
     } finally {
-      setLoadingProjectId((current) => current === projectId ? null : current);
+      tenantGuardRef.current.commit(generation, () => {
+        setLoadingProjectId((current) => current === projectId ? null : current);
+      });
     }
   }, [history.records, history.samples]);
 
   const refreshTaskEvents = useCallback(async (projectId: string) => {
+    const generation = tenantGuardRef.current.capture();
     const response = await backendApi.tasks.list(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     setProjectData((current) => {
       const existing = current[projectId];
       if (!existing) return current;
@@ -292,7 +357,10 @@ export function App() {
 
   useEffect(() => {
     if (authState !== 'authenticated' || !routeProjectId) return;
-    void loadProject(routeProjectId).catch((error) => setError(error, '项目数据加载失败'));
+    const generation = tenantGuardRef.current.capture();
+    void loadProject(routeProjectId).catch((error) => {
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '项目数据加载失败');
+    });
   }, [authState, loadProject, routeProjectId, setError]);
 
   const shouldPollTasks = Boolean(routeProjectId && projectData[routeProjectId]?.tasks.some((event) =>
@@ -300,7 +368,10 @@ export function App() {
   useEffect(() => {
     if (!routeProjectId || !shouldPollTasks) return undefined;
     const timer = window.setInterval(() => {
-      void refreshTaskEvents(routeProjectId).catch((error) => setError(error, '任务进度刷新失败'));
+      const generation = tenantGuardRef.current.capture();
+      void refreshTaskEvents(routeProjectId).catch((error) => {
+        if (tenantGuardRef.current.isCurrent(generation)) setError(error, '任务进度刷新失败');
+      });
     }, 2500);
     return () => window.clearInterval(timer);
   }, [refreshTaskEvents, routeProjectId, setError, shouldPollTasks]);
@@ -312,104 +383,160 @@ export function App() {
   }, [pageMeta.title, routeProjectId]);
 
   const handleLogin = async ({ email, password, remember }: LoginCredentials) => {
+    becomeAnonymous();
     setAuthSubmitting(true);
     setLoginError('');
+    const generation = tenantGuardRef.current.capture();
     try {
       const tokens = await backendApi.auth.login({ email, password });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       saveBackendSession(tokens, { remember });
-      await establishSession();
+      if (!await establishSession(undefined, generation)) return;
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       navigate('/projects', { replace: true });
     } catch (error) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       clearBackendSession();
       setLoginError(readableError(error, '登录失败，请检查账号和密码。'));
     } finally {
-      setAuthSubmitting(false);
+      tenantGuardRef.current.commit(generation, () => setAuthSubmitting(false));
     }
   };
 
   const handleRegister = async ({ email, enterpriseName, password }: RegisterCredentials) => {
+    becomeAnonymous();
     setAuthSubmitting(true);
     setLoginError('');
+    const generation = tenantGuardRef.current.capture();
     try {
       const tokens = await backendApi.auth.register({ email, enterprise_name: enterpriseName, password });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       saveBackendSession(tokens, { enterpriseName, remember: true });
-      await establishSession();
+      if (!await establishSession(undefined, generation)) return;
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       navigate('/projects', { replace: true });
     } catch (error) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       clearBackendSession();
       setLoginError(readableError(error, '注册失败，请检查填写内容。'));
     } finally {
-      setAuthSubmitting(false);
+      tenantGuardRef.current.commit(generation, () => setAuthSubmitting(false));
     }
   };
 
   const handleLogout = async () => {
     const refreshToken = getBackendRefreshToken();
-    if (refreshToken) await backendApi.auth.logout(refreshToken).catch(() => undefined);
-    clearBackendSession();
-    setSession(null);
-    setAuthState('anonymous');
+    const logoutRequest = refreshToken
+      ? backendApi.auth.logout(refreshToken).catch(() => undefined)
+      : Promise.resolve();
+    becomeAnonymous();
     navigate('/login', { replace: true });
+    await logoutRequest;
   };
 
   const handleCreateProject = async (project: ProjectSummary) => {
+    const generation = tenantGuardRef.current.capture();
     const created = await backendApi.projects.create({
       name: project.title,
       tender_no: project.code,
       deadline: toIsoOrNull(project.deadline),
       note: project.buyer ? `招标人：${project.buyer}` : undefined,
     });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     await loadProjects();
-    navigate(`/projects/${encodeURIComponent(String(created.project_id))}/materials`);
+    tenantGuardRef.current.commit(generation, () => {
+      navigate(`/projects/${encodeURIComponent(String(created.project_id))}/materials`);
+    });
   };
 
   const handleArchiveProject = async (projectId: string) => {
+    const generation = tenantGuardRef.current.capture();
     await backendApi.projects.archive(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     await loadProjects();
   };
 
   const handleEnterpriseUpload = async (files: File[]) => {
+    const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'enterprise', files });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     const uploadedIds = successfulFiles(result.files).map((file) => file.file_id);
     await loadEnterprise();
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     const assets = await backendApi.enterprise.listAssets();
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     const assetIds = assets
       .filter((asset) => asset.source_file_id !== null && uploadedIds.includes(asset.source_file_id))
       .map((asset) => asset.asset_id);
     if (assetIds.length) await backendApi.enterprise.ingest(assetIds);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     await loadEnterprise();
-    setStatusMessage({ tone: 'info', text: `已接收 ${uploadedIds.length} 份企业资料，正在自动归类。` });
+    tenantGuardRef.current.commit(generation, () => {
+      setStatusMessage({ tone: 'info', text: `已接收 ${uploadedIds.length} 份企业资料，正在自动归类。` });
+    });
+  };
+
+  const handleCorrectEnterpriseFact = async (assetId: string, factId: string, value: string) => {
+    const generation = tenantGuardRef.current.capture();
+    await backendApi.enterprise.updateFact(factId, {
+      fact_value: value,
+      confirmed: true,
+      note: `企业资料 ${assetId} 人工纠正`,
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await loadEnterprise();
   };
 
   const handleProjectUpload = async (projectId: string, files: File[]) => {
+    const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'project', project_id: projectId, files });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     const uploaded = successfulFiles(result.files);
     const archives = uploaded.filter((file) => /\.(zip|rar|7z)$/i.test(file.name));
     const archiveErrors: string[] = [];
     for (const archive of archives) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       try {
         await backendApi.files.archive({ archive_file_id: archive.file_id, target: 'project', project_id: projectId });
       } catch (error) {
+        if (!tenantGuardRef.current.isCurrent(generation)) return;
         archiveErrors.push(`${archive.name}：${readableError(error, '压缩包解包失败')}`);
       }
     }
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     await loadProject(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     if (archiveErrors.length) throw new Error(archiveErrors.join('；'));
-    setStatusMessage({ tone: 'info', text: `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。` });
+    tenantGuardRef.current.commit(generation, () => {
+      setStatusMessage({ tone: 'info', text: `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。` });
+    });
   };
 
   const handleImportTenderNoticeUrl = async (projectId: string, url: string) => {
+    const generation = tenantGuardRef.current.capture();
     const job = await backendApi.tenderNotices.importFromUrl(projectId, url);
+    if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('会话已切换，已忽略旧企业的导入结果。');
     if (job.status === 'succeeded') {
       await loadProject(projectId);
-      setStatusMessage({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
+      tenantGuardRef.current.commit(generation, () => {
+        setStatusMessage({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
+      });
       return { status: 'completed' as const, message: '导入完成，招标公告已加入当前项目材料。' };
     }
     if (job.status === 'failed') {
       throw new Error(job.error || '招标公告网址解析失败。');
     }
-    setStatusMessage({ tone: 'info', text: '招标公告网址已提交，服务端正在安全下载并解析。' });
-    void pollTenderImport(projectId, String(job.import_id), loadProject, setStatusMessage);
+    tenantGuardRef.current.commit(generation, () => {
+      setStatusMessage({ tone: 'info', text: '招标公告网址已提交，服务端正在安全下载并解析。' });
+    });
+    void pollTenderImport(
+      projectId,
+      String(job.import_id),
+      generation,
+      tenantGuardRef.current,
+      loadProject,
+      setStatusMessage,
+    );
     return { status: 'queued' as const, message: '网址已提交，正在下载并解析招标公告。' };
   };
 
@@ -421,56 +548,73 @@ export function App() {
   };
 
   const handleOpenSnapshot = async (projectId: string, snapshotId: string) => {
+    const generation = tenantGuardRef.current.capture();
     try {
       const detail = await backendApi.snapshots.get(projectId, snapshotId);
-      setSnapshotDetail({ id: snapshotId, value: detail });
+      tenantGuardRef.current.commit(generation, () => {
+        setSnapshotDetail({ id: snapshotId, value: detail });
+      });
     } catch (error) {
-      setError(error, '项目快照加载失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '项目快照加载失败');
     }
   };
 
   const handleStartTask = async (projectId: string, mode: 'generate' | 'validate') => {
+    const generation = tenantGuardRef.current.capture();
     try {
       await backendApi.tasks.create(projectId, {
         task_type: mode === 'generate' ? 'bid_generate' : 'bid_review',
         idempotency_key: crypto.randomUUID(),
         payload: {},
       });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       await loadProject(projectId);
-      setTaskDrawerProjectId(projectId);
+      tenantGuardRef.current.commit(generation, () => setTaskDrawerProjectId(projectId));
     } catch (error) {
-      setError(error, mode === 'generate' ? '成果生成任务创建失败' : '校核任务创建失败');
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        setError(error, mode === 'generate' ? '成果生成任务创建失败' : '校核任务创建失败');
+      }
     }
   };
 
   const handleAssistantSend = async (projectId: string, value: string) => {
+    const generation = tenantGuardRef.current.capture();
     try {
       const list = await backendApi.chat.listConversations(projectId);
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       const conversation = list.items[0] ?? await backendApi.chat.createConversation(projectId, '项目助手');
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       const response = await backendApi.chat.sendMessage(projectId, conversation.conversation_id, value);
-      setStatusMessage({ tone: 'info', text: response.reply });
+      tenantGuardRef.current.commit(generation, () => {
+        setStatusMessage({ tone: 'info', text: response.reply });
+      });
     } catch (error) {
-      setError(error, '项目助手请求失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '项目助手请求失败');
     }
   };
 
   const handleRunReview = async (projectId: string, providerId: string) => {
+    const generation = tenantGuardRef.current.capture();
     try {
       await backendApi.review.evaluate(projectId, { provider_id: providerId });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       await loadProject(projectId);
     } catch (error) {
-      setError(error, '评审任务执行失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '评审任务执行失败');
     }
   };
 
   const handleSaveSuggestion = async (projectId: string, findingId: string, suggestion: string) => {
+    const generation = tenantGuardRef.current.capture();
     const scoreId = projectData[projectId]?.score?.score_id;
     if (!scoreId) throw new Error('当前评审没有可更新的评分版本。');
     await backendApi.review.updateSuggestion(projectId, scoreId, findingId, suggestion);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     await loadProject(projectId);
   };
 
   const handleApplyQuote = async (projectId: string, strategyId: string) => {
+    const generation = tenantGuardRef.current.capture();
     const data = projectData[projectId];
     const quoteDeliverable = data?.deliverables.find((item) => item.deliverable_type === 3);
     if (!data || !quoteDeliverable || !/^\d+$/.test(data.quote.id)) {
@@ -479,16 +623,20 @@ export function App() {
     }
     try {
       await backendApi.quotes.strategy(data.quote.id, strategyId as 'win' | 'balance' | 'profit');
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       await backendApi.quotes.apply({
         calc_id: data.quote.id,
         deliverable_id: quoteDeliverable.deliverable_id,
         expected_version_no: quoteDeliverable.current_version_no,
         idempotency_key: crypto.randomUUID(),
       });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
       await loadProject(projectId);
-      setStatusMessage({ tone: 'info', text: '报价策略已由服务端重算并生成新的受控报价版本。' });
+      tenantGuardRef.current.commit(generation, () => {
+        setStatusMessage({ tone: 'info', text: '报价策略已由服务端重算并生成新的受控报价版本。' });
+      });
     } catch (error) {
-      setError(error, '报价策略应用失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '报价策略应用失败');
     }
   };
 
@@ -497,6 +645,7 @@ export function App() {
     routeId: DeliverableRouteId,
     versionId: string,
   ) => {
+    const generation = tenantGuardRef.current.capture();
     const data = projectData[projectId];
     const deliverable = data?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
     if (!deliverable?.current_version_no) {
@@ -512,7 +661,9 @@ export function App() {
       backendApi.deliverables.getVersion(deliverable.deliverable_id, version),
       backendApi.editor.createSession(deliverable.deliverable_id),
     ]);
-    setEditor({ content, deliverable, session: editorSession });
+    tenantGuardRef.current.commit(generation, () => {
+      setEditor({ content, deliverable, session: editorSession });
+    });
   }, [projectData]);
 
   useEffect(() => {
@@ -524,14 +675,17 @@ export function App() {
     const editorKey = `${route.projectId}:${route.deliverableId}:${route.versionId}`;
     if (editorLoadKeyRef.current === editorKey) return;
     editorLoadKeyRef.current = editorKey;
+    const generation = tenantGuardRef.current.capture();
     void loadEditor(route.projectId, route.deliverableId, route.versionId)
       .catch((error) => {
+        if (!tenantGuardRef.current.isCurrent(generation)) return;
         if (editorLoadKeyRef.current === editorKey) editorLoadKeyRef.current = '';
         setError(error, '成果编辑会话创建失败');
       });
   }, [loadEditor, projectData, route, setError]);
 
   const handleSaveEditor = async (payload: OfficeMockSavePayload) => {
+    const generation = tenantGuardRef.current.capture();
     if (!editor?.session.lease_token) throw new Error('编辑会话缺少有效租约，请刷新页面后重试。');
     const completed = await backendApi.editor.complete(
       editor.deliverable.deliverable_id,
@@ -543,16 +697,22 @@ export function App() {
         idempotency_key: crypto.randomUUID(),
       },
     );
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
     setEditor(null);
     await loadProject(payload.projectId);
-    navigate(deliverableEditorPath(payload.projectId, payload.deliverableId, String(completed.version_no)), { replace: true });
+    tenantGuardRef.current.commit(generation, () => {
+      navigate(deliverableEditorPath(payload.projectId, payload.deliverableId, String(completed.version_no)), { replace: true });
+    });
   };
 
   const downloadDeliverable = async (projectId: string, routeId: DeliverableRouteId) => {
+    const generation = tenantGuardRef.current.capture();
     const deliverable = projectData[projectId]?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
     if (!deliverable?.current_version_no) throw new Error('当前成果没有可下载版本。');
     const blob = await backendApi.deliverables.downloadVersion(deliverable.deliverable_id, deliverable.current_version_no);
-    downloadBlob(blob, `${deliverable.title || routeId}-V${deliverable.current_version_no}${routeId === 'quote' ? '.xlsx' : '.docx'}`);
+    tenantGuardRef.current.commit(generation, () => {
+      downloadBlob(blob, `${deliverable.title || routeId}-V${deliverable.current_version_no}${routeId === 'quote' ? '.xlsx' : '.docx'}`);
+    });
   };
 
   if (route.name === 'landing') return <LandingPage />;
@@ -610,11 +770,8 @@ export function App() {
           enterpriseName={session.enterpriseName}
           ingestionItems={enterpriseIngestions}
           onUpload={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onCorrectFact={(assetId, factId, value) => void backendApi.enterprise.updateFact(factId, {
-            fact_value: value,
-            confirmed: true,
-            note: `企业资料 ${assetId} 人工纠正`,
-          }).then(loadEnterprise).catch((error) => setError(error, '企业资料字段纠正失败'))}
+          onCorrectFact={(assetId, factId, value) => void handleCorrectEnterpriseFact(assetId, factId, value)
+            .catch((error) => setError(error, '企业资料字段纠正失败'))}
         />
       ) : null}
       {route.name === 'history-prices' ? (
@@ -856,28 +1013,39 @@ function downloadBlob(blob: Blob, filename: string) {
 async function pollTenderImport(
   projectId: string,
   importId: string,
+  generation: number,
+  guard: ReturnType<typeof createTenantGenerationGuard>,
   reload: (projectId: string) => Promise<void>,
   setStatus: (message: { tone: 'error' | 'info'; text: string } | null) => void,
 ) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (!guard.isCurrent(generation)) return;
     try {
       const job = await backendApi.tenderNotices.getImport(projectId, importId);
       if (job.status === 'succeeded') {
         await reload(projectId);
-        setStatus({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
+        guard.commit(generation, () => {
+          setStatus({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
+        });
         return;
       }
       if (job.status === 'failed') {
-        setStatus({ tone: 'error', text: job.error || '招标公告网址解析失败。' });
+        guard.commit(generation, () => {
+          setStatus({ tone: 'error', text: job.error || '招标公告网址解析失败。' });
+        });
         return;
       }
     } catch (error) {
-      setStatus({ tone: 'error', text: readableError(error, '招标公告导入状态查询失败。') });
+      guard.commit(generation, () => {
+        setStatus({ tone: 'error', text: readableError(error, '招标公告导入状态查询失败。') });
+      });
       return;
     }
   }
-  setStatus({ tone: 'info', text: '招标公告仍在后台处理，可稍后刷新项目材料查看。' });
+  guard.commit(generation, () => {
+    setStatus({ tone: 'info', text: '招标公告仍在后台处理，可稍后刷新项目材料查看。' });
+  });
 }
 
 function LoadingScreen() {
