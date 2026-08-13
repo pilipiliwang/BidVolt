@@ -130,6 +130,7 @@
 .runButton { margin-top: 7px; }
 .runButton:disabled { opacity: .52; }
 .runBlocked { margin: 5px 0 0; color: #c15c00; font-size: var(--font-size-xs); text-align: center; }
+.runError { margin: 7px 0 0; color: #b42318; font-size: var(--font-size-xs); line-height: 1.45; text-align: center; }
 .improveButton { min-height: 45px; margin-top: 10px; font-size: 12px; }
 
 @media (max-width: 1180px) {

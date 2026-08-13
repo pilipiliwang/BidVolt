@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -75,7 +75,7 @@ type ReviewCenterProps = {
   projectId?: string;
   providers: ReviewProvider[];
   run: ReviewRunView;
-  onRun?: (providerId: string) => void;
+  onRun?: (providerId: string) => void | Promise<void>;
   onSaveSuggestion?: (runId: string, findingId: string, suggestion: string) => void | Promise<void>;
   runAllowed?: boolean;
   runBlockReason?: string;
@@ -87,6 +87,8 @@ type SuggestionEditState = {
   findingId: string;
   runId: string;
 };
+
+type FindingFilter = 'all' | 'fail' | 'actionable' | `category:${string}`;
 
 export function ReviewCenter({
   enterpriseMaterials,
@@ -108,15 +110,71 @@ export function ReviewCenter({
   const actualProvider = providers.find((provider) => provider.id === run.providerId);
   const [suggestionOverrides, setSuggestionOverrides] = useState<Record<string, string>>({});
   const [suggestionEdit, setSuggestionEdit] = useState<SuggestionEditState | null>(null);
+  const [findingFilter, setFindingFilter] = useState<FindingFilter>('all');
+  const [isSubmittingRun, setIsSubmittingRun] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const hasCompletedFindings = run.status === 'succeeded' && run.findings.length > 0;
-  const visibleFindings = hasCompletedFindings ? run.findings : [];
   const validatedSummary = hasCompletedFindings ? run.validatedSummary : undefined;
   const totalFindingCount = validatedSummary?.totalFindingCount ?? run.findings.length;
   const actionableCount = useMemo(
     () => run.findings.filter((finding) => finding.outcome !== 'pass').length,
     [run.findings],
   );
+  const categoryFilters = useMemo(() => {
+    const categories = new Map<string, { key: string; label: string; count: number }>();
+    for (const category of validatedSummary?.categoryCounts ?? []) {
+      categories.set(category.key, category);
+    }
+    for (const finding of run.findings) {
+      if (!finding.category) continue;
+      const existing = categories.get(finding.category);
+      if (existing) continue;
+      categories.set(finding.category, {
+        key: finding.category,
+        label: finding.category,
+        count: run.findings.filter((item) => item.category === finding.category).length,
+      });
+    }
+    return [...categories.values()];
+  }, [run.findings, validatedSummary?.categoryCounts]);
+  const visibleFindings = useMemo(() => {
+    if (!hasCompletedFindings || findingFilter === 'all') return hasCompletedFindings ? run.findings : [];
+    if (findingFilter === 'fail') return run.findings.filter((finding) => finding.outcome === 'fail');
+    if (findingFilter === 'actionable') {
+      return run.findings.filter((finding) => finding.outcome !== 'pass');
+    }
+    const category = findingFilter.slice('category:'.length);
+    return run.findings.filter((finding) => finding.category === category);
+  }, [findingFilter, hasCompletedFindings, run.findings]);
   const activeSuggestionEdit = suggestionEdit?.runId === run.id ? suggestionEdit : null;
+
+  useEffect(() => {
+    if (providers.some((provider) => provider.id === selectedProviderId && provider.available)) return;
+    setSelectedProviderId(firstAvailable);
+  }, [firstAvailable, providers, selectedProviderId]);
+
+  useEffect(() => {
+    setFindingFilter('all');
+    setRunError(null);
+    setIsSubmittingRun(false);
+  }, [run.id]);
+
+  const selectFindingFilter = (filter: FindingFilter) => {
+    setFindingFilter(filter);
+  };
+
+  const runReview = async () => {
+    if (!selectedProvider || !onRun || isSubmittingRun) return;
+    setRunError(null);
+    setIsSubmittingRun(true);
+    try {
+      await onRun(selectedProvider.id);
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : '评审任务提交失败，请重试');
+    } finally {
+      setIsSubmittingRun(false);
+    }
+  };
 
   const beginSuggestionEdit = (finding: ReviewFinding) => {
     const currentSuggestion =
@@ -175,9 +233,12 @@ export function ReviewCenter({
           run={run}
           runAllowed={runAllowed}
           runBlockReason={runBlockReason}
+          canSubmitRun={Boolean(onRun && selectedProvider)}
           hasValidatedSummary={Boolean(validatedSummary)}
+          isSubmittingRun={isSubmittingRun}
+          runError={runError}
           selectedProviderId={selectedProviderId}
-          onRun={() => selectedProvider && onRun?.(selectedProvider.id)}
+          onRun={runReview}
           onSelect={setSelectedProviderId}
           onAddFiles={onAddFiles}
         />
@@ -213,12 +274,41 @@ export function ReviewCenter({
         {hasCompletedFindings ? (
           <>
             <div className={styles.filters} aria-label="建议筛选">
-              <button className={styles.filterActive} type="button">全部 <span>{totalFindingCount}</span></button>
-              <button type="button">必须处理 <span>{run.findings.filter((item) => item.outcome === 'fail').length}</span></button>
-              {validatedSummary?.categoryCounts.map((category) => (
-                <button key={category.key} type="button">{category.label} <span>{category.count}</span></button>
+              <button
+                aria-pressed={findingFilter === 'all'}
+                className={findingFilter === 'all' ? styles.filterActive : undefined}
+                type="button"
+                onClick={() => selectFindingFilter('all')}
+              >
+                全部 <span>{totalFindingCount}</span>
+              </button>
+              <button
+                aria-pressed={findingFilter === 'fail'}
+                className={findingFilter === 'fail' ? styles.filterActive : undefined}
+                type="button"
+                onClick={() => selectFindingFilter('fail')}
+              >
+                必须处理 <span>{run.findings.filter((item) => item.outcome === 'fail').length}</span>
+              </button>
+              {categoryFilters.map((category) => (
+                <button
+                  aria-pressed={findingFilter === `category:${category.key}`}
+                  className={findingFilter === `category:${category.key}` ? styles.filterActive : undefined}
+                  key={category.key}
+                  type="button"
+                  onClick={() => selectFindingFilter(`category:${category.key}`)}
+                >
+                  {category.label} <span>{category.count}</span>
+                </button>
               ))}
-              <button type="button">可以优化内容 <span>{actionableCount}</span></button>
+              <button
+                aria-pressed={findingFilter === 'actionable'}
+                className={findingFilter === 'actionable' ? styles.filterActive : undefined}
+                type="button"
+                onClick={() => selectFindingFilter('actionable')}
+              >
+                可以优化内容 <span>{actionableCount}</span>
+              </button>
             </div>
 
             <div className={styles.tableHead} aria-hidden="true">
@@ -307,6 +397,10 @@ export function ReviewCenter({
             <div className={styles.emptyFindings} role="status">
               {emptyResultsLabel(run.status)}
             </div>
+          ) : visibleFindings.length === 0 ? (
+            <div className={styles.emptyFindings} role="status">
+              当前筛选条件下没有评审建议。
+            </div>
           ) : null}
         </div>
 
@@ -326,24 +420,30 @@ function suggestionOverrideKey(runId: string, findingId: string) {
 
 type ReviewImpactProps = {
   actualProvider?: ReviewProvider;
+  canSubmitRun: boolean;
   providers: ReviewProvider[];
   run: ReviewRunView;
   runAllowed: boolean;
   runBlockReason?: string;
   hasValidatedSummary: boolean;
+  isSubmittingRun: boolean;
+  runError: string | null;
   selectedProviderId: string;
-  onRun: () => void;
+  onRun: () => Promise<void>;
   onSelect: (id: string) => void;
   onAddFiles: (files: File[]) => void;
 };
 
 function ReviewImpact({
   actualProvider,
+  canSubmitRun,
   providers,
   run,
   runAllowed,
   runBlockReason,
   hasValidatedSummary,
+  isSubmittingRun,
+  runError,
   selectedProviderId,
   onRun,
   onSelect,
@@ -406,17 +506,23 @@ function ReviewImpact({
         </div>
         <button
           className={styles.runButton}
-          disabled={!runAllowed || run.status === 'running' || needsNewSnapshot}
-          onClick={onRun}
+          disabled={!canSubmitRun || !runAllowed || run.status === 'queued' || run.status === 'running' || needsNewSnapshot || isSubmittingRun}
+          onClick={() => void onRun()}
           type="button"
         >
           <Play aria-hidden="true" size={16} />
-          {run.status === 'running'
+          {isSubmittingRun
+            ? '正在提交评审任务'
+            : run.status === 'running'
             ? '评审执行中'
+            : run.status === 'queued'
+              ? '评审任务排队中'
             : needsNewSnapshot
               ? '请先冻结新快照'
               : '基于冻结快照运行评审'}
         </button>
+        {runError ? <p className={styles.runError} role="alert">{runError}</p> : null}
+        {!canSubmitRun ? <p className={styles.runBlocked}>当前没有可用的评审机制。</p> : null}
         {!runAllowed && runBlockReason ? <p className={styles.runBlocked}>{runBlockReason}</p> : null}
       </div>
 

@@ -649,7 +649,10 @@ export function App() {
       if (!tenantGuardRef.current.isCurrent(generation)) return;
       await loadProject(projectId);
     } catch (error) {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '评审任务执行失败');
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        setError(error, '评审任务执行失败');
+        throw error;
+      }
     }
   };
 
@@ -878,7 +881,7 @@ export function App() {
           onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
           onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
           onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
-          onRun={(providerId) => void handleRunReview(route.projectId, providerId)}
+          onRun={(providerId) => handleRunReview(route.projectId, providerId)}
           onSaveSuggestion={(_runId, findingId, suggestion) => handleSaveSuggestion(route.projectId, findingId, suggestion)}
           projectId={route.projectId}
           providers={reviewProviders}

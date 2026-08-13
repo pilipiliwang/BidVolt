@@ -150,6 +150,100 @@ describe('ReviewCenter', () => {
     expect(onRun).toHaveBeenCalledWith('provider-code');
   });
 
+  it('filters loaded findings by required action, category and optimizable status', async () => {
+    const user = userEvent.setup();
+    const filterableRun: ReviewRunView = {
+      ...run,
+      findings: [
+        {
+          ...run.findings[0],
+          id: 'qualification-failure',
+          category: '商务标',
+          title: '资质文件缺失',
+          outcome: 'fail',
+        },
+        {
+          ...run.findings[0],
+          id: 'technical-risk',
+          category: '技术标',
+          title: '实施周期存在风险',
+          outcome: 'risk',
+        },
+        {
+          ...run.findings[0],
+          id: 'technical-pass',
+          category: '技术标',
+          title: '技术参数完整',
+          outcome: 'pass',
+        },
+      ],
+      validatedSummary: {
+        totalFindingCount: 3,
+        categoryCounts: [
+          { key: '商务标', label: '商务标', count: 1 },
+          { key: '技术标', label: '技术标', count: 2 },
+        ],
+        currentScore: 80,
+        predictedScore: 85,
+        totalLift: 5,
+      },
+    };
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={filterableRun}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '必须处理 1' }));
+    expect(screen.getByText('资质文件缺失')).toBeInTheDocument();
+    expect(screen.queryByText('实施周期存在风险')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '必须处理 1' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: '技术标 2' }));
+    expect(screen.queryByText('资质文件缺失')).not.toBeInTheDocument();
+    expect(screen.getByText('实施周期存在风险')).toBeInTheDocument();
+    expect(screen.getByText('技术参数完整')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '可以优化内容 2' }));
+    expect(screen.getByText('资质文件缺失')).toBeInTheDocument();
+    expect(screen.getByText('实施周期存在风险')).toBeInTheDocument();
+    expect(screen.queryByText('技术参数完整')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '全部 3' }));
+    expect(screen.getByText('技术参数完整')).toBeInTheDocument();
+  });
+
+  it('keeps the run action pending and exposes backend submission errors', async () => {
+    const user = userEvent.setup();
+    let rejectRun: ((reason?: unknown) => void) | undefined;
+    const onRun = vi.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectRun = reject;
+    }));
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        onRun={onRun}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '基于冻结快照运行评审' }));
+    expect(screen.getByRole('button', { name: '正在提交评审任务' })).toBeDisabled();
+
+    rejectRun?.(new Error('评审服务暂不可用'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('评审服务暂不可用');
+    expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeEnabled();
+    expect(onRun).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks execution until a frozen snapshot and deliverable versions exist', () => {
     render(
       <ReviewCenter
