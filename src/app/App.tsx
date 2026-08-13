@@ -321,14 +321,18 @@ export function App() {
       const quote = quoteDetail
         ? adaptBackendQuoteCalculation(quoteDetail as Parameters<typeof adaptBackendQuoteCalculation>[0])
         : emptyQuote(projectId);
-      const samples = history.samples;
+      const quoteSamplePayload = readHistorySamples(quoteDetail);
+      const samples = adaptBackendHistorySamples(
+        quoteSamplePayload.samples,
+        quoteSamplePayload.snapshotIds,
+      );
       const adaptedMaterials = adaptBackendFiles(filesResponse.items);
       tenantGuardRef.current.commit(generation, () => {
         setProjectData((current) => ({
           ...current,
           [projectId]: {
           deliverables,
-          historyRecords: history.records,
+          historyRecords: toHistoryRecords(samples),
           materials: adaptedMaterials,
           overview: adaptBackendProjectOverview(deliverables, score ? scoreSummaryForOverview(score) : undefined),
           quote,
@@ -351,7 +355,7 @@ export function App() {
         setLoadingProjectId((current) => current === projectId ? null : current);
       });
     }
-  }, [history.records, history.samples]);
+  }, []);
 
   const refreshTaskEvents = useCallback(async (projectId: string) => {
     const generation = tenantGuardRef.current.capture();
@@ -505,12 +509,13 @@ export function App() {
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     const outcome = readUploadOutcome(result.files);
     const uploadedIds = outcome.uploaded.map((file) => file.file_id);
+    let assetIds: number[] = [];
     if (uploadedIds.length > 0) {
       await loadEnterprise();
       if (!tenantGuardRef.current.isCurrent(generation)) return;
       const assets = await backendApi.enterprise.listAssets();
       if (!tenantGuardRef.current.isCurrent(generation)) return;
-      const assetIds = assets
+      assetIds = assets
         .filter((asset) => asset.source_file_id !== null && uploadedIds.includes(asset.source_file_id))
         .map((asset) => asset.asset_id);
       if (assetIds.length) await backendApi.enterprise.ingest(assetIds);
@@ -521,8 +526,18 @@ export function App() {
     const outcomeError = uploadOutcomeError('企业资料', uploadedIds.length, outcome.errors);
     if (outcomeError) throw outcomeError;
     tenantGuardRef.current.commit(generation, () => {
-      setStatusMessage({ tone: 'info', text: `已接收 ${uploadedIds.length} 份企业资料，正在自动归类。` });
+      setStatusMessage({
+        tone: 'info',
+        text: assetIds.length
+          ? `已接收 ${uploadedIds.length} 份企业资料，并已提交 ${assetIds.length} 份资料的归类任务。`
+          : `已上传 ${uploadedIds.length} 份企业资料，待服务端完成文件与企业资料关联后再启动归类。`,
+      });
     });
+    return {
+      message: assetIds.length
+        ? '企业资料上传完成，服务端归类任务已提交。'
+        : '企业资料上传完成，待服务端关联到企业资料后再启动归类。',
+    };
   };
 
   const handleCorrectEnterpriseFact = async (assetId: string, factId: string, value: string) => {
@@ -961,7 +976,7 @@ export function App() {
           deliverables={deliverableCards}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -986,7 +1001,7 @@ export function App() {
         <ProjectMaterialsPage
           enterpriseMaterials={workspaceEnterprise}
           materials={activeMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -1009,7 +1024,7 @@ export function App() {
         <ReviewCenter
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -1032,7 +1047,7 @@ export function App() {
           calculation={activeData?.quote ?? emptyQuote(route.projectId)}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -1059,7 +1074,7 @@ export function App() {
           isBackendConnected
           isReadOnly={Boolean(editor.readOnlyReason)}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -1123,7 +1138,7 @@ function adaptIngestion(item: EnterpriseIngestion): EnterpriseIngestionItem {
     id: String(item.ingest_id),
     name: `资料归类任务 #${item.ingest_id}`,
     status,
-    progress: status === 'completed' ? 100 : status === 'failed' ? 0 : status === 'extracting' ? 55 : 10,
+    progress: status === 'completed' ? 100 : undefined,
   };
 }
 
@@ -1197,7 +1212,11 @@ function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[
     quantity: undefined,
     supplier: '—',
     unitPrice: Number.isFinite(Number(sample.price)) ? Number(sample.price) : undefined,
-    taxRate: sample.taxIncluded ? '含税（税率未提供）' : '未税',
+    taxRate: sample.taxIncluded === undefined
+      ? '税口径未提供'
+      : sample.taxIncluded
+        ? '含税（税率未提供）'
+        : '未税',
     awardedAt: sample.occurredAt,
     source: sample.sourceLabel,
     parameterDifference: '—',

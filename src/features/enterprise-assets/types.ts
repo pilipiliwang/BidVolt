@@ -15,7 +15,7 @@ export interface EnterpriseFact {
   key: string;
   label: string;
   value: string;
-  confidence: number;
+  confidence?: number;
   sourceLabel: string;
   sourcePage?: number;
   needsReview?: boolean;
@@ -34,7 +34,7 @@ export interface EnterpriseAsset {
   id: string;
   name: string;
   category: EnterpriseAssetCategory;
-  classificationConfidence: number;
+  classificationConfidence?: number;
   status: EnterpriseAssetStatus;
   updatedAt: string;
   expiresAt?: string;
@@ -46,13 +46,13 @@ export interface EnterpriseIngestionItem {
   id: string;
   name: string;
   status: 'queued' | 'classifying' | 'extracting' | 'completed' | 'failed';
-  progress: number;
+  progress?: number;
 }
 
 export interface EnterpriseAssetUploadProps {
   enterpriseName: string;
   ingestionItems?: EnterpriseIngestionItem[];
-  onUpload?: (files: File[]) => Promise<void> | void;
+  onUpload?: (files: File[]) => Promise<{ message?: string } | void> | void;
 }
 
 export interface EnterpriseAssetPageProps extends EnterpriseAssetUploadProps {

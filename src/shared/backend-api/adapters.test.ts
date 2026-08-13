@@ -209,7 +209,7 @@ describe('backend DTO adapters', () => {
       revisionNo: 2,
       coordinate: {
         fileName: '招标文件.pdf',
-        fileRevisionNo: 0,
+        fileRevisionNo: undefined,
         pageNo: 12,
         blockIndex: 4,
       },
@@ -246,7 +246,7 @@ describe('backend DTO adapters', () => {
     });
   });
 
-  it('marks only the first backend snapshot as current', () => {
+  it('does not call the first backend snapshot current without an explicit marker', () => {
     expect(adaptBackendSnapshots([
       {
         snapshot_id: 2,
@@ -263,7 +263,7 @@ describe('backend DTO adapters', () => {
         rules_version: {},
       },
     ])).toMatchObject([
-      { id: '2', isCurrent: true, materialRevisionCount: 2, requirementRevisionNo: 3 },
+      { id: '2', isCurrent: false, materialRevisionCount: 2, requirementRevisionNo: 3 },
       { id: '1', isCurrent: false },
     ]);
   });
@@ -312,7 +312,7 @@ describe('backend DTO adapters', () => {
       totalFindingCount: 1,
       categoryCounts: [{ key: '完整性', label: '完整性', count: 1 }],
       currentScore: 66.7,
-      predictedScore: 76.7,
+      predictedScore: undefined,
       totalLift: 10,
     });
     expect(view.validatedSummary?.sectionLifts).toBeUndefined();
@@ -356,7 +356,7 @@ describe('backend DTO adapters', () => {
         amount: '119.4',
         predictedScore: '88.06',
         grossMargin: '0.16',
-        recommended: true,
+        recommended: false,
       }],
     });
   });
@@ -379,6 +379,27 @@ describe('backend DTO adapters', () => {
       materialCode: 'MAT-0095',
       region: '华东',
       sourceHash: 'abc',
+      taxIncluded: undefined,
+      usable: false,
+      excludedReason: '税口径未提供，不能直接用于测算',
     })]);
+  });
+
+  it('preserves quote status and does not synthesize confidence ranges or recommendations', () => {
+    const view = adaptBackendQuoteCalculation({
+      calc_id: 9,
+      status: 2,
+      result: { suggested: 210, engine_version: '1.0.0' },
+      strategy_results: {
+        win: { strategy: 'win', suggested_price: 210 },
+      },
+    });
+
+    expect(view.status).toBe('applied');
+    expect(view.strategies[0]).toMatchObject({
+      recommended: false,
+      confidenceLow: undefined,
+      confidenceHigh: undefined,
+    });
   });
 });

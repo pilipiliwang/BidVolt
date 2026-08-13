@@ -41,7 +41,7 @@ export type ReviewValidatedSummary = {
     count: number;
   }>;
   currentScore: number;
-  predictedScore: number;
+  predictedScore?: number;
   totalLift: number;
   sectionLifts?: {
     business?: number;

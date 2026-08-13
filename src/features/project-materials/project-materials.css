@@ -506,6 +506,7 @@
 .project-supersedes { display: inline-flex; align-items: center; gap: 3px; color: #8b5b14; }
 .project-parse-progress { height: 3px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: #e5ece8; }
 .project-parse-progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #07924f, #47c17d); }
+.project-parse-progress-unknown { display: block; margin-top: 7px; color: #78858b; font-size: var(--font-size-xs); }
 
 .project-parse-state {
   display: inline-flex;
@@ -546,6 +547,9 @@
   justify-items: center;
   gap: 7px;
 }
+.project-task-mode { display: flex; gap: 14px; padding: 8px 12px; border: 1px solid #dce7e1; border-radius: 8px; }
+.project-task-mode legend { padding: 0 5px; color: #52635b; font-size: var(--font-size-xs); }
+.project-task-mode label { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-xs); cursor: pointer; }
 
 .project-start-task:disabled {
   cursor: default;

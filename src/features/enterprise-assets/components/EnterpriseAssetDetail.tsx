@@ -120,7 +120,7 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
         </div>
       )}
       <div className="enterprise-fact__source">
-        <span>置信度 {confidencePercent(fact.confidence)}%</span>
+        <span>{fact.confidence === undefined ? '置信度未提供' : `置信度 ${confidencePercent(fact.confidence)}%`}</span>
         <span>
           来源：{fact.sourceLabel}
           {fact.sourcePage ? ` · 第 ${fact.sourcePage} 页` : ''}
@@ -135,7 +135,9 @@ export function EnterpriseAssetDetail({
   onCorrectFact,
   onSelectRevision,
 }: EnterpriseAssetDetailProps) {
-  const classificationPercent = confidencePercent(asset.classificationConfidence);
+  const classificationPercent = asset.classificationConfidence === undefined
+    ? undefined
+    : confidencePercent(asset.classificationConfidence);
 
   return (
     <section className="enterprise-detail" aria-labelledby="enterprise-detail-title">
@@ -152,10 +154,12 @@ export function EnterpriseAssetDetail({
         </div>
         <div className="enterprise-classification" aria-label="自动分类置信度">
           <span>自动分类置信度</span>
-          <strong>{classificationPercent}%</strong>
-          <div className="enterprise-classification__bar" aria-hidden="true">
-            <span style={{ width: `${classificationPercent}%` }} />
-          </div>
+          <strong>{classificationPercent === undefined ? '未提供' : `${classificationPercent}%`}</strong>
+          {classificationPercent !== undefined ? (
+            <div className="enterprise-classification__bar" aria-hidden="true">
+              <span style={{ width: `${classificationPercent}%` }} />
+            </div>
+          ) : null}
         </div>
       </header>
 

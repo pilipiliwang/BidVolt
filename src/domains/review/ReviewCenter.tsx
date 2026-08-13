@@ -480,7 +480,14 @@ function ReviewImpact({
           <div className={styles.scoreCompare}>
             <div><span>当前综合得分</span><strong>{run.validatedSummary.currentScore.toFixed(1)}</strong><small>/100</small></div>
             <ArrowRight aria-hidden="true" size={28} />
-            <ScoreRing label="执行建议后预估" score={run.validatedSummary.predictedScore} />
+            {run.validatedSummary.predictedScore === undefined ? (
+              <div className={styles.impactPending} role="status">
+                <strong>执行后得分未提供</strong>
+                <p>后端仅返回可提升分值，未返回执行建议后的正式预估得分。</p>
+              </div>
+            ) : (
+              <ScoreRing label="执行建议后预估" score={run.validatedSummary.predictedScore} />
+            )}
           </div>
           <strong className={styles.totalLift}>+{run.validatedSummary.totalLift.toFixed(1)} 分</strong>
 

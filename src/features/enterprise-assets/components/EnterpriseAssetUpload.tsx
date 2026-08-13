@@ -30,8 +30,11 @@ export function EnterpriseAssetUpload({
     }
     setUploadState({ message: '正在上传企业资料…', type: 'loading' });
     try {
-      await onUpload(Array.from(files));
-      setUploadState({ message: '企业资料上传完成，正在自动归档。', type: 'success' });
+      const result = await onUpload(Array.from(files));
+      setUploadState({
+        message: result?.message ?? '企业资料上传完成，待服务端返回归类状态。',
+        type: 'success',
+      });
     } catch (error) {
       setUploadState({
         message: error instanceof Error && error.message
@@ -60,7 +63,7 @@ export function EnterpriseAssetUpload({
         </span>
         <div>
           <p className="enterprise-eyebrow">企业资料专属入口</p>
-          <h2 id="enterprise-upload-title">上传并自动归档</h2>
+          <h2 id="enterprise-upload-title">上传企业资料</h2>
         </div>
       </div>
 
@@ -72,7 +75,7 @@ export function EnterpriseAssetUpload({
       >
         <FileUp aria-hidden="true" size={27} />
         <strong>选择文件或拖拽到此处</strong>
-        <span>资料只归属于 {enterpriseName}，Agent 将自动分类并抽取可复用字段</span>
+        <span>资料只归属于 {enterpriseName}；服务端完成资料关联后，Agent 才会分类并抽取字段</span>
         <span className="enterprise-dropzone__formats">支持 PDF、DOCX、XLSX、OFD、图片与压缩包</span>
       </label>
       <input
@@ -112,16 +115,20 @@ export function EnterpriseAssetUpload({
                     <strong>{item.name}</strong>
                     <span>{ingestionStatusLabel[item.status]}</span>
                   </div>
-                  <div
-                    className="enterprise-progress"
-                    role="progressbar"
-                    aria-label={`${item.name}处理进度`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={item.progress}
-                  >
-                    <span style={{ width: `${Math.min(100, Math.max(0, item.progress))}%` }} />
-                  </div>
+                  {item.progress === undefined ? (
+                    <small className="enterprise-progress-unknown">后端未提供百分比进度</small>
+                  ) : (
+                    <div
+                      className="enterprise-progress"
+                      role="progressbar"
+                      aria-label={`${item.name}处理进度`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={item.progress}
+                    >
+                      <span style={{ width: `${Math.min(100, Math.max(0, item.progress))}%` }} />
+                    </div>
+                  )}
                 </div>
               </article>
             );

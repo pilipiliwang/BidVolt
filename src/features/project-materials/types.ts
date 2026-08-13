@@ -31,7 +31,7 @@ export interface ProjectMaterial {
   kind: ProjectMaterialKind;
   revisionNo: number;
   parseStatus: ProjectMaterialParseStatus;
-  parseProgress: number;
+  parseProgress?: number;
   blocksCount?: number;
   uploadedAt: string;
   supersedesRevisionNo?: number;
@@ -39,7 +39,7 @@ export interface ProjectMaterial {
 
 export interface RequirementCoordinate {
   fileName: string;
-  fileRevisionNo: number;
+  fileRevisionNo?: number;
   pageNo?: number;
   blockIndex?: number;
 }
@@ -49,7 +49,7 @@ export interface ProjectRequirement {
   type: RequirementType;
   title: string;
   content: string;
-  confidence: number;
+  confidence?: number;
   confirmationStatus: 'confirmed' | 'needs_confirmation';
   revisionNo: number;
   coordinate: RequirementCoordinate;
@@ -60,7 +60,7 @@ export interface ProjectSnapshot {
   label: string;
   createdAt: string;
   materialRevisionCount: number;
-  requirementRevisionNo: number;
+  requirementRevisionNo?: number;
   isCurrent: boolean;
 }
 

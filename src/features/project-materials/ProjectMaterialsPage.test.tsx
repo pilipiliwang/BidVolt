@@ -112,6 +112,7 @@ describe('ProjectMaterialsPage', () => {
     await user.upload(screen.getByLabelText(/已制作完成的标书/), completedBid);
 
     expect(onUpload).toHaveBeenCalledWith('BV-2026-0088', [completedBid]);
+    await user.click(screen.getByRole('radio', { name: '校核已完成标书' }));
     await user.click(screen.getByRole('button', { name: '开始校核' }));
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'validate');
     expect(screen.getByRole('button', { name: '任务已进入队列' })).toBeDisabled();
@@ -134,6 +135,8 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
+    expect(screen.getByRole('button', { name: '请选择任务类型' })).toBeDisabled();
+    await user.click(screen.getByRole('radio', { name: '生成标书' }));
     await user.click(screen.getByRole('button', { name: '开始生成' }));
 
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'generate');
@@ -165,7 +168,7 @@ describe('ProjectMaterialsPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('技术标.docx：文件内容无法读取');
     expect(screen.queryByText('技术标.docx')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '开始生成' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '请选择任务类型' })).toBeDisabled();
   });
 
   it('shows a task creation rejection and keeps the task action retryable', async () => {
@@ -183,6 +186,7 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
+    await user.click(screen.getByRole('radio', { name: '生成标书' }));
     await user.click(screen.getByRole('button', { name: '开始生成' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('任务队列暂不可用');

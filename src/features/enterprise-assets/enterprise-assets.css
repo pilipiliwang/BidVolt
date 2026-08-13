@@ -623,6 +623,7 @@
   border-radius: inherit;
   background: linear-gradient(90deg, #008653, #2aac77);
 }
+.enterprise-progress-unknown { color: var(--enterprise-muted); font-size: var(--font-size-xs); }
 
 .enterprise-detail {
   min-width: 0;

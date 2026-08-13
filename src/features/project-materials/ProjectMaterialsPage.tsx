@@ -185,6 +185,7 @@ export function ProjectMaterialsPage({
 }: ProjectMaterialsPageProps) {
   const [activeTab, setActiveTab] = useState<ProjectMaterialsTab>('materials');
   const [completedBidNames, setCompletedBidNames] = useState<string[]>([]);
+  const [selectedTaskMode, setSelectedTaskMode] = useState<'generate' | 'validate' | null>(null);
   const [taskState, setTaskState] = useState<{
     message: string;
     mode: 'generate' | 'validate' | null;
@@ -217,7 +218,8 @@ export function ProjectMaterialsPage({
     ]);
   };
   const startTask = async () => {
-    const mode = completedBidNames.length > 0 ? 'validate' : 'generate';
+    if (!selectedTaskMode) return;
+    const mode = selectedTaskMode;
     setTaskState({ message: '正在创建任务…', mode, status: 'loading' });
     try {
       await onStartTask(projectId, mode);
@@ -336,7 +338,9 @@ export function ProjectMaterialsPage({
 
                 <div className="project-material-list">
                   {materials.map((material) => {
-                    const progress = Math.min(100, Math.max(0, material.parseProgress));
+                    const progress = material.parseProgress === undefined
+                      ? undefined
+                      : Math.min(100, Math.max(0, material.parseProgress));
                     return (
                       <article className="project-material-row" key={material.id}>
                         <span className="project-material-row__file" aria-hidden="true"><FileText size={18} /></span>
@@ -356,16 +360,20 @@ export function ProjectMaterialsPage({
                               </span>
                             )}
                           </div>
-                          <div
-                            className="project-parse-progress"
-                            role="progressbar"
-                            aria-label={`${material.name}解析进度`}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={progress}
-                          >
-                            <span style={{ width: `${progress}%` }} />
-                          </div>
+                          {progress === undefined ? (
+                            <small className="project-parse-progress-unknown">后端未提供百分比进度</small>
+                          ) : (
+                            <div
+                              className="project-parse-progress"
+                              role="progressbar"
+                              aria-label={`${material.name}解析进度`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={progress}
+                            >
+                              <span style={{ width: `${progress}%` }} />
+                            </div>
+                          )}
                         </div>
                         <span className={`project-parse-state project-parse-state--${material.parseStatus}`}>
                           <ParseStatusIcon status={material.parseStatus} />
@@ -386,9 +394,34 @@ export function ProjectMaterialsPage({
 
               {materials.length > 0 && (
                 <div className="project-start-task-wrap">
+                  <fieldset className="project-task-mode">
+                    <legend>选择本次任务</legend>
+                    <label>
+                      <input
+                        checked={selectedTaskMode === 'generate'}
+                        disabled={taskState.status === 'loading' || taskState.status === 'success'}
+                        name="project-task-mode"
+                        type="radio"
+                        value="generate"
+                        onChange={() => setSelectedTaskMode('generate')}
+                      />
+                      生成标书
+                    </label>
+                    <label>
+                      <input
+                        checked={selectedTaskMode === 'validate'}
+                        disabled={taskState.status === 'loading' || taskState.status === 'success'}
+                        name="project-task-mode"
+                        type="radio"
+                        value="validate"
+                        onChange={() => setSelectedTaskMode('validate')}
+                      />
+                      校核已完成标书
+                    </label>
+                  </fieldset>
                   <button
                     className="project-start-task"
-                    disabled={taskState.status === 'loading' || taskState.status === 'success'}
+                    disabled={!selectedTaskMode || taskState.status === 'loading' || taskState.status === 'success'}
                     onClick={() => void startTask()}
                     type="button"
                   >
@@ -397,7 +430,9 @@ export function ProjectMaterialsPage({
                       ? '正在创建任务…'
                       : taskState.status === 'success'
                         ? '任务已进入队列'
-                      : completedBidNames.length > 0
+                      : selectedTaskMode === null
+                        ? '请选择任务类型'
+                      : selectedTaskMode === 'validate'
                         ? '开始校核'
                         : '开始生成'}
                   </button>

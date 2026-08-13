@@ -42,8 +42,8 @@ function getFocusableElements(container: HTMLElement) {
   );
 }
 
-function formatCurrencyAmount(amount: string) {
-  if (!amount.trim()) return '—';
+function formatCurrencyAmount(amount?: string) {
+  if (!amount?.trim()) return '—';
   const numericAmount = Number(amount);
   if (!Number.isFinite(numericAmount)) return '—';
   return numericAmount.toLocaleString('zh-CN', {
@@ -102,8 +102,8 @@ export function PricingCenter({
   onAssistantSend,
 }: PricingCenterProps) {
   const recommendedStrategy = calculation.strategies.find((strategy) => strategy.recommended);
-  const hasCalculatedResult = calculation.status === 'calculated' && Boolean(recommendedStrategy);
-  const defaultStrategy = recommendedStrategy?.id ?? '';
+  const hasCalculatedResult = calculation.status === 'calculated' && calculation.strategies.length > 0;
+  const defaultStrategy = recommendedStrategy?.id ?? calculation.strategies[0]?.id ?? '';
   const [selectedStrategyId, setSelectedStrategyId] = useState(defaultStrategy);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyError, setApplyError] = useState('');
@@ -281,13 +281,13 @@ export function PricingCenter({
           </div>
         </header>
 
-        {hasCalculatedResult && recommendedStrategy ? (
+        {hasCalculatedResult && selectedStrategy ? (
           <div className={styles.materialSummary}>
             <div><span>测算样本材料</span><strong>{sampleScope.material}</strong></div>
             <div><span>样本规格口径</span><strong>{sampleScope.specification}</strong></div>
             <div><span>可用样本</span><strong>{usableSamples.length} 条</strong></div>
-            <div className={styles.suggested}><span>算法建议报价（元）</span><strong>{formatCurrencyAmount(recommendedStrategy.amount)}</strong></div>
-            <div><span>建议范围（元）</span><strong>{formatCurrencyAmount(recommendedStrategy.confidenceLow)} ~ {formatCurrencyAmount(recommendedStrategy.confidenceHigh)}</strong></div>
+            <div className={styles.suggested}><span>{selectedStrategy.recommended ? '算法推荐报价（元）' : '当前策略报价（元）'}</span><strong>{formatCurrencyAmount(selectedStrategy.amount)}</strong></div>
+            <div><span>建议范围（元）</span><strong>{selectedStrategy.confidenceLow === undefined || selectedStrategy.confidenceHigh === undefined ? '后端未提供' : `${formatCurrencyAmount(selectedStrategy.confidenceLow)} ~ ${formatCurrencyAmount(selectedStrategy.confidenceHigh)}`}</strong></div>
           </div>
         ) : null}
 
@@ -300,8 +300,8 @@ export function PricingCenter({
               <Metric label="历史中标价最低值（元）" value={formatOptionalCurrency(sampleStats.minimum)} source="当前可用历史样本" />
               <Metric label="历史中标价最高值（元）" value={formatOptionalCurrency(sampleStats.maximum)} source="当前可用历史样本" />
               <Metric label="最近样本中标价（元）" value={formatOptionalCurrency(sampleStats.latest)} source={sampleStats.latestAt ? `样本日期：${sampleStats.latestAt}` : '当前无可用样本'} />
-              <Metric label="建议区间下限（元）" value={recommendedStrategy ? formatCurrencyAmount(recommendedStrategy.confidenceLow) : '—'} source="算法返回结果" />
-              <Metric label="建议区间上限（元）" value={recommendedStrategy ? formatCurrencyAmount(recommendedStrategy.confidenceHigh) : '—'} source="算法返回结果" />
+              <Metric label="建议区间下限（元）" value={selectedStrategy ? formatCurrencyAmount(selectedStrategy.confidenceLow) : '—'} source="算法返回结果" />
+              <Metric label="建议区间上限（元）" value={selectedStrategy ? formatCurrencyAmount(selectedStrategy.confidenceHigh) : '—'} source="算法返回结果" />
               <Metric label="算法版本" value={calculation.algorithmVersion || '—'} source="报价算法服务" />
               <div className={styles.formula}><span>测算追溯信息</span><strong>样本快照：{calculation.sampleSnapshotId || '—'} · 查询快照：{calculation.querySnapshotId || '—'}</strong></div>
             </div>
@@ -326,7 +326,7 @@ export function PricingCenter({
                   {visibleSamples.map((sample) => (
                     <article className={!sample.usable ? styles.excluded : undefined} key={sample.id}>
                       <span>{sample.materialName}</span>
-                      <span>{sample.specification}<small>{sample.sourceLabel}</small></span>
+                      <span>{sample.specification}<small>{sample.sourceLabel}{sample.excludedReason ? ` · ${sample.excludedReason}` : ''}</small></span>
                       <time>{sample.occurredAt}</time>
                       <strong>{Number(sample.price).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</strong>
                       {sample.usable ? <BadgeCheck aria-label="可用于测算" size={14} /> : <ShieldAlert aria-label="已排除" size={14} />}
@@ -427,7 +427,13 @@ function SamplePriceChart({ samples }: { samples: HistoryPriceSample[] }) {
 }
 
 function InsufficientState({ calculation }: { calculation: QuoteCalculationView }) {
-  const title = calculation.status === 'insufficient_data' ? '无法可靠测算' : '测算条件未满足';
+  const title = calculation.status === 'insufficient_data'
+    ? '无法可靠测算'
+    : calculation.status === 'applied'
+      ? '该测算已应用'
+      : calculation.status === 'abandoned'
+        ? '该测算已放弃'
+        : '测算条件未满足';
   return (
     <div className={styles.insufficient} role="status">
       <AlertCircle aria-hidden="true" size={25} />

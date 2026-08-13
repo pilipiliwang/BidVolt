@@ -120,10 +120,10 @@ const materialKindFromFile = (file: BackendFile): ProjectMaterialKind => {
 };
 
 const parseState = (status: number): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
-  if (status === 2) return { parseProgress: 50, parseStatus: 'parsing' };
+  if (status === 2) return { parseStatus: 'parsing' };
   if (status === 3) return { parseProgress: 100, parseStatus: 'parsed' };
-  if (status === 4) return { parseProgress: 0, parseStatus: 'failed' };
-  return { parseProgress: 0, parseStatus: 'queued' };
+  if (status === 4) return { parseStatus: 'failed' };
+  return { parseStatus: 'queued' };
 };
 
 export function adaptBackendFile(file: BackendFile): ProjectMaterialView {
@@ -195,17 +195,14 @@ export function adaptBackendEnterpriseAsset(
   const facts = bundle.detail?.facts ?? [];
   const revisions = bundle.revisions ?? [];
   const latestRevisionNo = Math.max(0, ...revisions.map((revision) => revision.revision_no));
-  const averageConfidence = facts.length
-    ? facts.reduce((sum, fact) => sum + (fact.confidence ?? 0), 0) / facts.length
-    : 0;
   const latestCreatedAt = revisions.find((revision) => revision.revision_no === latestRevisionNo)?.created_at;
 
   return {
     id: String(bundle.asset.asset_id),
     name: bundle.asset.name,
     category: assetCategory(bundle.asset, categoryIndex),
-    // There is no asset-level confidence; the only traceable approximation is the extracted-fact average.
-    classificationConfidence: averageConfidence,
+    // Fact extraction confidence is not asset classification confidence.
+    classificationConfidence: undefined,
     status:
       bundle.asset.status === 3
         ? 'ready'
@@ -221,7 +218,7 @@ export function adaptBackendEnterpriseAsset(
       id: String(fact.fact_id),
       label: factLabelAliases[fact.fact_key] ?? fact.fact_key,
       value: displayJson(fact.fact_value),
-      confidence: fact.confidence ?? 0,
+      confidence: fact.confidence ?? undefined,
       sourceLabel: bundle.asset.name,
       needsReview: fact.status === 1,
     })),
@@ -295,13 +292,13 @@ export function adaptBackendRequirement(
       asString(structured?.title) ||
       requirementLabels[type],
     content: requirement.content,
-    confidence: requirement.confidence ?? 0,
+    confidence: requirement.confidence ?? undefined,
     // Backend has no confirmation state or confirmation mutation endpoint.
     confirmationStatus: 'needs_confirmation',
     revisionNo: requirement.revision,
     coordinate: {
       fileName,
-      fileRevisionNo: asNumber(coordinate?.file_revision_no) ?? 0,
+      fileRevisionNo: asNumber(coordinate?.file_revision_no),
       pageNo: asNumber(coordinate?.page_no) ?? asNumber(coordinate?.page),
       blockIndex: asNumber(coordinate?.block_index),
     },
@@ -321,7 +318,7 @@ const collectionSize = (value: unknown): number => {
 };
 
 export function adaptBackendSnapshots(snapshots: readonly SnapshotSummary[]): ProjectSnapshotView[] {
-  return snapshots.map((snapshot, index) => {
+  return snapshots.map((snapshot) => {
     const inputRefs = asRecord(snapshot.input_refs) ?? {};
     const materialRefs =
       inputRefs.materials ?? inputRefs.material_ids ?? inputRefs.project_materials;
@@ -333,7 +330,7 @@ export function adaptBackendSnapshots(snapshots: readonly SnapshotSummary[]): Pr
       materialRevisionCount: collectionSize(materialRefs),
       requirementRevisionNo:
         asNumber(inputRefs.requirement_revision_no) ?? collectionSize(requirementRefs),
-      isCurrent: index === 0,
+      isCurrent: false,
     };
   });
 }
@@ -570,7 +567,7 @@ export function adaptBackendReviewRun(run: ReviewRunDetail): ReviewRunView {
           totalFindingCount: run.items.length,
           categoryCounts,
           currentScore,
-          predictedScore: Math.min(100, currentScore + totalLift),
+          predictedScore: undefined,
           totalLift,
           sectionLifts: hasSectionLift ? sectionLifts : undefined,
         },
@@ -605,11 +602,12 @@ export function adaptBackendHistorySamples(
     region: sample.region ?? undefined,
     price: String(sample.win_price),
     currency: sample.currency ?? 'CNY',
-    taxIncluded: sample.tax_included ?? true,
+    taxIncluded: sample.tax_included,
     occurredAt: sample.win_date,
     sourceLabel: sample.provider_id ?? '外部历史报价库',
     sourceHash: sample.source_hash,
-    usable: true,
+    usable: sample.tax_included !== undefined,
+    excludedReason: sample.tax_included === undefined ? '税口径未提供，不能直接用于测算' : undefined,
   }));
 }
 
@@ -619,6 +617,7 @@ export type BackendQuoteStrategyResult = {
   score?: number | string | null;
   gross_margin?: number | string | null;
   risk_level?: 'low' | 'medium' | 'high';
+  recommended?: boolean;
 };
 
 export type BackendQuoteCalculation = {
@@ -626,6 +625,7 @@ export type BackendQuoteCalculation = {
   result?: JsonObject | null;
   strategy_results?: Partial<Record<'win' | 'balance' | 'profit', BackendQuoteStrategyResult>>;
   snapshot_refs?: readonly (number | string)[];
+  samples?: readonly BackendHistorySample[];
   status?: number;
 };
 
@@ -637,7 +637,8 @@ const strategyLabels = {
 
 const adaptQuoteStrategy = (
   strategy: BackendQuoteStrategyResult,
-  confidence: { low: string; high: string },
+  confidence: { low?: string; high?: string },
+  recommendedStrategy?: string,
 ): QuoteStrategy => ({
   id: strategy.strategy,
   name: strategyLabels[strategy.strategy][0],
@@ -651,7 +652,7 @@ const adaptQuoteStrategy = (
     ? undefined
     : String(strategy.gross_margin),
   riskLevel: strategy.risk_level,
-  recommended: strategy.strategy === 'balance',
+  recommended: strategy.recommended === true || recommendedStrategy === strategy.strategy,
 });
 
 export function adaptBackendQuoteCalculation(
@@ -669,20 +670,23 @@ export function adaptBackendQuoteCalculation(
       strategies: [],
     };
   }
-  const suggested = asNumber(result.suggested);
   const confidence = {
-    low: String(asNumber(result.confidence_low) ?? suggested ?? 0),
-    high: String(asNumber(result.confidence_high) ?? suggested ?? 0),
+    low: asNumber(result.confidence_low)?.toString(),
+    high: asNumber(result.confidence_high)?.toString(),
   };
   const strategies = Object.values(calculation.strategy_results ?? {}).filter(
     (strategy): strategy is BackendQuoteStrategyResult => strategy !== undefined,
   );
   return {
     id: String(calculation.calc_id),
-    status: 'calculated',
+    status: calculation.status === 2 ? 'applied' : calculation.status === 3 ? 'abandoned' : 'calculated',
     algorithmVersion: asString(result.engine_version) ?? '算法版本未提供',
     sampleSnapshotId: (calculation.snapshot_refs ?? []).map(String).join(','),
     querySnapshotId: String(calculation.calc_id),
-    strategies: strategies.map((strategy) => adaptQuoteStrategy(strategy, confidence)),
+    strategies: strategies.map((strategy) => adaptQuoteStrategy(
+      strategy,
+      confidence,
+      asString(result.recommended_strategy),
+    )),
   };
 }

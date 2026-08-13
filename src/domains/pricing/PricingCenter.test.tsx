@@ -59,7 +59,7 @@ describe('PricingCenter', () => {
     render(<PricingCenter calculation={calculated} materials={[]} samples={samples} />);
 
     expect(screen.getByText('外部历史库只读')).toBeInTheDocument();
-    expect(screen.getByText('算法建议报价（元）')).toBeInTheDocument();
+    expect(screen.getByText('算法推荐报价（元）')).toBeInTheDocument();
     expect(screen.getAllByText('30,200.00')).toHaveLength(2);
     expect(screen.getByText('28,800.00 ~ 31,600.00')).toBeInTheDocument();
     expect(screen.getByText('测算依据明细')).toBeInTheDocument();
@@ -192,7 +192,7 @@ describe('PricingCenter', () => {
     },
   );
 
-  it('withholds the default material summary when a calculated result has no recommended strategy', () => {
+  it('shows strategies without inventing a recommendation when none is returned', () => {
     const withoutRecommendation: QuoteCalculationView = {
       ...calculated,
       strategies: calculated.strategies.map((strategy) => ({
@@ -203,16 +203,9 @@ describe('PricingCenter', () => {
 
     render(<PricingCenter calculation={withoutRecommendation} materials={[]} samples={samples} />);
 
-    expect(screen.getByText('测算条件未满足')).toBeInTheDocument();
-    expect(screen.getByText('系统不会使用 AI 猜测任何报价数字。')).toBeInTheDocument();
-    expect(screen.queryByText('当前材料（已选中）')).not.toBeInTheDocument();
-    expect(screen.queryByText('高压开关柜（KYN28A-12）')).not.toBeInTheDocument();
-    expect(screen.queryByText('10GY-DZ-006')).not.toBeInTheDocument();
-    expect(screen.queryByText('KYN28A-12/1250A 31.5kA')).not.toBeInTheDocument();
-    expect(screen.queryByText('当前报价（元）')).not.toBeInTheDocument();
-    expect(screen.queryByText('30,000.00')).not.toBeInTheDocument();
-    expect(screen.queryByText('算法建议报价（元）')).not.toBeInTheDocument();
-    expect(screen.queryByText('测算依据明细')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '应用到报价单并生成新版本' })).not.toBeInTheDocument();
+    expect(screen.getByText('当前策略报价（元）')).toBeInTheDocument();
+    expect(screen.getAllByText('30,200.00')).toHaveLength(2);
+    expect(screen.queryByText('推荐')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '应用到报价单并生成新版本' })).toBeInTheDocument();
   });
 });
