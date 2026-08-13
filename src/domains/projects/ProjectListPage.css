@@ -42,6 +42,14 @@
   line-height: 1.5;
 }
 
+.ui0802-row-action-error {
+  max-width: 180px;
+  color: #bf242c;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 @media (max-width: 560px) {
   .ui0802-deadline-control {
     grid-column: 1 / -1;

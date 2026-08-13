@@ -82,8 +82,10 @@ export function ProjectListPage({
   total,
 }: ProjectListPageProps) {
   const [query, setQuery] = useState('');
-  const [deletedProjectIds, setDeletedProjectIds] = useState<string[]>([]);
+  const [archivingProjectIds, setArchivingProjectIds] = useState<string[]>([]);
+  const [archiveErrors, setArchiveErrors] = useState<Record<string, string>>({});
   const [isCreateOpen, setCreateOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [draft, setDraft] = useState<NewProjectDraft>(emptyDraft);
   const [formError, setFormError] = useState('');
   const [minimumDeadline, setMinimumDeadline] = useState(getMinimumDeadline);
@@ -119,13 +121,12 @@ export function ProjectListPage({
   const visibleProjects = useMemo(() => {
     const normalisedQuery = query.trim().toLocaleLowerCase('zh-CN');
     return projectRows.filter((project) => {
-      if (deletedProjectIds.includes(project.id)) return false;
       const searchableText = `${project.code} ${project.title} ${project.buyer}`.toLocaleLowerCase(
         'zh-CN',
       );
       return !normalisedQuery || searchableText.includes(normalisedQuery);
     });
-  }, [deletedProjectIds, projectRows, query]);
+  }, [projectRows, query]);
 
   const closeCreateDialog = () => {
     setCreateOpen(false);
@@ -185,6 +186,7 @@ export function ProjectListPage({
 
   const submitProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isCreating) return;
     const normalized = {
       buyer: draft.buyer.trim(),
       code: draft.code.trim(),
@@ -210,6 +212,7 @@ export function ProjectListPage({
     }
 
     try {
+      setIsCreating(true);
       await onCreateProject({
         id: normalized.code,
         code: normalized.code,
@@ -227,6 +230,38 @@ export function ProjectListPage({
       setFormError(
         creationError instanceof Error ? creationError.message : '项目创建失败，请稍后重试。',
       );
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const archiveProject = async (project: ProjectSummary) => {
+    if (archivingProjectIds.includes(project.id)) return;
+    setArchiveErrors((current) => {
+      const next = { ...current };
+      delete next[project.id];
+      return next;
+    });
+    if (!onArchiveProject) {
+      setArchiveErrors((current) => ({
+        ...current,
+        [project.id]: '当前环境未配置项目归档能力。',
+      }));
+      return;
+    }
+
+    setArchivingProjectIds((current) => [...current, project.id]);
+    try {
+      await onArchiveProject(project.id);
+    } catch (archiveError) {
+      setArchiveErrors((current) => ({
+        ...current,
+        [project.id]: archiveError instanceof Error
+          ? archiveError.message
+          : '项目归档失败，请稍后重试。',
+      }));
+    } finally {
+      setArchivingProjectIds((current) => current.filter((id) => id !== project.id));
     }
   };
 
@@ -316,18 +351,19 @@ export function ProjectListPage({
                           进入
                         </AppLink>
                         <button
+                          disabled={!onArchiveProject || archivingProjectIds.includes(project.id)}
+                          title={onArchiveProject ? '归档项目' : '当前环境未配置项目归档能力'}
                           type="button"
                           aria-label={`从列表删除${project.title}`}
-                          onClick={() => {
-                            if (onArchiveProject) {
-                              void Promise.resolve(onArchiveProject(project.id)).catch(() => undefined);
-                              return;
-                            }
-                            setDeletedProjectIds((current) => [...current, project.id]);
-                          }}
+                          onClick={() => void archiveProject(project)}
                         >
-                          删除
+                          {archivingProjectIds.includes(project.id) ? '删除中…' : '删除'}
                         </button>
+                        {archiveErrors[project.id] ? (
+                          <span className="ui0802-row-action-error" role="alert">
+                            {archiveErrors[project.id]}
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -361,6 +397,7 @@ export function ProjectListPage({
         <div className="ui0802-modal-layer">
           <button
             className="ui0802-modal-backdrop"
+            disabled={isCreating}
             type="button"
             aria-label="关闭新增项目窗口"
             onClick={closeCreateDialog}
@@ -378,7 +415,7 @@ export function ProjectListPage({
                 <h2 id="create-project-title">新增项目</h2>
                 <p>创建独立项目域，随后进入材料页上传本次招标文件。</p>
               </div>
-              <button type="button" aria-label="关闭新增项目窗口" onClick={closeCreateDialog}>
+              <button disabled={isCreating} type="button" aria-label="关闭新增项目窗口" onClick={closeCreateDialog}>
                 <X aria-hidden="true" size={20} />
               </button>
             </header>
@@ -440,8 +477,10 @@ export function ProjectListPage({
               </div>
               {formError ? <p className="ui0802-project-form-error" role="alert">{formError}</p> : null}
               <footer>
-                <button type="button" onClick={closeCreateDialog}>取消</button>
-                <button className="is-primary" type="submit">创建并进入材料页</button>
+                <button disabled={isCreating} type="button" onClick={closeCreateDialog}>取消</button>
+                <button className="is-primary" disabled={isCreating} type="submit">
+                  {isCreating ? '创建中…' : '创建并进入材料页'}
+                </button>
               </footer>
             </form>
           </div>

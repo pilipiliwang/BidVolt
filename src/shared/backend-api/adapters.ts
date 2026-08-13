@@ -71,9 +71,14 @@ export type ProjectAdapterStats = {
   riskCount?: number;
 };
 
+const buyerFromProjectNote = (note: string | null): string | undefined => {
+  const match = note?.match(/^\s*招标人[：:]\s*([^\r\n]+?)\s*(?:[\r\n]|$)/);
+  return match?.[1]?.trim() || undefined;
+};
+
 /**
- * The backend does not expose buyer, material count or risk count on ProjectResponse.
- * Neutral labels/zero counts are used until aggregate endpoints are available.
+ * Buyer is encoded in note with an explicit `招标人：` prefix until the backend exposes
+ * a dedicated field. Unrecognised notes stay neutral instead of being presented as buyer data.
  */
 export function adaptBackendProject(
   project: ProjectResponse,
@@ -83,7 +88,7 @@ export function adaptBackendProject(
     id: String(project.project_id),
     code: project.tender_no?.trim() || `项目-${project.project_id}`,
     title: project.name,
-    buyer: stats.buyer?.trim() || '招标人待补充',
+    buyer: stats.buyer?.trim() || buyerFromProjectNote(project.note) || '招标人待补充',
     stage: projectStageByStatus[project.status] ?? '材料解析',
     progress: projectProgressByStatus[project.status] ?? 0,
     deadline: project.deadline ?? '截止时间待补充',

@@ -170,6 +170,52 @@ describe('ProjectListPage', () => {
     expect(screen.queryByRole('dialog', { name: '新增项目' })).not.toBeInTheDocument();
   });
 
+  it('keeps a project visible and retryable when backend archiving fails', async () => {
+    const user = userEvent.setup();
+    let rejectArchive: (error: Error) => void = () => undefined;
+    const onArchiveProject = vi.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectArchive = reject;
+    }));
+    render(
+      <ProjectListPage
+        projects={projectSummaries}
+        onArchiveProject={onArchiveProject}
+        onCreateProject={vi.fn()}
+      />,
+    );
+
+    const archiveButton = screen.getByRole('button', {
+      name: '从列表删除海上平台电气设备采购项目',
+    });
+    await user.click(archiveButton);
+
+    expect(archiveButton).toBeDisabled();
+    expect(archiveButton).toHaveTextContent('删除中…');
+    rejectArchive(new Error('项目正在运行任务，暂不能归档'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('项目正在运行任务，暂不能归档');
+    expect(screen.getByText('海上平台电气设备采购项目')).toBeInTheDocument();
+    expect(archiveButton).toBeEnabled();
+  });
+
+  it('keeps the create dialog open while creation fails', async () => {
+    const onCreateProject = vi.fn().mockRejectedValue(new Error('招标编号已被占用'));
+    renderProjectList(onCreateProject);
+    const { user, dialog } = await openCreateProjectDialog();
+
+    await user.type(within(dialog).getByRole('textbox', { name: '项目名称' }), '北方变电站扩容项目');
+    await user.type(within(dialog).getByRole('textbox', { name: '招标编号' }), 'BV-2099-099');
+    await user.type(within(dialog).getByRole('textbox', { name: '招标人' }), '北方电网有限公司');
+    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
+      target: { value: '2099-12-31T12:00' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: '创建并进入材料页' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('招标编号已被占用');
+    expect(screen.getByRole('dialog', { name: '新增项目' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '创建并进入材料页' })).toBeEnabled();
+  });
+
   it('closes with Escape and restores focus to the launch button', async () => {
     renderProjectList();
     const launchButton = screen.getByRole('button', { name: '新增项目' });

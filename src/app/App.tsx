@@ -40,6 +40,7 @@ import {
   adaptBackendFiles,
   adaptBackendHistorySamples,
   adaptBackendProjectOverview,
+  adaptBackendProject,
   adaptBackendProjects,
   adaptBackendQuoteCalculation,
   adaptBackendRequirements,
@@ -68,6 +69,7 @@ import {
   saveBackendSession,
 } from './backend-session';
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
+import { mergeProjectPage, upsertProjectSummary } from './project-state';
 import { getEditorDraftScopeKey, type AppSession } from './session';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
@@ -135,8 +137,12 @@ export function App() {
   const [snapshotDetail, setSnapshotDetail] = useState<{ id: string; value: unknown } | null>(null);
   const [editor, setEditor] = useState<ActiveEditor | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [missingProjectId, setMissingProjectId] = useState<string | null>(null);
   const editorLoadKeyRef = useRef('');
   const tenantGuardRef = useRef(createTenantGenerationGuard());
+  const projectLoadGenerationRef = useRef(0);
+  const routeProjectIdRef = useRef(routeProjectId);
+  routeProjectIdRef.current = routeProjectId;
 
   const clearTenantDomainState = useCallback(() => {
     const empty = createEmptyTenantDomainState();
@@ -152,6 +158,7 @@ export function App() {
     setSnapshotDetail(empty.snapshotDetail);
     setEditor(empty.editor);
     setLoadingProjectId(empty.loadingProjectId);
+    setMissingProjectId(null);
     setStatusMessage(empty.statusMessage);
     editorLoadKeyRef.current = '';
   }, []);
@@ -226,7 +233,11 @@ export function App() {
     const generation = tenantGuardRef.current.capture();
     const response = await backendApi.projects.list({ page: 1, size: 100 });
     tenantGuardRef.current.commit(generation, () => {
-      setProjects(adaptBackendProjects(response.items));
+      setProjects((current) => mergeProjectPage(
+        adaptBackendProjects(response.items),
+        current,
+        routeProjectIdRef.current,
+      ));
       setProjectsTotal(response.total);
     });
   }, []);
@@ -357,10 +368,31 @@ export function App() {
 
   useEffect(() => {
     if (authState !== 'authenticated' || !routeProjectId) return;
-    const generation = tenantGuardRef.current.capture();
-    void loadProject(routeProjectId).catch((error) => {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '项目数据加载失败');
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const projectGeneration = ++projectLoadGenerationRef.current;
+    setLoadingProjectId(routeProjectId);
+    setMissingProjectId((current) => current === routeProjectId ? null : current);
+    void backendApi.projects.get(routeProjectId).then(async (project) => {
+      if (!tenantGuardRef.current.isCurrent(tenantGeneration)
+        || projectLoadGenerationRef.current !== projectGeneration) return;
+      setProjects((current) => upsertProjectSummary(current, adaptBackendProject(project)));
+      setMissingProjectId((current) => current === routeProjectId ? null : current);
+      await loadProject(routeProjectId);
+    }).catch((error) => {
+      if (tenantGuardRef.current.isCurrent(tenantGeneration)
+        && projectLoadGenerationRef.current === projectGeneration) {
+        setMissingProjectId(routeProjectId);
+        setError(error, '项目数据加载失败');
+      }
+    }).finally(() => {
+      if (tenantGuardRef.current.isCurrent(tenantGeneration)
+        && projectLoadGenerationRef.current === projectGeneration) {
+        setLoadingProjectId((current) => current === routeProjectId ? null : current);
+      }
     });
+    return () => {
+      if (projectLoadGenerationRef.current === projectGeneration) projectLoadGenerationRef.current += 1;
+    };
   }, [authState, loadProject, routeProjectId, setError]);
 
   const shouldPollTasks = Boolean(routeProjectId && projectData[routeProjectId]?.tasks.some((event) =>
@@ -443,8 +475,9 @@ export function App() {
       note: project.buyer ? `招标人：${project.buyer}` : undefined,
     });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    await loadProjects();
     tenantGuardRef.current.commit(generation, () => {
+      setProjects((current) => upsertProjectSummary(current, adaptBackendProject(created)));
+      setProjectsTotal((current) => current + 1);
       navigate(`/projects/${encodeURIComponent(String(created.project_id))}/materials`);
     });
   };
@@ -453,7 +486,10 @@ export function App() {
     const generation = tenantGuardRef.current.capture();
     await backendApi.projects.archive(projectId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    await loadProjects();
+    tenantGuardRef.current.commit(generation, () => {
+      setProjects((current) => current.filter((project) => project.id !== projectId));
+      setProjectsTotal((current) => Math.max(0, current - 1));
+    });
   };
 
   const handleEnterpriseUpload = async (files: File[]) => {
@@ -890,7 +926,8 @@ export function App() {
       {route.name === 'deliverable-editor' && activeProject && !editor ? (
         <MissingDeliverable projectId={route.projectId} loading={loadingProjectId === route.projectId} />
       ) : null}
-      {routeProjectId && !activeProject && loadingProjectId !== routeProjectId ? <MissingProject /> : null}
+      {routeProjectId && !activeProject && missingProjectId !== routeProjectId ? <LoadingProject /> : null}
+      {routeProjectId && !activeProject && missingProjectId === routeProjectId ? <MissingProject /> : null}
       {route.name === 'not-found' ? <NotFoundPage /> : null}
 
       {routeProjectId && activeProject ? (
@@ -1071,6 +1108,10 @@ function LoadingScreen() {
 
 function MissingProject() {
   return <section className="empty-page"><span className="empty-page__code">未找到</span><h1>这个项目不存在或无权访问</h1><AppLink className="button button--primary" to="/projects">返回项目列表</AppLink></section>;
+}
+
+function LoadingProject() {
+  return <section className="empty-page" aria-busy="true"><span className="empty-page__code">加载中</span><h1>正在加载项目工作台</h1></section>;
 }
 
 function MissingDeliverable({ projectId, loading }: { projectId: string; loading: boolean }) {

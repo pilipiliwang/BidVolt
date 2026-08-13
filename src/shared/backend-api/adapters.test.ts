@@ -45,6 +45,22 @@ describe('backend DTO adapters', () => {
     });
   });
 
+  it('reads buyer only from an explicit project note prefix', () => {
+    const project: ProjectResponse = {
+      project_id: 19,
+      name: '海上风电项目',
+      tender_no: 'HY-2026-019',
+      deadline: null,
+      status: 1,
+      note: '招标人：海洋能源建设有限公司',
+      updated_at: '2026-08-14T00:00:00Z',
+    };
+
+    expect(adaptBackendProject(project).buyer).toBe('海洋能源建设有限公司');
+    expect(adaptBackendProject({ ...project, note: '重点项目，优先处理' }).buyer)
+      .toBe('招标人待补充');
+  });
+
   it('maps backend file status and infers a UI material category only from its labels', () => {
     expect(adaptBackendFile({
       file_id: 9,
