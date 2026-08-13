@@ -93,6 +93,8 @@ describe('ProjectOverviewPage', () => {
       'href',
       '/projects/BV-2026-018/pricing',
     );
+    expect(screen.getByText('版本号：各成果当前版本')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '成果版本' })).not.toBeInTheDocument();
   });
 
   it('shows unavailable backend metrics as dashes and disables download without a version', () => {

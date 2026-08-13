@@ -167,8 +167,8 @@ export function ProjectOverviewPage({
               <TrendingUp aria-hidden="true" size={18} />
               报价分析
             </AppLink>
-            <label>版本号 <select aria-label="成果版本"><option>各成果当前版本</option></select></label>
-            <label><ShieldCheck aria-hidden="true" size={18} /><select aria-label="版本时间"><option>最新受控版本</option></select></label>
+            <span className="bv-version-filters__status">版本号：各成果当前版本</span>
+            <span className="bv-version-filters__status"><ShieldCheck aria-hidden="true" size={18} />最新受控版本</span>
           </div>
         </header>
 

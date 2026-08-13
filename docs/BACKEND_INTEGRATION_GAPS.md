@@ -41,6 +41,42 @@
 
 ## 3. 后端必须补齐或确认
 
+### P0：修复当前联调环境 API 对外服务
+
+**建议 Issue 标题**：`[P0][部署] 修复 28123 API 映射，恢复前端联调与健康检查`
+
+**2026-08-14 实测**
+
+- 前端本地代理目标按后端文档配置为 `http://47.100.182.3:28123`。
+- `GET http://47.100.182.3:28123/healthz` 可以建立 TCP 连接，但服务端未返回任何 HTTP 响应（curl `Empty reply from server`）。
+- 浏览器经本地 `/api/v1` 代理提交登录后得到 `502`，页面已正确停留在登录页并显示“后端请求失败”。
+
+**建议验收标准**
+
+- 公网或联调网络中的 `/healthz` 稳定返回 HTTP 200 与 `{ "status": "ok" }`；`/api/v1/openapi.json`、登录和受保护接口返回有效 HTTP 响应。
+- 明确联调 Base URL、协议（HTTP/HTTPS）、端口映射和访问控制；同步更新前端环境配置与部署文档。
+- 从浏览器完成注册/登录、token 刷新、项目列表和 multipart 上传的冒烟测试。
+- 修复后使用本 Issue 附带的真实 RAR 样本继续执行上传、解包、解析验收。
+
+### P0-0：提供招标公告网址导入与安全下载接口
+
+**建议 Issue 标题**：`[P0][Tender Notice] 支持从公开招标公告 URL 安全导入正文与附件`
+
+**现状**
+
+- 前端已在“当前招标材料”保留手动上传，并增加 URL 粘贴、状态提示和轮询 client。
+- 前端调用 `POST /projects/{project_id}/tender-notices/import-url`，并需要项目范围内的导入记录列表与详情；后端正式分支当前没有这组接口。
+- 浏览器不能直接抓取第三方招标网站，否则会遇到 CORS、凭据泄露、无法统一审计及 SSRF/内容安全边界不一致等问题。
+
+**建议验收标准**
+
+- 实现 `POST /projects/{project_id}/tender-notices/import-url`、`GET .../imports`、`GET .../imports/{import_id}`；返回模型与 `docs/api/tender-notice-url-import.md` 一致。
+- 只写入当前 `enterprise_id + project_id` 的项目材料，严禁写入企业资料库；列表与详情具备跨租户、跨项目 IDOR 测试。
+- 每跳重定向都重新做 URL、DNS 与公网 IP 校验，连接固定到已校验 IP，拒绝本机、私网、链路本地、保留地址、云元数据地址、用户信息和非标准端口。
+- 抓取、附件和归档处理具有响应大小、附件数、文件数、总解压量、压缩比、目录深度、磁盘、内存、CPU 与时间限制；校验必须在资源耗尽前生效。
+- 保存来源 URL、最终 URL、标题、抓取时间、内容哈希及审计记录；稳定返回 `URL_BLOCKED`、`FETCH_TIMEOUT`、`UNSUPPORTED_CONTENT`、`ARCHIVE_LIMIT_EXCEEDED` 等可展示错误码。
+- 使用真实 RAR 招标公告样本验证正文和附件均成为项目材料，刷新后仍可查询状态；失败不留下可见的半成品材料。
+
 ### P0-1：明确生产跨域或同源代理方案
 
 **建议 Issue 标题**：`[P0][部署] 配置生产前端访问 API 的同源反向代理或 CORS 白名单`

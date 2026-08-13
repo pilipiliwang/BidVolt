@@ -25,6 +25,18 @@
 .bv-deliverables__header h1 { margin: 0; font-size: clamp(23px, 1.25vw, 26px); line-height: 1.25; }
 .bv-deliverables__header p { margin: 6px 0 0; color: #6f7d90; font-size: 14px; line-height: 1.5; }
 .bv-version-filters { gap: 10px; }
+.bv-version-filters__status {
+  align-items: center;
+  background: #f8fafb;
+  border: 1px solid #d8e0e4;
+  border-radius: 6px;
+  color: #344054;
+  display: inline-flex;
+  font-size: 14px;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 12px;
+}
 .bv-materials-entry {
   display: inline-flex;
   min-height: 40px;
