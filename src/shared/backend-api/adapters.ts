@@ -576,7 +576,9 @@ export type BackendHistorySample = {
   sample_id?: number | string;
   material_ref?: string;
   material_name: string;
+  material_code?: string | null;
   spec?: string | null;
+  region?: string | null;
   win_price: number | string;
   currency?: string;
   tax_included?: boolean;
@@ -591,13 +593,17 @@ export function adaptBackendHistorySamples(
 ): HistoryPriceSample[] {
   return samples.map((sample, index) => ({
     id: String(sample.sample_id ?? snapshotIds[index] ?? `${sample.material_ref ?? 'sample'}-${index}`),
+    materialRef: sample.material_ref,
     materialName: sample.material_name,
+    materialCode: sample.material_code ?? sample.material_ref,
     specification: sample.spec ?? '规格未提供',
+    region: sample.region ?? undefined,
     price: String(sample.win_price),
     currency: sample.currency ?? 'CNY',
     taxIncluded: sample.tax_included ?? true,
     occurredAt: sample.win_date,
     sourceLabel: sample.provider_id ?? '外部历史报价库',
+    sourceHash: sample.source_hash,
     usable: true,
   }));
 }

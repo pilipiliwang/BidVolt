@@ -1,12 +1,16 @@
 export type HistoryPriceSample = {
   id: string;
+  materialRef?: string;
   materialName: string;
+  materialCode?: string;
   specification: string;
+  region?: string;
   price: string;
   currency: string;
   taxIncluded: boolean;
   occurredAt: string;
   sourceLabel: string;
+  sourceHash?: string;
   usable: boolean;
   excludedReason?: string;
 };

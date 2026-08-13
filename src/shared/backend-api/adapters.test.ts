@@ -10,6 +10,7 @@ import type {
 import {
   adaptBackendEnterpriseAsset,
   adaptBackendFile,
+  adaptBackendHistorySamples,
   adaptBackendProject,
   adaptBackendQuoteCalculation,
   adaptBackendRequirement,
@@ -278,5 +279,26 @@ describe('backend DTO adapters', () => {
         recommended: true,
       }],
     });
+  });
+
+  it('preserves backend history material identifiers and region for page filtering', () => {
+    expect(adaptBackendHistorySamples([{
+      sample_id: 33,
+      material_ref: 'CABLE-YJV-3x95',
+      material_code: 'MAT-0095',
+      material_name: '电力电缆',
+      spec: '3x95',
+      region: '华东',
+      win_price: '118.00',
+      win_date: '2026-08-01',
+      provider_id: 'external-history',
+      source_hash: 'abc',
+    }])).toEqual([expect.objectContaining({
+      id: '33',
+      materialRef: 'CABLE-YJV-3x95',
+      materialCode: 'MAT-0095',
+      region: '华东',
+      sourceHash: 'abc',
+    })]);
   });
 });
