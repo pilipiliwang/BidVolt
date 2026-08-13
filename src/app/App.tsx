@@ -70,6 +70,13 @@ import {
 } from './backend-session';
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
 import { mergeProjectPage, upsertProjectSummary } from './project-state';
+import {
+  hasTaskEnteredTerminalState,
+  isActiveTaskStatus,
+  isProjectNotFound,
+  type ProjectResourceErrors,
+  type ProjectResourceKey,
+} from './project-resource-state';
 import { getEditorDraftScopeKey, type AppSession } from './session';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
@@ -100,6 +107,21 @@ type ActiveEditor = {
   deliverable: Deliverable;
   readOnlyReason?: string;
   session?: EditorSession;
+};
+
+type ProjectRouteFailure = {
+  message: string;
+  projectId: string;
+};
+
+const projectResourceLabels: Record<ProjectResourceKey, string> = {
+  materials: '项目材料',
+  requirements: '招标要求',
+  snapshots: '项目快照',
+  tasks: '任务进度',
+  deliverables: '成果版本',
+  review: '评审结果',
+  quote: '报价测算',
 };
 
 const emptyQuote = (projectId: string): QuoteCalculationView => ({
@@ -140,11 +162,16 @@ export function App() {
   const [editor, setEditor] = useState<ActiveEditor | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [missingProjectId, setMissingProjectId] = useState<string | null>(null);
+  const [projectRouteFailure, setProjectRouteFailure] = useState<ProjectRouteFailure | null>(null);
+  const [projectRetryNonce, setProjectRetryNonce] = useState(0);
+  const [projectResourceErrors, setProjectResourceErrors] = useState<Record<string, ProjectResourceErrors>>({});
   const editorLoadKeyRef = useRef('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
   const editorSaveGateRef = useRef(createEditorSaveGate());
   const tenantGuardRef = useRef(createTenantGenerationGuard());
   const projectLoadGenerationRef = useRef(0);
+  const projectResourceGenerationRef = useRef<Record<string, number>>({});
+  const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
   const routeProjectIdRef = useRef(routeProjectId);
   routeProjectIdRef.current = routeProjectId;
   activeEditorRef.current = editor;
@@ -166,8 +193,12 @@ export function App() {
     editorSaveGateRef.current.reset();
     setLoadingProjectId(empty.loadingProjectId);
     setMissingProjectId(null);
+    setProjectRouteFailure(null);
+    setProjectResourceErrors({});
     setStatusMessage(empty.statusMessage);
     editorLoadKeyRef.current = '';
+    projectResourceGenerationRef.current = {};
+    taskEventsRef.current = {};
   }, []);
 
   const becomeAnonymous = useCallback((options: { clearStoredSession?: boolean } = {}) => {
@@ -296,62 +327,110 @@ export function App() {
   }, [authState, loadEnterprise, loadHistory, loadProjects, setError]);
 
   const loadProject = useCallback(async (projectId: string) => {
-    const generation = tenantGuardRef.current.capture();
-    tenantGuardRef.current.commit(generation, () => setLoadingProjectId(projectId));
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const resourceGeneration = (projectResourceGenerationRef.current[projectId] ?? 0) + 1;
+    projectResourceGenerationRef.current[projectId] = resourceGeneration;
+    tenantGuardRef.current.commit(tenantGeneration, () => setLoadingProjectId(projectId));
     try {
-      const [filesResponse, requirements, snapshotsResponse, tasksResponse, deliverables, reviewRuns, score, quoteList] = await Promise.all([
+      const results = await Promise.allSettled([
         backendApi.files.list({ target: 'project', project_id: projectId, page: 1, size: 100 }),
-        backendApi.requirements.list(projectId).catch(() => []),
-        backendApi.snapshots.list(projectId).catch(() => ({ items: [] })),
-        backendApi.tasks.list(projectId).catch(() => ({ items: [] })),
-        backendApi.deliverables.list(projectId).catch(() => []),
-        backendApi.review.listRuns(projectId).catch(() => ({ items: [] })),
-        backendApi.review.latestScore(projectId).catch(() => undefined),
-        backendApi.quotes.list(projectId).catch(() => ({ items: [] })),
+        backendApi.requirements.list(projectId),
+        backendApi.snapshots.list(projectId),
+        backendApi.tasks.list(projectId),
+        backendApi.deliverables.list(projectId),
+        (async () => {
+          const [reviewRuns, score] = await Promise.all([
+            backendApi.review.listRuns(projectId),
+            backendApi.review.latestScore(projectId),
+          ]);
+          const latestRun = [...reviewRuns.items].sort((a, b) => Number(b.run_id) - Number(a.run_id))[0];
+          const runDetail = latestRun
+            ? await backendApi.review.getRun(projectId, latestRun.run_id)
+            : undefined;
+          return { runDetail, score };
+        })(),
+        (async () => {
+          const quoteList = await backendApi.quotes.list(projectId);
+          const latestQuote = quoteList.items[0];
+          const quoteId = asId(latestQuote?.calc_id);
+          const quoteDetail = quoteId ? await backendApi.quotes.get(quoteId) : undefined;
+          const quote = quoteDetail
+            ? adaptBackendQuoteCalculation(quoteDetail as Parameters<typeof adaptBackendQuoteCalculation>[0])
+            : emptyQuote(projectId);
+          const quoteSamplePayload = readHistorySamples(quoteDetail);
+          const samples = adaptBackendHistorySamples(
+            quoteSamplePayload.samples,
+            quoteSamplePayload.snapshotIds,
+          );
+          return { quote, samples };
+        })(),
       ]);
-      const latestRun = [...reviewRuns.items].sort((a, b) => Number(b.run_id) - Number(a.run_id))[0];
-      const runDetail = latestRun
-        ? await backendApi.review.getRun(projectId, latestRun.run_id).catch(() => undefined)
-        : undefined;
-      const latestQuote = quoteList.items[0];
-      const quoteId = asId(latestQuote?.calc_id);
-      const quoteDetail = quoteId
-        ? await backendApi.quotes.get(quoteId).catch(() => latestQuote)
-        : undefined;
-      const quote = quoteDetail
-        ? adaptBackendQuoteCalculation(quoteDetail as Parameters<typeof adaptBackendQuoteCalculation>[0])
-        : emptyQuote(projectId);
-      const quoteSamplePayload = readHistorySamples(quoteDetail);
-      const samples = adaptBackendHistorySamples(
-        quoteSamplePayload.samples,
-        quoteSamplePayload.snapshotIds,
-      );
-      const adaptedMaterials = adaptBackendFiles(filesResponse.items);
-      tenantGuardRef.current.commit(generation, () => {
-        setProjectData((current) => ({
-          ...current,
-          [projectId]: {
-          deliverables,
-          historyRecords: toHistoryRecords(samples),
-          materials: adaptedMaterials,
-          overview: adaptBackendProjectOverview(deliverables, score ? scoreSummaryForOverview(score) : undefined),
-          quote,
-          quoteSamples: samples,
-          requirements: adaptBackendRequirements(requirements, {
-            fileNamesById: Object.fromEntries(filesResponse.items.map((file) => [String(file.file_id), file.name])),
-          }),
-          reviewRun: runDetail ? adaptBackendReviewRun(runDetail) : emptyReview(),
-          score,
-          snapshots: adaptBackendSnapshots(snapshotsResponse.items),
-          tasks: tasksResponse.items.map((task, index) => adaptBackendTaskEvent(task, {
+      if (!tenantGuardRef.current.isCurrent(tenantGeneration)
+        || projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
+
+      const [filesResult, requirementsResult, snapshotsResult, tasksResult, deliverablesResult, reviewResult, quoteResult] = results;
+      const resourceResults: Array<[ProjectResourceKey, PromiseSettledResult<unknown>]> = [
+        ['materials', filesResult],
+        ['requirements', requirementsResult],
+        ['snapshots', snapshotsResult],
+        ['tasks', tasksResult],
+        ['deliverables', deliverablesResult],
+        ['review', reviewResult],
+        ['quote', quoteResult],
+      ];
+      const errors = Object.fromEntries(resourceResults.flatMap(([key, result]) =>
+        result.status === 'rejected'
+          ? [[key, readableError(result.reason, `${projectResourceLabels[key]}加载失败`)]]
+          : [])) as ProjectResourceErrors;
+
+      setProjectData((current) => {
+        const previous = current[projectId] ?? {
+          deliverables: [],
+          historyRecords: [],
+          materials: [],
+          quote: emptyQuote(projectId),
+          quoteSamples: [],
+          requirements: [],
+          reviewRun: emptyReview(),
+          snapshots: [],
+          tasks: [],
+        };
+        const next: ProjectData = { ...previous };
+        if (filesResult.status === 'fulfilled') next.materials = adaptBackendFiles(filesResult.value.items);
+        if (requirementsResult.status === 'fulfilled') {
+          const fileNamesById = filesResult.status === 'fulfilled'
+            ? Object.fromEntries(filesResult.value.items.map((file) => [String(file.file_id), file.name]))
+            : {};
+          next.requirements = adaptBackendRequirements(requirementsResult.value, { fileNamesById });
+        }
+        if (snapshotsResult.status === 'fulfilled') next.snapshots = adaptBackendSnapshots(snapshotsResult.value.items);
+        if (tasksResult.status === 'fulfilled') {
+          next.tasks = tasksResult.value.items.map((task, index) => adaptBackendTaskEvent(task, {
             projectId,
             sequence: index + 1,
-          })),
-          },
-        }));
+          }));
+          taskEventsRef.current[projectId] = next.tasks;
+        }
+        if (deliverablesResult.status === 'fulfilled') next.deliverables = deliverablesResult.value;
+        if (reviewResult.status === 'fulfilled') {
+          next.reviewRun = reviewResult.value.runDetail ? adaptBackendReviewRun(reviewResult.value.runDetail) : emptyReview();
+          next.score = reviewResult.value.score;
+        }
+        if (quoteResult.status === 'fulfilled') {
+          next.quote = quoteResult.value.quote;
+          next.quoteSamples = quoteResult.value.samples;
+          next.historyRecords = toHistoryRecords(quoteResult.value.samples);
+        }
+        next.overview = adaptBackendProjectOverview(
+          next.deliverables,
+          next.score ? scoreSummaryForOverview(next.score) : undefined,
+        );
+        return { ...current, [projectId]: next };
       });
+      setProjectResourceErrors((current) => ({ ...current, [projectId]: errors }));
     } finally {
-      tenantGuardRef.current.commit(generation, () => {
+      if (projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
+      tenantGuardRef.current.commit(tenantGeneration, () => {
         setLoadingProjectId((current) => current === projectId ? null : current);
       });
     }
@@ -360,7 +439,13 @@ export function App() {
   const refreshTaskEvents = useCallback(async (projectId: string) => {
     const generation = tenantGuardRef.current.capture();
     const response = await backendApi.tasks.list(projectId);
-    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    if (!tenantGuardRef.current.isCurrent(generation)) return false;
+    const nextTasks = response.items.map((task, index) => adaptBackendTaskEvent(task, {
+      projectId,
+      sequence: index + 1,
+    }));
+    const enteredTerminalState = hasTaskEnteredTerminalState(taskEventsRef.current[projectId] ?? [], nextTasks);
+    taskEventsRef.current[projectId] = nextTasks;
     setProjectData((current) => {
       const existing = current[projectId];
       if (!existing) return current;
@@ -368,13 +453,11 @@ export function App() {
         ...current,
         [projectId]: {
           ...existing,
-          tasks: response.items.map((task, index) => adaptBackendTaskEvent(task, {
-            projectId,
-            sequence: index + 1,
-          })),
+          tasks: nextTasks,
         },
       };
     });
+    return enteredTerminalState;
   }, []);
 
   useEffect(() => {
@@ -383,16 +466,27 @@ export function App() {
     const projectGeneration = ++projectLoadGenerationRef.current;
     setLoadingProjectId(routeProjectId);
     setMissingProjectId((current) => current === routeProjectId ? null : current);
+    setProjectRouteFailure((current) => current?.projectId === routeProjectId ? null : current);
     void backendApi.projects.get(routeProjectId).then(async (project) => {
       if (!tenantGuardRef.current.isCurrent(tenantGeneration)
         || projectLoadGenerationRef.current !== projectGeneration) return;
       setProjects((current) => upsertProjectSummary(current, adaptBackendProject(project)));
       setMissingProjectId((current) => current === routeProjectId ? null : current);
+      setProjectRouteFailure((current) => current?.projectId === routeProjectId ? null : current);
       await loadProject(routeProjectId);
     }).catch((error) => {
       if (tenantGuardRef.current.isCurrent(tenantGeneration)
         && projectLoadGenerationRef.current === projectGeneration) {
-        setMissingProjectId(routeProjectId);
+        if (isProjectNotFound(error)) {
+          setMissingProjectId(routeProjectId);
+          setProjectRouteFailure((current) => current?.projectId === routeProjectId ? null : current);
+        } else {
+          setMissingProjectId((current) => current === routeProjectId ? null : current);
+          setProjectRouteFailure({
+            message: readableError(error, '项目数据加载失败'),
+            projectId: routeProjectId,
+          });
+        }
         setError(error, '项目数据加载失败');
       }
     }).finally(() => {
@@ -404,20 +498,25 @@ export function App() {
     return () => {
       if (projectLoadGenerationRef.current === projectGeneration) projectLoadGenerationRef.current += 1;
     };
-  }, [authState, loadProject, routeProjectId, setError]);
+  }, [authState, loadProject, projectRetryNonce, routeProjectId, setError]);
 
   const shouldPollTasks = Boolean(routeProjectId && projectData[routeProjectId]?.tasks.some((event) =>
-    ['queued', 'running', 'retrying', 'waiting_user'].includes(event.status)));
+    isActiveTaskStatus(event.status)));
   useEffect(() => {
     if (!routeProjectId || !shouldPollTasks) return undefined;
     const timer = window.setInterval(() => {
       const generation = tenantGuardRef.current.capture();
-      void refreshTaskEvents(routeProjectId).catch((error) => {
+      void refreshTaskEvents(routeProjectId).then((enteredTerminalState) => {
+        if (enteredTerminalState && tenantGuardRef.current.isCurrent(generation)) {
+          return loadProject(routeProjectId);
+        }
+        return undefined;
+      }).catch((error) => {
         if (tenantGuardRef.current.isCurrent(generation)) setError(error, '任务进度刷新失败');
       });
     }, 2500);
     return () => window.clearInterval(timer);
-  }, [refreshTaskEvents, routeProjectId, setError, shouldPollTasks]);
+  }, [loadProject, refreshTaskEvents, routeProjectId, setError, shouldPollTasks]);
 
   const pageMeta = useMemo(() => pageMetadata(route.name), [route.name]);
   useEffect(() => {
@@ -939,6 +1038,19 @@ export function App() {
           <button aria-label="关闭提示" type="button" onClick={() => setStatusMessage(null)}>×</button>
         </div>
       ) : null}
+      {routeProjectId && projectResourceErrors[routeProjectId]
+        && Object.keys(projectResourceErrors[routeProjectId]).length > 0 ? (
+        <div className="integration-status integration-status--error" role="alert">
+          <span>
+            部分项目数据加载失败，已保留上次成功数据：
+            {' '}
+            {Object.entries(projectResourceErrors[routeProjectId])
+              .map(([key, message]) => `${projectResourceLabels[key as ProjectResourceKey]}（${message}）`)
+              .join('；')}
+          </span>
+          <button type="button" onClick={() => void loadProject(routeProjectId)}>重试</button>
+        </div>
+      ) : null}
       {route.name === 'projects' ? (
         <ProjectListPage
           error={undefined}
@@ -1095,7 +1207,14 @@ export function App() {
       {route.name === 'deliverable-editor' && activeProject && !editor ? (
         <MissingDeliverable projectId={route.projectId} loading={loadingProjectId === route.projectId} />
       ) : null}
-      {routeProjectId && !activeProject && missingProjectId !== routeProjectId ? <LoadingProject /> : null}
+      {routeProjectId && !activeProject && projectRouteFailure?.projectId === routeProjectId ? (
+        <ProjectLoadFailure
+          message={projectRouteFailure.message}
+          onRetry={() => setProjectRetryNonce((value) => value + 1)}
+        />
+      ) : null}
+      {routeProjectId && !activeProject && missingProjectId !== routeProjectId
+        && projectRouteFailure?.projectId !== routeProjectId ? <LoadingProject /> : null}
       {routeProjectId && !activeProject && missingProjectId === routeProjectId ? <MissingProject /> : null}
       {route.name === 'not-found' ? <NotFoundPage /> : null}
 
@@ -1285,6 +1404,17 @@ function MissingProject() {
 
 function LoadingProject() {
   return <section className="empty-page" aria-busy="true"><span className="empty-page__code">加载中</span><h1>正在加载项目工作台</h1></section>;
+}
+
+function ProjectLoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <section className="empty-page" role="alert">
+      <span className="empty-page__code">加载失败</span>
+      <h1>项目暂时无法加载</h1>
+      <p>{message}</p>
+      <button className="button button--primary" type="button" onClick={onRetry}>重试</button>
+    </section>
+  );
 }
 
 function MissingDeliverable({ projectId, loading }: { projectId: string; loading: boolean }) {
