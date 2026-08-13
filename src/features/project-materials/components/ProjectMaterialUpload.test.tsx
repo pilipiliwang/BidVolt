@@ -21,6 +21,18 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     expect(onUpload).toHaveBeenCalledWith('BV-2026-018', [file]);
   });
 
+  it('在手动上传失败时展示上层返回的错误', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn().mockRejectedValue(new Error('招标公告.pdf：文件为空'));
+    render(<ProjectMaterialUpload {...baseProps} onUpload={onUpload} />);
+
+    const file = new File([''], '招标公告.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('选择或拖拽招标材料'), file);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('招标公告.pdf：文件为空');
+    expect(screen.queryByText('文件上传完成，解析状态将从服务端刷新。')).not.toBeInTheDocument();
+  });
+
   it('trim 后将公开 HTTP/HTTPS 地址交给上层接口，并在成功后清空', async () => {
     const user = userEvent.setup();
     const onImportTenderNoticeUrl = vi.fn().mockResolvedValue({

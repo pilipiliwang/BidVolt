@@ -157,31 +157,6 @@
 .bv-source-file-icon--orange { color: #ff6b21; }
 .bv-source-file-icon--red { color: #e23b50; }
 
-.bv-source-rail__missing {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 11px;
-  padding: 14px 13px;
-  border: 1px solid #ffd7ad;
-  border-radius: 11px;
-  color: #ff4c19;
-  background: #fffaf3;
-}
-
-.bv-source-rail__missing svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-
-.bv-source-rail__missing strong,
-.bv-source-rail__missing span {
-  display: block;
-}
-
-.bv-source-rail__missing strong { font-size: 12px; }
-.bv-source-rail__missing span { margin-top: 5px; color: #cf532c; font-size: var(--font-size-xs); line-height: 1.5; }
-
 .bv-source-rail__upload {
   display: flex;
   align-items: center;
@@ -228,8 +203,6 @@
 .bv-project-workspace--content .bv-source-rail__files li,
 .bv-project-workspace--content .bv-source-rail__files small { font-size: 14px; }
 .bv-project-workspace--content .bv-source-rail__empty { font-size: 13px; }
-.bv-project-workspace--content .bv-source-rail__missing strong,
-.bv-project-workspace--content .bv-source-rail__missing span { font-size: 13px; }
 .bv-project-workspace--content .bv-source-rail__upload,
 .bv-project-workspace--content .bv-project-chat button,
 .bv-project-workspace--content .bv-project-chat textarea { font-size: 15px; }

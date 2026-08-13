@@ -134,4 +134,49 @@ describe('EnterpriseAssetsPage', () => {
     );
     expect(screen.getByText('人工纠正会创建新版本，原值和来源始终保留')).toBeInTheDocument();
   });
+
+  it('shows an enterprise upload rejection in the upload dialog', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn().mockRejectedValue(new Error('资质.pdf：文件损坏'));
+
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        onUpload={onUpload}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
+    const file = new File(['broken'], '资质.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText(/选择文件或拖拽到此处/), file);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('资质.pdf：文件损坏');
+  });
+
+  it('keeps a failed fact correction open with its draft value', async () => {
+    const user = userEvent.setup();
+    const onCorrectFact = vi.fn().mockRejectedValue(new Error('字段版本已更新，请重试'));
+
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        onCorrectFact={onCorrectFact}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
+    const fact = screen.getByText('统一社会信用代码').closest('article');
+    expect(fact).not.toBeNull();
+    await user.click(within(fact!).getByRole('button', { name: '纠正字段' }));
+    const input = screen.getByLabelText('修正统一社会信用代码');
+    await user.clear(input);
+    await user.type(input, '91310000RETRY');
+    await user.click(within(fact!).getByRole('button', { name: '保存' }));
+
+    expect(await within(fact!).findByRole('alert')).toHaveTextContent('字段版本已更新，请重试');
+    expect(input).toHaveValue('91310000RETRY');
+    expect(within(fact!).getByRole('button', { name: '保存' })).toBeEnabled();
+  });
 });

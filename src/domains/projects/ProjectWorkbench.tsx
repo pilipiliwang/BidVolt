@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   CheckCircle2,
   FileArchive,
   FileChartColumn,
@@ -108,16 +107,6 @@ export function ProjectSourceRail({
             {showingEnterprise ? '企业资料库暂无可展示资料' : '当前项目尚未上传招标材料'}
           </p>
         )}
-
-        {!showingEnterprise ? (
-          <div className="bv-source-rail__missing">
-            <AlertCircle aria-hidden="true" size={20} />
-            <div>
-              <strong>缺失材料：</strong>
-              <span>2项同类业绩，1项型式试验报告</span>
-            </div>
-          </div>
-        ) : null}
 
         {showingEnterprise && onAddEnterpriseFiles ? (
           <label className="bv-source-rail__upload">

@@ -42,6 +42,8 @@ describe('ProjectSourceRail', () => {
 
     expect(screen.getByText('当前招标材料（0项）')).toBeInTheDocument();
     expect(screen.queryByLabelText('招标文件')).not.toBeInTheDocument();
+    expect(screen.queryByText('缺失材料：')).not.toBeInTheDocument();
+    expect(screen.queryByText(/同类业绩|型式试验报告/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '添加项目文件不可用' })).toBeDisabled();
 

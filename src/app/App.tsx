@@ -49,7 +49,6 @@ import {
   adaptBackendTaskEvent,
   backendApi,
   scoreSummaryForOverview,
-  type BackendFile,
   type Deliverable,
   type DeliverableContent,
   type EditorSession,
@@ -71,6 +70,7 @@ import {
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
 import { getEditorDraftScopeKey, type AppSession } from './session';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
+import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
 
 type ProjectData = {
   deliverables: Deliverable[];
@@ -460,17 +460,23 @@ export function App() {
     const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'enterprise', files });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    const uploadedIds = successfulFiles(result.files).map((file) => file.file_id);
-    await loadEnterprise();
+    const outcome = readUploadOutcome(result.files);
+    const uploadedIds = outcome.uploaded.map((file) => file.file_id);
+    if (uploadedIds.length > 0) {
+      await loadEnterprise();
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      const assets = await backendApi.enterprise.listAssets();
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      const assetIds = assets
+        .filter((asset) => asset.source_file_id !== null && uploadedIds.includes(asset.source_file_id))
+        .map((asset) => asset.asset_id);
+      if (assetIds.length) await backendApi.enterprise.ingest(assetIds);
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      await loadEnterprise();
+    }
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    const assets = await backendApi.enterprise.listAssets();
-    if (!tenantGuardRef.current.isCurrent(generation)) return;
-    const assetIds = assets
-      .filter((asset) => asset.source_file_id !== null && uploadedIds.includes(asset.source_file_id))
-      .map((asset) => asset.asset_id);
-    if (assetIds.length) await backendApi.enterprise.ingest(assetIds);
-    if (!tenantGuardRef.current.isCurrent(generation)) return;
-    await loadEnterprise();
+    const outcomeError = uploadOutcomeError('企业资料', uploadedIds.length, outcome.errors);
+    if (outcomeError) throw outcomeError;
     tenantGuardRef.current.commit(generation, () => {
       setStatusMessage({ tone: 'info', text: `已接收 ${uploadedIds.length} 份企业资料，正在自动归类。` });
     });
@@ -491,7 +497,8 @@ export function App() {
     const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'project', project_id: projectId, files });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    const uploaded = successfulFiles(result.files);
+    const outcome = readUploadOutcome(result.files);
+    const { uploaded } = outcome;
     const archives = uploaded.filter((file) => /\.(zip|rar|7z)$/i.test(file.name));
     const archiveErrors: string[] = [];
     for (const archive of archives) {
@@ -504,9 +511,14 @@ export function App() {
       }
     }
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    await loadProject(projectId);
+    if (uploaded.length > 0) await loadProject(projectId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    if (archiveErrors.length) throw new Error(archiveErrors.join('；'));
+    const outcomeError = uploadOutcomeError(
+      '当前项目材料',
+      uploaded.length,
+      [...outcome.errors, ...archiveErrors],
+    );
+    if (outcomeError) throw outcomeError;
     tenantGuardRef.current.commit(generation, () => {
       setStatusMessage({ tone: 'info', text: `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。` });
     });
@@ -573,6 +585,7 @@ export function App() {
     } catch (error) {
       if (tenantGuardRef.current.isCurrent(generation)) {
         setError(error, mode === 'generate' ? '成果生成任务创建失败' : '校核任务创建失败');
+        throw error;
       }
     }
   };
@@ -769,9 +782,14 @@ export function App() {
           assets={enterpriseAssets}
           enterpriseName={session.enterpriseName}
           ingestionItems={enterpriseIngestions}
-          onUpload={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
-          onCorrectFact={(assetId, factId, value) => void handleCorrectEnterpriseFact(assetId, factId, value)
-            .catch((error) => setError(error, '企业资料字段纠正失败'))}
+          onUpload={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onCorrectFact={(assetId, factId, value) => handleCorrectEnterpriseFact(assetId, factId, value).catch((error) => {
+            setError(error, '企业资料字段纠正失败');
+            throw error;
+          })}
         />
       ) : null}
       {route.name === 'history-prices' ? (
@@ -807,7 +825,10 @@ export function App() {
           onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
           onOpenSnapshot={handleOpenSnapshot}
           onStartTask={handleStartTask}
-          onUpload={(projectId, files) => void handleProjectUpload(projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
+          onUpload={(projectId, files) => handleProjectUpload(projectId, files).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
           projectId={route.projectId}
           projectName={activeProject.title}
           requirements={activeData?.requirements ?? []}
@@ -897,10 +918,6 @@ function pageMetadata(route: string) {
     'history-prices': { eyebrow: '报价数据中心', title: '历史报价' },
   };
   return labels[route] ?? { eyebrow: 'AI电网投标助手', title: '页面' };
-}
-
-function successfulFiles(files: Array<BackendFile | { name: string | null; error: string }>): BackendFile[] {
-  return files.filter((file): file is BackendFile => 'file_id' in file);
 }
 
 function adaptIngestion(item: EnterpriseIngestion): EnterpriseIngestionItem {

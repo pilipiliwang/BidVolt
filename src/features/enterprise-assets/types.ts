@@ -52,11 +52,11 @@ export interface EnterpriseIngestionItem {
 export interface EnterpriseAssetUploadProps {
   enterpriseName: string;
   ingestionItems?: EnterpriseIngestionItem[];
-  onUpload?: (files: File[]) => void;
+  onUpload?: (files: File[]) => Promise<void> | void;
 }
 
 export interface EnterpriseAssetPageProps extends EnterpriseAssetUploadProps {
   assets: EnterpriseAsset[];
-  onCorrectFact?: (assetId: string, factId: string, value: string) => void;
+  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }

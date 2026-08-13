@@ -1,5 +1,5 @@
-import { Building2, CheckCircle2, FileUp, LoaderCircle } from 'lucide-react';
-import { useId, type ChangeEvent, type DragEvent } from 'react';
+import { AlertCircle, Building2, CheckCircle2, FileUp, LoaderCircle } from 'lucide-react';
+import { useId, useState, type ChangeEvent, type DragEvent } from 'react';
 
 import type { EnterpriseAssetUploadProps } from '../types';
 
@@ -17,20 +17,39 @@ export function EnterpriseAssetUpload({
   onUpload,
 }: EnterpriseAssetUploadProps) {
   const inputId = useId();
+  const [uploadState, setUploadState] = useState<{
+    message: string;
+    type: 'error' | 'idle' | 'loading' | 'success';
+  }>({ message: '', type: 'idle' });
 
-  const dispatchFiles = (files: FileList | null) => {
-    if (!files?.length) return;
-    onUpload?.(Array.from(files));
+  const dispatchFiles = async (files: FileList | null) => {
+    if (!files?.length || uploadState.type === 'loading') return;
+    if (!onUpload) {
+      setUploadState({ message: '当前环境未配置企业资料上传能力。', type: 'error' });
+      return;
+    }
+    setUploadState({ message: '正在上传企业资料…', type: 'loading' });
+    try {
+      await onUpload(Array.from(files));
+      setUploadState({ message: '企业资料上传完成，正在自动归档。', type: 'success' });
+    } catch (error) {
+      setUploadState({
+        message: error instanceof Error && error.message
+          ? error.message
+          : '企业资料上传失败，请重试。',
+        type: 'error',
+      });
+    }
   };
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    dispatchFiles(event.currentTarget.files);
+    void dispatchFiles(event.currentTarget.files);
     event.currentTarget.value = '';
   };
 
   const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
-    dispatchFiles(event.dataTransfer.files);
+    void dispatchFiles(event.dataTransfer.files);
   };
 
   return (
@@ -64,6 +83,20 @@ export function EnterpriseAssetUpload({
         accept=".pdf,.doc,.docx,.xls,.xlsx,.ofd,.png,.jpg,.jpeg,.zip,.rar,.7z"
         onChange={handleChange}
       />
+
+      {uploadState.type !== 'idle' ? (
+        <p
+          className={`enterprise-upload__message enterprise-upload__message--${uploadState.type}`}
+          role={uploadState.type === 'error' ? 'alert' : 'status'}
+        >
+          {uploadState.type === 'error'
+            ? <AlertCircle aria-hidden="true" size={15} />
+            : uploadState.type === 'success'
+              ? <CheckCircle2 aria-hidden="true" size={15} />
+              : <LoaderCircle aria-hidden="true" size={15} />}
+          {uploadState.message}
+        </p>
+      ) : null}
 
       {ingestionItems.length > 0 && (
         <div className="enterprise-ingestion" aria-label="企业资料处理队列">

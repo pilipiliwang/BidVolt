@@ -141,6 +141,55 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.getByText(/生成任务已创建/)).toBeInTheDocument();
   });
 
+  it('does not add a completed bid name when its upload rejects', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn().mockRejectedValue(new Error('技术标.docx：文件内容无法读取'));
+    const onStartTask = vi.fn();
+
+    render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={materials}
+        requirements={requirements}
+        snapshots={snapshots}
+        onStartTask={onStartTask}
+        onUpload={onUpload}
+      />,
+    );
+
+    const completedBid = new File(['broken'], '技术标.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    await user.upload(screen.getByLabelText(/已制作完成的标书/), completedBid);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('技术标.docx：文件内容无法读取');
+    expect(screen.queryByText('技术标.docx')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始生成' })).toBeInTheDocument();
+  });
+
+  it('shows a task creation rejection and keeps the task action retryable', async () => {
+    const user = userEvent.setup();
+    const onStartTask = vi.fn().mockRejectedValue(new Error('任务队列暂不可用'));
+
+    render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={materials}
+        requirements={requirements}
+        snapshots={snapshots}
+        onStartTask={onStartTask}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '开始生成' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('任务队列暂不可用');
+    expect(screen.getByRole('button', { name: '开始生成' })).toBeEnabled();
+    expect(screen.queryByText(/生成任务已创建/)).not.toBeInTheDocument();
+  });
+
   it('confirms low-confidence Requirements and opens a frozen snapshot', async () => {
     const user = userEvent.setup();
     const onConfirmRequirement = vi.fn();

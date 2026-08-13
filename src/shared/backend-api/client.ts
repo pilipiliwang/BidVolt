@@ -32,6 +32,7 @@ const parseTextAsJson = (text: string): unknown => {
 };
 const validationMessage = (detail: unknown): string => {
   if (typeof detail === 'string') return detail;
+  if (isRecord(detail) && typeof detail.message === 'string') return detail.message;
   if (Array.isArray(detail)) {
     const messages = detail.map((entry) => isRecord(entry) && typeof entry.msg === 'string' ? entry.msg : null)
       .filter((entry): entry is string => entry !== null);

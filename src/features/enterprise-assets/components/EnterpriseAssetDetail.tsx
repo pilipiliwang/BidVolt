@@ -23,14 +23,14 @@ const statusLabel = {
 
 interface EnterpriseAssetDetailProps {
   asset: EnterpriseAsset;
-  onCorrectFact?: (assetId: string, factId: string, value: string) => void;
+  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }
 
 interface FactRowProps {
   assetId: string;
   fact: EnterpriseFact;
-  onCorrectFact?: (assetId: string, factId: string, value: string) => void;
+  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
 }
 
 function confidencePercent(value: number) {
@@ -40,13 +40,25 @@ function confidencePercent(value: number) {
 function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(fact.value);
+  const [saveError, setSaveError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const submitCorrection = (event: FormEvent<HTMLFormElement>) => {
+  const submitCorrection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextValue = draftValue.trim();
-    if (!nextValue) return;
-    onCorrectFact?.(assetId, fact.id ?? fact.key, nextValue);
-    setIsEditing(false);
+    if (!nextValue || isSaving) return;
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      await onCorrectFact?.(assetId, fact.id ?? fact.key, nextValue);
+      setIsEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error && error.message
+        ? error.message
+        : '字段纠正保存失败，请重试。');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -61,37 +73,50 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
             <span className="enterprise-visually-hidden">修正{fact.label}</span>
             <input
               autoFocus
+              disabled={isSaving}
               value={draftValue}
               onChange={(event) => setDraftValue(event.currentTarget.value)}
             />
           </label>
-          <button className="enterprise-icon-button enterprise-icon-button--primary" type="submit">
+          <button
+            className="enterprise-icon-button enterprise-icon-button--primary"
+            disabled={isSaving}
+            type="submit"
+          >
             <Save aria-hidden="true" size={16} />
-            保存
+            {isSaving ? '保存中…' : '保存'}
           </button>
           <button
             className="enterprise-icon-button"
+            disabled={isSaving}
             type="button"
             onClick={() => {
               setDraftValue(fact.value);
+              setSaveError('');
               setIsEditing(false);
             }}
           >
             <X aria-hidden="true" size={16} />
             取消
           </button>
+          {saveError ? <p className="enterprise-fact__error" role="alert">{saveError}</p> : null}
         </form>
       ) : (
         <div className="enterprise-fact__value-row">
           <strong>{fact.value || '—'}</strong>
-          <button
-            className="enterprise-text-button"
-            type="button"
-            onClick={() => setIsEditing(true)}
-          >
-            <PencilLine aria-hidden="true" size={15} />
-            纠正字段
-          </button>
+          {onCorrectFact ? (
+            <button
+              className="enterprise-text-button"
+              type="button"
+              onClick={() => {
+                setSaveError('');
+                setIsEditing(true);
+              }}
+            >
+              <PencilLine aria-hidden="true" size={15} />
+              纠正字段
+            </button>
+          ) : null}
         </div>
       )}
       <div className="enterprise-fact__source">

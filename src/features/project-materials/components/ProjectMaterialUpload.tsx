@@ -342,12 +342,16 @@ export function ProjectMaterialUpload({
 }: EnhancedProjectMaterialUploadProps) {
   const dispatchProjectFiles = async (files: FileList | null) => {
     const selectedFiles = toFiles(files);
-    if (selectedFiles.length > 0) await onUpload?.(projectId, selectedFiles);
+    if (selectedFiles.length === 0) return;
+    if (!onUpload) throw new Error('当前环境未配置项目材料上传能力。');
+    await onUpload(projectId, selectedFiles);
   };
 
   const dispatchExistingBidFiles = async (files: FileList | null) => {
     const selectedFiles = toFiles(files);
-    if (selectedFiles.length > 0) await onExistingBidUpload?.(selectedFiles);
+    if (selectedFiles.length === 0) return;
+    if (!onExistingBidUpload) throw new Error('当前环境未配置已完成标书上传能力。');
+    await onExistingBidUpload(selectedFiles);
   };
 
   return (

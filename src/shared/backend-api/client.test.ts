@@ -55,6 +55,20 @@ describe('backend API client', () => {
     });
   });
 
+  it('surfaces the message from a structured FastAPI detail', async () => {
+    const detail = { code: 'FILE_TYPE_NOT_ALLOWED', message: '不支持该文件类型' };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ detail }), { status: 400 }),
+    );
+    const client = createBackendApiClient({ fetchImpl });
+
+    await expect(client.request('/files/upload')).rejects.toMatchObject({
+      detail,
+      message: '不支持该文件类型',
+      status: 400,
+    });
+  });
+
   it('returns binary downloads as Blob', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
