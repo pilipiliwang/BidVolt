@@ -429,10 +429,11 @@ export function App() {
       });
       setProjectResourceErrors((current) => ({ ...current, [projectId]: errors }));
     } finally {
-      if (projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
-      tenantGuardRef.current.commit(tenantGeneration, () => {
-        setLoadingProjectId((current) => current === projectId ? null : current);
-      });
+      if (projectResourceGenerationRef.current[projectId] === resourceGeneration) {
+        tenantGuardRef.current.commit(tenantGeneration, () => {
+          setLoadingProjectId((current) => current === projectId ? null : current);
+        });
+      }
     }
   }, []);
 

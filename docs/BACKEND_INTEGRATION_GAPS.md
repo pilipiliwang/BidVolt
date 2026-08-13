@@ -33,7 +33,7 @@
 | 异步任务 | `POST /projects/{project_id}/tasks`，body：`task_type`、`idempotency_key`、`payload`；`GET /projects/{id}/tasks`、`GET /tasks/{task_id}`、`POST .../interrupt` | 前端生成稳定幂等键；任务类型使用后端枚举，例如生成=`bid_generate`、评审=`bid_review`。SSE 重连与鉴权见 P1-2。 |
 | 成果与版本 | `POST/GET /deliverables`；`GET /deliverables/{id}`；`GET/POST .../versions`；`GET .../versions/{version_no}`；`PUT .../content`；`POST .../restore/{version_no}` | 后端用 `deliverable_id + version_no`，前端现有 `technical-v6` 等显示 ID 需要 adapter，不直接作为后端版本参数。 |
 | 在线编辑会话 | `POST/GET /deliverables/{deliverable_id}/editor-sessions`，以及 checkpoint、complete、cancel | 前端按 `deliverable_id` 创建会话；保存采用后端 `expected_version_no` 与 `idempotency_key`。 |
-| 评审 | `POST /projects/{id}/evaluate`；`GET .../scores`、`.../reviews`、`.../reviews/{run_id}`、`.../scores/{score_id}/items`；建议编辑和确认接口已存在 | “编辑建议”映射到 `PUT .../items/{item_id}/suggestion`；确认/驳回映射到 confirm 接口。证据可靠性见 P0-7。 |
+| 评审 | `POST /projects/{id}/evaluate`；`GET .../scores`、`.../reviews`、`.../reviews/{run_id}`、`.../scores/{score_id}/items`；建议编辑和确认接口已存在 | “编辑建议”映射到 `PUT .../items/{item_id}/suggestion`；确认/驳回映射到 confirm 接口。当前 evaluate 不接收页面选择的 Provider，见 P0-8；证据可靠性见 P0-7。 |
 | 外部评审 Provider | `GET /review-providers`、`PUT /review-providers/{provider_id}/config` | 已能表达 `document`、`code`、`api` Provider；前端可显示类型、版本、启用状态。 |
 | 报价测算 | `POST /quotes/calculate`、`/recalc`、`/strategies`、`/apply`；`GET /quotes`、`GET /quotes/{calc_id}` | 确定性算法链路可以接入；应用报价必须携带成果 ID、期望版本号和幂等键。金额精度见 P0-5。 |
 | 报价历史 | `GET /quotes/history?material_ref=`、`GET /quotes/history/{material_ref}/samples`、`GET /quotes/history/source-metadata`、`GET .../trend` | 当前可以做物料级样本与趋势展示，不能完整支撑现有多条件历史中标表，见 P1-4。 |
@@ -218,6 +218,27 @@
 - 篡改 source version、hash、范围或跨项目引用时服务端拒绝写入。
 - 通过 run detail 能恢复 provider、snapshot、score、items 和证据；同一输入可复核 `provider_raw_hash`。
 
+### P0-8：评审启动接口必须消费用户选择的外部 Provider
+
+**建议 Issue 标题**：`[P0][Review] evaluate 接收 provider_id 并冻结 Provider 配置与输入快照`
+
+**现状**
+
+- 页面会列出 Document、Code、API 等评审 Provider，并允许用户选择后运行。
+- 当前 `POST /projects/{project_id}/evaluate` 没有 request body，前端即使发送 `provider_id` 也会被 FastAPI 忽略；服务端实际自行选择 Provider。
+- ReviewRun 详情虽可返回 Provider，但这只能说明实际结果，不能保证它与用户点击的选项一致。
+
+**前端影响**
+
+用户选择 A Provider 后可能实际运行 B Provider，属于关键业务操作语义不一致。前端无法通过参数适配修复，也不能把按钮选择当作已生效。
+
+**建议验收标准**
+
+- evaluate 使用明确 request schema，至少接收 `provider_id`、`project_snapshot_id`、成果版本集合和请求幂等键；全部做企业/项目归属校验。
+- Provider 必须处于 enabled/可执行状态；API/Code Provider 所需配置和凭据仅由服务端解析，不回传浏览器。
+- ReviewRun 冻结并返回实际使用的 Provider ID、版本、配置 hash、项目快照和成果版本；页面刷新后可复核。
+- 集成测试证明选择不同 Provider 会调用对应实现，非法、跨租户或已禁用 Provider 失败关闭，不静默回退。
+
 ## 4. P1：影响完整体验、可靠性或长期维护
 
 ### P1-1：项目列表缺少页面所需字段、搜索和统计
@@ -334,6 +355,67 @@
 - 列表 item 返回页面首屏必需摘要；事实和 revisions 保持按需详情读取。
 - 1 万条企业资料基准下，列表请求和数据库查询有明确性能指标及索引验证。
 
+### P1-7：项目材料需要持久化的文档角色，区分招标材料与已完成标书
+
+**建议 Issue 标题**：`[P1][Files] 为项目材料增加 document_role 与任务输入选择契约`
+
+**现状**
+
+同一 `/files/upload?target=project` 同时承载“本次招标公告/招标文件”和“已完成标书”两种业务输入，但上传请求和文件响应均没有 `document_role`。前端若只根据本次选择或文件名判断，刷新后会丢失角色，也无法可靠决定启动“生成”还是“校核”。
+
+**建议验收标准**
+
+- 上传或项目材料关联提供枚举字段，例如 `tender_notice`、`tender_document`、`completed_bid`、`supporting_material`；服务端保存并在列表/详情返回。
+- 任务创建显式接收并校验输入文件/材料 ID 与 mode，不能依赖浏览器内存或文件名推断。
+- 刷新、跨设备和多人协作后角色保持一致；角色修订有审计与并发控制。
+- 前端在接口补齐前保留两种上传入口，并要求用户明确选择操作模式，但不宣称该角色已被后端永久保存。
+
+### P1-8：评审结果和项目快照返回服务端可复核的 stale/current 状态
+
+**建议 Issue 标题**：`[P1][Review] 返回 ReviewRun 相对当前项目输入的 is_stale 与变更原因`
+
+**现状**
+
+补充项目材料、修订 Requirement、企业资料或成果版本后，旧评审结果可能失效。当前 stale 提示只能由单个浏览器在本地操作后临时标记；刷新或其他用户修改后无法恢复。
+
+**建议验收标准**
+
+- ReviewRun/score 返回 `is_stale`、基准 snapshot/version 和导致过期的资源类型/新版本引用。
+- stale 由服务端根据冻结输入与当前有效输入计算；前端不得自行猜测。
+- stale 结果仍可只读审计，但不能默认作为当前有效评分；重新评审产生新的 run，不覆盖历史。
+
+### P1-9：在线编辑会话支持指定基线版本或明确只读历史版本
+
+**建议 Issue 标题**：`[P1][Editor] 明确历史版本编辑、会话恢复与版本化下载契约`
+
+**现状**
+
+- 创建 editor session 永远绑定成果 `current_version_no`，没有 `base_version_no` 入参。
+- 页面 URL 可以深链到历史版本；若为历史版本创建会话，会出现“页面展示旧版、保存基于最新版”的错位风险。
+- 会话列表/详情不返回 lease token，因此浏览器刷新后无法安全恢复写会话；下载也必须显式使用路由中的 version，而不是 current version。
+
+**建议验收标准**
+
+- 明确产品策略：历史版本只读，或创建会话时要求 `base_version_no` 并以 CAS 拒绝过期基线；不得静默切换到 current。
+- 下载接口始终按请求的 version 返回，并在响应头给出成果/版本信息。
+- 若支持刷新恢复编辑，提供一次性安全恢复/续租机制；否则明确取消旧会话与重新开始流程。
+- complete/checkpoint/cancel 使用严格 schema、幂等键和 expected version；complete 成功后即使随后刷新失败，也能凭返回的 version 查询结果。
+
+### P1-10：历史报价必须接入真实外部只读 Provider，移除生产合成样本
+
+**建议 Issue 标题**：`[P1][Quote History] 用真实外部只读数据源替换 MockHistoryPriceProvider`
+
+**现状**
+
+当前后端在生产 API 路径直接实例化 `MockHistoryPriceProvider`，固定生成 8 条华东电缆样本，并以 `mock_history` 写入本地快照。页面若直接展示会把合成数据误认为真实历史中标数据。
+
+**建议验收标准**
+
+- 生产配置接入已确认的外部只读数据库/服务，禁止对外部库执行写操作；Mock 仅在测试环境显式启用。
+- 每次查询返回真实 Provider ID、只读声明、数据覆盖范围、更新时间、source hash 和查询快照 ID。
+- 数据不足返回可判定的 `insufficient_data`，不回退合成样本或 LLM 猜价。
+- 增加环境隔离测试：生产启动检测到 Mock Provider 时失败关闭或明确禁用报价功能。
+
 ## 5. P2：安全加固与契约一致性
 
 ### P2-1：递增整数 ID 的可枚举性需要持续做 IDOR 防护
@@ -377,13 +459,13 @@
 1. P0-1 生产代理/CORS、P0-2 企业名称：先打通登录后的基本运行环境。
 2. P0-3 上传到资产关联、P0-4 Requirement 修订：保证企业资料和本次项目材料两条数据链路不混写且能持久化。
 3. P0-5 金额/ID 精度、P0-6 报价产品规则：在报价页面正式接入前冻结契约。
-4. P0-7 评审 evidence：在外部 Document/Code/API Provider 联调前完成。
-5. P1 项目摘要、SSE、幂等、历史报价、OpenAPI Schema、企业分页按页面联调节奏补齐。
+4. P0-7 evidence 与 P0-8 Provider 选择：在外部 Document/Code/API Provider 联调前完成。
+5. P1 项目摘要、SSE、幂等、真实历史报价、文档角色、stale 状态、编辑版本、OpenAPI Schema、企业分页按页面联调节奏补齐。
 6. P2 作为安全与平台一致性专项，但 IDOR 回归应尽早进入 CI。
 
 ## 7. 前端临时行为（后端补齐前）
 
 - 可以真实接入：登录/刷新/退出、项目基本 CRUD、双域上传、文件查询、企业资料读取、事实修订、要求读取、快照、任务、成果、编辑会话、评审基本操作、确定性报价。
-- 明确降级：企业名称显示企业 ID 占位；项目 buyer/统计显示“暂无后端数据”；历史报价只显示后端实际提供的样本字段。
+- 明确降级：企业名称显示企业 ID 占位；项目 buyer/统计显示“暂无后端数据”；生产页面不把 `mock_history` 合成样本当作真实历史中标数据。
 - 明确禁用持久化假象：Requirement 用户确认/修正保留入口但提示缺接口；企业上传若拿不到 `asset_id`，只刷新资产列表，不用差集猜测后自动 ingest；AI 数字报价入口不接入。
 - 真实接口失败时显示错误和重试，不回退 Mock，不把页面内存修改标记为后端保存成功。
