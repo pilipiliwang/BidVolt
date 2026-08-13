@@ -670,8 +670,9 @@ export function App() {
     const data = projectData[projectId];
     const quoteDeliverable = data?.deliverables.find((item) => item.deliverable_type === 3);
     if (!data || !quoteDeliverable || !/^\d+$/.test(data.quote.id)) {
-      setStatusMessage({ tone: 'error', text: '当前项目缺少可应用的报价测算或报价成果。' });
-      return;
+      const error = new Error('当前项目缺少可应用的报价测算或报价成果。');
+      setStatusMessage({ tone: 'error', text: error.message });
+      throw error;
     }
     try {
       await backendApi.quotes.strategy(data.quote.id, strategyId as 'win' | 'balance' | 'profit');
@@ -689,6 +690,7 @@ export function App() {
       });
     } catch (error) {
       if (tenantGuardRef.current.isCurrent(generation)) setError(error, '报价策略应用失败');
+      throw error;
     }
   };
 
@@ -821,6 +823,10 @@ export function App() {
           assets={enterpriseAssets}
           enterpriseName={session.enterpriseName}
           ingestionItems={enterpriseIngestions}
+          onRefresh={() => loadEnterprise().catch((error) => {
+            setError(error, '企业资料刷新失败');
+            throw error;
+          })}
           onUpload={(files) => handleEnterpriseUpload(files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
@@ -897,7 +903,7 @@ export function App() {
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => void handleEnterpriseUpload(files).catch((error) => setError(error, '企业资料上传失败'))}
           onAddFiles={(files) => void handleProjectUpload(route.projectId, files).catch((error) => setError(error, '项目材料上传失败'))}
-          onApply={(strategyId) => void handleApplyQuote(route.projectId, strategyId)}
+          onApply={(strategyId) => handleApplyQuote(route.projectId, strategyId)}
           onAssistantSend={(value) => void handleAssistantSend(route.projectId, value)}
           samples={activeData?.quoteSamples ?? []}
         />

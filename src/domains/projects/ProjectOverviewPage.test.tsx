@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProjectOverviewPage, type ProjectOverviewView } from './ProjectOverviewPage';
@@ -93,5 +93,35 @@ describe('ProjectOverviewPage', () => {
       'href',
       '/projects/BV-2026-018/pricing',
     );
+  });
+
+  it('shows unavailable backend metrics as dashes and disables download without a version', () => {
+    const unknownOverview: ProjectOverviewView = {
+      deliverables: [{
+        id: 'technical', title: '技术标文件', words: '—', score: '待评审', lift: '—',
+        tone: 'technical',
+      }],
+      score: { estimatedLift: 0, missingMaterials: 0, total: 82 },
+    };
+    render(
+      <ProjectOverviewPage
+        enterpriseMaterials={[]}
+        materials={[]}
+        onDownloadDeliverable={vi.fn()}
+        onOpenTasks={vi.fn()}
+        overview={unknownOverview}
+        project={project}
+        projectId="BV-2026-018"
+      />,
+    );
+
+    const card = screen.getByRole('heading', { name: '技术标文件', level: 2 }).closest('article');
+    expect(card).not.toBeNull();
+    expect(within(card!).getByText('总页数').parentElement).toHaveTextContent('总页数—');
+    expect(within(card!).getByText('缺资料份数').parentElement).toHaveTextContent('缺资料份数—');
+    expect(screen.getByRole('button', { name: '技术标文件尚无可下载版本' })).toBeDisabled();
+    expect(screen.getByText('商务分').parentElement).toHaveTextContent('商务分— / 30');
+    expect(screen.getByText('否决风险数').parentElement).toHaveTextContent('否决风险数— 项');
+    expect(screen.getByText('缺失材料数').parentElement).toHaveTextContent('缺失材料数0 项');
   });
 });

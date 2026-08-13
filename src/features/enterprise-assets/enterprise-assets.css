@@ -136,6 +136,11 @@
   background: #f8fbfa;
 }
 
+.enterprise-refresh:disabled { cursor: wait; opacity: .65; }
+.enterprise-refresh[aria-busy="true"] svg { animation: enterprise-refresh-spin .8s linear infinite; }
+.enterprise-refresh-error { margin: -8px 0 12px; color: #b42318; font-size: 13px; }
+@keyframes enterprise-refresh-spin { to { transform: rotate(360deg); } }
+
 .enterprise-workspace {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);

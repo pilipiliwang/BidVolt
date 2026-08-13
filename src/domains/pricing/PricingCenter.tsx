@@ -23,7 +23,7 @@ type PricingCenterProps = {
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void;
   onAddFiles?: (files: File[]) => void;
-  onApply?: (strategyId: string) => void;
+  onApply?: (strategyId: string) => Promise<void> | void;
   onAssistantSend?: (value: string) => void;
 };
 
@@ -106,6 +106,9 @@ export function PricingCenter({
   const defaultStrategy = recommendedStrategy?.id ?? '';
   const [selectedStrategyId, setSelectedStrategyId] = useState(defaultStrategy);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const [isApplying, setIsApplying] = useState(false);
+  const isApplyingRef = useRef(false);
   const [sampleQuery, setSampleQuery] = useState('');
   const applyButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -144,7 +147,7 @@ export function PricingCenter({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        setConfirmOpen(false);
+        if (!isApplyingRef.current) setConfirmOpen(false);
         return;
       }
       if (event.key !== 'Tab' || !modalRef.current) return;
@@ -178,13 +181,29 @@ export function PricingCenter({
 
   const openConfirm = () => {
     previouslyFocusedRef.current = applyButtonRef.current;
+    setApplyError('');
     setConfirmOpen(true);
   };
 
-  const confirmApply = () => {
-    if (!selectedStrategy) return;
-    onApply?.(selectedStrategy.id);
+  const closeConfirm = () => {
+    if (isApplying) return;
     setConfirmOpen(false);
+  };
+
+  const confirmApply = async () => {
+    if (!selectedStrategy || !onApply || isApplying) return;
+    setApplyError('');
+    setIsApplying(true);
+    isApplyingRef.current = true;
+    try {
+      await onApply(selectedStrategy.id);
+      setConfirmOpen(false);
+    } catch (error) {
+      setApplyError(error instanceof Error ? error.message : '报价策略应用失败，请稍后重试。');
+    } finally {
+      isApplyingRef.current = false;
+      setIsApplying(false);
+    }
   };
 
   return (
@@ -325,14 +344,17 @@ export function PricingCenter({
       {confirmOpen && selectedStrategy ? (
         <div aria-labelledby="quote-confirm-title" aria-modal="true" className={styles.modalBackdrop} role="dialog">
           <div ref={modalRef} className={styles.modal} tabIndex={-1}>
-            <button ref={modalCloseButtonRef} aria-label="关闭确认" className={styles.modalClose} onClick={() => setConfirmOpen(false)} type="button"><X aria-hidden="true" size={18} /></button>
+            <button ref={modalCloseButtonRef} aria-label="关闭确认" className={styles.modalClose} disabled={isApplying} onClick={closeConfirm} type="button"><X aria-hidden="true" size={18} /></button>
             <span className={styles.modalIcon}><Calculator aria-hidden="true" size={22} /></span>
             <h2 id="quote-confirm-title">确认应用“{selectedStrategy.name}”</h2>
             <p>本操作会把算法结果写入报价单并生成一个新版本，不会回写外部历史报价库。</p>
             <div className={styles.modalAmount}>{selectedStrategy.currency} {formatCurrencyAmount(selectedStrategy.amount)}</div>
+            {applyError ? <p className={styles.modalError} role="alert">{applyError}</p> : null}
             <div className={styles.modalActions}>
-              <button onClick={() => setConfirmOpen(false)} type="button">取消</button>
-              <button className={styles.confirmButton} onClick={confirmApply} type="button">确认生成新版本</button>
+              <button disabled={isApplying} onClick={closeConfirm} type="button">取消</button>
+              <button className={styles.confirmButton} disabled={isApplying || !onApply} onClick={() => void confirmApply()} type="button">
+                {isApplying ? '正在生成…' : '确认生成新版本'}
+              </button>
             </div>
           </div>
         </div>

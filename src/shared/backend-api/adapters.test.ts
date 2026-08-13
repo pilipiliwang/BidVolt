@@ -9,9 +9,11 @@ import type {
 } from './types';
 import {
   adaptBackendEnterpriseAsset,
+  adaptBackendDeliverableCards,
   adaptBackendFile,
   adaptBackendHistorySamples,
   adaptBackendProject,
+  adaptBackendProjectOverview,
   adaptBackendQuoteCalculation,
   adaptBackendRequirement,
   adaptBackendReviewRun,
@@ -76,6 +78,68 @@ describe('backend DTO adapters', () => {
       parseProgress: 100,
       revisionNo: 1,
       uploadedAt: '上传时间未提供',
+    });
+  });
+
+  it('does not turn absent deliverable and score metrics into real zero values', () => {
+    const deliverables = [{
+      deliverable_id: 3,
+      project_id: 18,
+      deliverable_type: 2,
+      title: '技术标文件',
+      current_version_no: 1,
+      status: 1,
+      stat: {},
+    }];
+
+    expect(adaptBackendDeliverableCards(deliverables)).toEqual([
+      expect.objectContaining({ pages: undefined, missing: undefined }),
+    ]);
+    expect(adaptBackendProjectOverview(deliverables, {
+      total_score: 82,
+      missing_count: 0,
+      improvable: null,
+    })?.score).toEqual({
+      business: undefined,
+      technical: undefined,
+      pricing: undefined,
+      total: 82,
+      rejectionRisks: undefined,
+      missingMaterials: 0,
+      estimatedLift: undefined,
+    });
+  });
+
+  it('preserves zero metrics explicitly returned by the backend', () => {
+    const deliverables = [{
+      deliverable_id: 3,
+      project_id: 18,
+      deliverable_type: 2,
+      title: '技术标文件',
+      current_version_no: 1,
+      status: 1,
+      stat: { pages: 0, missing: 0 },
+    }];
+
+    expect(adaptBackendDeliverableCards(deliverables)).toEqual([
+      expect.objectContaining({ pages: 0, missing: 0 }),
+    ]);
+    expect(adaptBackendProjectOverview(deliverables, {
+      total_score: 0,
+      biz_score: 0,
+      tech_score: 0,
+      quote_score: 0,
+      reject_count: 0,
+      missing_count: 0,
+      improvable: 0,
+    })?.score).toEqual({
+      business: 0,
+      technical: 0,
+      pricing: 0,
+      total: 0,
+      rejectionRisks: 0,
+      missingMaterials: 0,
+      estimatedLift: 0,
     });
   });
 

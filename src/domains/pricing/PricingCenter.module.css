@@ -96,6 +96,7 @@
 .modal h2 { margin: 0; font-size: 20px; }
 .modal p { margin: 10px 0; color: #65758a; font-size: 12px; line-height: 1.6; }
 .modalAmount { color: #078d4d; font-size: 23px; font-weight: 800; }
+.modal .modalError { padding: 8px 10px; border-radius: 6px; color: #b42318; background: #fff1f0; text-align: left; }
 .modalActions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 18px; }
 .modalActions button { min-height: 41px; border: 1px solid #dbe2e8; border-radius: 7px; color: #344054; background: #fff; }
 .modalActions .confirmButton { border-color: #078d4d; color: #fff; background: #078d4d; }

@@ -113,6 +113,7 @@ export function LoginPage({
   const [password, setPassword] = useState('');
   const [enterpriseName, setEnterpriseName] = useState('');
   const [remember, setRemember] = useState(true);
+  const [forgotNotice, setForgotNotice] = useState('');
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -243,7 +244,11 @@ export function LoginPage({
                 />
                 <span>记住登录状态</span>
               </label>
-              <button className="login0802__forgot" type="button">
+              <button
+                className="login0802__forgot"
+                type="button"
+                onClick={() => setForgotNotice('当前后端尚未提供找回密码接口，请联系企业管理员重置密码。')}
+              >
                 忘记密码？
               </button>
             </div>
@@ -252,6 +257,7 @@ export function LoginPage({
           ) : null}
 
           {error ? <p className="login0802__register-note" role="alert">{error}</p> : null}
+          {forgotNotice && mode === 'login' ? <p className="login0802__register-note" role="status">{forgotNotice}</p> : null}
 
           <button
             className="login0802__submit"

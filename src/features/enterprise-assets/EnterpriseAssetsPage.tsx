@@ -74,6 +74,7 @@ export function EnterpriseAssetsPage({
   ingestionItems,
   onUpload,
   onCorrectFact,
+  onRefresh,
   onSelectRevision,
 }: EnterpriseAssetPageProps) {
   const [selectedCategory, setSelectedCategory] = useState<EnterpriseAssetCategory | 'all'>(
@@ -82,6 +83,22 @@ export function EnterpriseAssetsPage({
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [isUploadOpen, setUploadOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+
+  const refreshAssets = async () => {
+    if (isRefreshing) return;
+    setRefreshError('');
+    setIsRefreshing(true);
+    try {
+      await onRefresh?.();
+      setQuery('');
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : '资料列表刷新失败，请稍后重试。');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const visibleAssets = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -134,11 +151,14 @@ export function EnterpriseAssetsPage({
           className="enterprise-refresh"
           type="button"
           aria-label="刷新资料列表"
-          onClick={() => setQuery('')}
+          aria-busy={isRefreshing}
+          disabled={isRefreshing}
+          onClick={() => void refreshAssets()}
         >
           <RefreshCw aria-hidden="true" size={18} />
         </button>
       </div>
+      {refreshError ? <p className="enterprise-refresh-error" role="alert">{refreshError}</p> : null}
 
       <section className="enterprise-workspace" aria-label="企业资料工作区">
         <aside className="enterprise-library">

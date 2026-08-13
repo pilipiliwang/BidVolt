@@ -82,6 +82,19 @@ describe('PricingCenter', () => {
     expect(onApply).toHaveBeenCalledWith('balanced');
   });
 
+  it('keeps the confirmation open and exposes the backend error when applying fails', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn().mockRejectedValue(new Error('报价版本已被其他用户更新'));
+    render(<PricingCenter calculation={calculated} materials={[]} onApply={onApply} samples={samples} />);
+
+    await user.click(screen.getByRole('button', { name: '应用到报价单并生成新版本' }));
+    await user.click(screen.getByRole('button', { name: '确认生成新版本' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('报价版本已被其他用户更新');
+    expect(screen.getByRole('dialog', { name: '确认应用“均衡策略”' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认生成新版本' })).toBeEnabled();
+  });
+
   it('derives the main quote, range, strategy card, and confirmation from the recommended strategy', () => {
     const calculationFromModel: QuoteCalculationView = {
       ...calculated,
@@ -107,7 +120,7 @@ describe('PricingCenter', () => {
 
   it('traps focus in the confirmation dialog and restores it after Escape or cancel', async () => {
     const user = userEvent.setup();
-    render(<PricingCenter calculation={calculated} materials={[]} samples={samples} />);
+    render(<PricingCenter calculation={calculated} materials={[]} onApply={vi.fn()} samples={samples} />);
 
     const trigger = screen.getByRole('button', { name: '应用到报价单并生成新版本' });
     await user.click(trigger);

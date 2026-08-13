@@ -43,8 +43,8 @@ type ProjectOverviewPageProps = {
 export type ProjectDeliverableView = {
   id: 'business' | 'technical' | 'quote';
   lift: string;
-  missing: number;
-  pages: number;
+  missing?: number;
+  pages?: number;
   score: string;
   title: string;
   tone: 'business' | 'technical' | 'quote';
@@ -55,12 +55,12 @@ export type ProjectDeliverableView = {
 export type ProjectOverviewView = {
   deliverables: ProjectDeliverableView[];
   score: {
-    business: number;
-    estimatedLift: number;
+    business?: number;
+    estimatedLift?: number;
     missingMaterials: number;
-    pricing: number;
-    rejectionRisks: number;
-    technical: number;
+    pricing?: number;
+    rejectionRisks?: number;
+    technical?: number;
     total: number;
   };
 };
@@ -118,12 +118,12 @@ export function ProjectOverviewPage({
             <>
               <ScoreRing score={overview.score.total} />
               <dl className="bv-score-breakdown">
-                <div><dt>商务分</dt><dd><strong>{overview.score.business}</strong> / 30</dd></div>
-                <div><dt>技术分</dt><dd><strong>{overview.score.technical}</strong> / 50</dd></div>
-                <div><dt>报价分</dt><dd><strong>{overview.score.pricing}</strong> / 20</dd></div>
-                <div><dt>否决风险数</dt><dd><strong>{overview.score.rejectionRisks}</strong> 项</dd></div>
+                <div><dt>商务分</dt><dd><strong>{overview.score.business ?? '—'}</strong> / 30</dd></div>
+                <div><dt>技术分</dt><dd><strong>{overview.score.technical ?? '—'}</strong> / 50</dd></div>
+                <div><dt>报价分</dt><dd><strong>{overview.score.pricing ?? '—'}</strong> / 20</dd></div>
+                <div><dt>否决风险数</dt><dd><strong>{overview.score.rejectionRisks ?? '—'}</strong> 项</dd></div>
                 <div className="bv-score-breakdown__warning"><dt>缺失材料数</dt><dd><strong>{overview.score.missingMaterials}</strong> 项</dd></div>
-                <div><dt>预计可提升分值</dt><dd><strong>{overview.score.estimatedLift}</strong> 分</dd></div>
+                <div><dt>预计可提升分值</dt><dd><strong>{overview.score.estimatedLift ?? '—'}</strong> 分</dd></div>
               </dl>
               <AppLink className="bv-review-summary__button" to={`/projects/${projectId}/review`}>
                 <Lightbulb aria-hidden="true" size={21} />
@@ -180,11 +180,11 @@ export function ProjectOverviewPage({
               <ResultCover title={item.title} tone={item.tone} />
               <h2>{item.title}</h2>
               <dl>
-                <div><dt>总页数</dt><dd>{item.pages} 页</dd></div>
+                <div><dt>总页数</dt><dd>{item.pages === undefined ? '—' : `${item.pages} 页`}</dd></div>
                 <div><dt>总字数</dt><dd>{item.words}字</dd></div>
                 <div><dt>总评分</dt><dd>{item.score}</dd></div>
                 <div><dt>可提升分数</dt><dd>{item.lift}</dd></div>
-                <div className={item.missing > 0 ? 'is-warning' : ''}><dt>缺资料份数</dt><dd>{item.missing} 份</dd></div>
+                <div className={item.missing !== undefined && item.missing > 0 ? 'is-warning' : ''}><dt>缺资料份数</dt><dd>{item.missing === undefined ? '—' : `${item.missing} 份`}</dd></div>
               </dl>
               <div className="bv-deliverable-card__actions">
                 {item.versionId ? (
@@ -199,7 +199,11 @@ export function ProjectOverviewPage({
                     尚无版本 <Eye aria-hidden="true" size={17} />
                   </button>
                 )}
-                {onDownloadDeliverable ? (
+                {!item.versionId ? (
+                  <button aria-label={`${item.title}尚无可下载版本`} disabled type="button">
+                    <Download aria-hidden="true" size={18} />
+                  </button>
+                ) : onDownloadDeliverable ? (
                   <button
                     aria-label={`下载${item.title}`}
                     type="button"

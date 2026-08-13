@@ -37,4 +37,15 @@ describe('LoginPage', () => {
     expect(screen.getByText('注册入口将在企业管理员审核后开放。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '提交注册申请' })).toBeDisabled();
   });
+
+  it('explains the missing password-reset API instead of leaving a no-op control', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole('button', { name: '忘记密码？' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '当前后端尚未提供找回密码接口，请联系企业管理员重置密码。',
+    );
+  });
 });

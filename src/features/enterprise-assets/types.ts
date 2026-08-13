@@ -58,5 +58,6 @@ export interface EnterpriseAssetUploadProps {
 export interface EnterpriseAssetPageProps extends EnterpriseAssetUploadProps {
   assets: EnterpriseAsset[];
   onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
+  onRefresh?: () => Promise<void> | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }

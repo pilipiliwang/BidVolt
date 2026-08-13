@@ -154,6 +154,25 @@ describe('EnterpriseAssetsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('资质.pdf：文件损坏');
   });
 
+  it('refreshes from the backend and reports a refresh failure without pretending success', async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn().mockRejectedValue(new Error('企业资料接口暂不可用'));
+
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '刷新资料列表' }));
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('alert')).toHaveTextContent('企业资料接口暂不可用');
+    expect(screen.getByRole('button', { name: '刷新资料列表' })).toBeEnabled();
+  });
+
   it('keeps a failed fact correction open with its draft value', async () => {
     const user = userEvent.setup();
     const onCorrectFact = vi.fn().mockRejectedValue(new Error('字段版本已更新，请重试'));

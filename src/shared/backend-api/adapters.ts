@@ -406,11 +406,11 @@ export function adaptBackendDeliverableCards(
     return [{
       id,
       title: deliverable.title,
-      pages: asNumber(stat.pages) ?? asNumber(stat.page_count) ?? 0,
+      pages: asNumber(stat.pages) ?? asNumber(stat.page_count),
       words: asString(stat.words) ?? String(asNumber(stat.word_count) ?? '—'),
       score: asString(stat.score) ?? '待评审',
       lift: asString(stat.lift) ?? '—',
-      missing: asNumber(stat.missing) ?? asNumber(stat.missing_count) ?? 0,
+      missing: asNumber(stat.missing) ?? asNumber(stat.missing_count),
       tone: deliverableToneByType[deliverable.deliverable_type],
       versionId: deliverable.current_version_no === undefined
         ? undefined
@@ -458,13 +458,13 @@ export function adaptBackendProjectOverview(
   return {
     deliverables: adaptBackendDeliverableCards(deliverables),
     score: {
-      business: score.biz_score ?? 0,
-      technical: score.tech_score ?? 0,
-      pricing: score.quote_score ?? 0,
+      business: score.biz_score ?? undefined,
+      technical: score.tech_score ?? undefined,
+      pricing: score.quote_score ?? undefined,
       total: score.total_score,
-      rejectionRisks: score.reject_count ?? 0,
+      rejectionRisks: score.reject_count,
       missingMaterials: score.missing_count,
-      estimatedLift: score.improvable ?? 0,
+      estimatedLift: score.improvable ?? undefined,
     },
   };
 }
