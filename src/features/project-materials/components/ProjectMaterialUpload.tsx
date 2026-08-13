@@ -39,6 +39,29 @@ type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
   ) => Promise<TenderNoticeUrlImportResult | void>;
 };
 
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+
+function validateUploadFiles(files: FileList, accept: string) {
+  const acceptedExtensions = new Set(
+    accept
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item.startsWith('.')),
+  );
+
+  for (const file of Array.from(files)) {
+    const extension = file.name.includes('.')
+      ? `.${file.name.split('.').pop()?.toLowerCase() ?? ''}`
+      : '';
+    if (acceptedExtensions.size > 0 && !acceptedExtensions.has(extension)) {
+      throw new Error(`${file.name}：不支持该文件格式`);
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new Error(`${file.name}：单个文件不能超过 200MB`);
+    }
+  }
+}
+
 export type TenderNoticeUrlImportResult = {
   message?: string;
   status?: 'queued' | 'processing' | 'completed';
@@ -62,8 +85,9 @@ function UploadCard({
 
   const submitFiles = async (files: FileList | null) => {
     if (!files?.length || uploadState.type === 'loading') return;
-    setUploadState({ message: '正在上传文件…', type: 'loading' });
     try {
+      validateUploadFiles(files, accept);
+      setUploadState({ message: '正在上传文件…', type: 'loading' });
       await onFiles(files);
       setUploadState({ message: '文件上传完成，解析状态将从服务端刷新。', type: 'success' });
     } catch (error) {
@@ -116,7 +140,7 @@ function UploadCard({
         </span>
         <span>
           <strong>点击或拖拽文件到此处上传</strong>
-          <small>支持 PDF、Word、Excel、PPT、ZIP 等格式，单个文件不超过 200MB</small>
+          <small>支持 PDF、Word、Excel、PPT、ZIP、RAR、7Z 等格式，单个文件不超过 200MB</small>
         </span>
         <em>选择文件</em>
       </label>

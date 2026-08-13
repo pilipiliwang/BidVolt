@@ -21,6 +21,48 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     expect(onUpload).toHaveBeenCalledWith('BV-2026-018', [file]);
   });
 
+  it('允许用户选择真实招标公告使用的 RAR 格式', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn();
+    render(<ProjectMaterialUpload {...baseProps} onUpload={onUpload} />);
+
+    const file = new File(
+      ['rar-test'],
+      '【招标公告文件】虚拟电厂数据融合系统_完整采购文件_95307793016393648.rar',
+      { type: 'application/vnd.rar' },
+    );
+    await user.upload(screen.getByLabelText('选择或拖拽招标材料'), file);
+
+    expect(onUpload).toHaveBeenCalledWith('BV-2026-018', [file]);
+  });
+
+  it('拖拽不支持的格式时在调用接口前拦截', async () => {
+    const onUpload = vi.fn();
+    render(<ProjectMaterialUpload {...baseProps} onUpload={onUpload} />);
+
+    const file = new File(['unsafe'], '脚本.exe', { type: 'application/octet-stream' });
+    fireEvent.drop(screen.getAllByText('点击或拖拽文件到此处上传')[0].closest('label')!, {
+      dataTransfer: { files: [file] },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('脚本.exe：不支持该文件格式');
+    expect(onUpload).not.toHaveBeenCalled();
+  });
+
+  it('单个文件超过 200MB 时在调用接口前拦截', async () => {
+    const onUpload = vi.fn();
+    render(<ProjectMaterialUpload {...baseProps} onUpload={onUpload} />);
+
+    const file = new File(['large'], '超大招标公告.rar', { type: 'application/vnd.rar' });
+    Object.defineProperty(file, 'size', { value: 200 * 1024 * 1024 + 1 });
+    fireEvent.drop(screen.getAllByText('点击或拖拽文件到此处上传')[0].closest('label')!, {
+      dataTransfer: { files: [file] },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('超大招标公告.rar：单个文件不能超过 200MB');
+    expect(onUpload).not.toHaveBeenCalled();
+  });
+
   it('在手动上传失败时展示上层返回的错误', async () => {
     const user = userEvent.setup();
     const onUpload = vi.fn().mockRejectedValue(new Error('招标公告.pdf：文件为空'));

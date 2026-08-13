@@ -34,8 +34,8 @@ function price(value: number) {
   return currencyFormatter.format(value);
 }
 
-function optionalPrice(value: number | null) {
-  return value === null ? '—' : price(value);
+function optionalPrice(value: number | null | undefined) {
+  return value === null || value === undefined ? '—' : price(value);
 }
 
 function matchesText(value: string, query: string) {
@@ -64,7 +64,10 @@ function matchesYear(year: number, query: string) {
 }
 
 function calculateStats(records: HistoricalQuoteRecord[]) {
-  const values = records.map((record) => record.unitPrice).sort((a, b) => a - b);
+  const values = records
+    .map((record) => record.unitPrice)
+    .filter((value): value is number => value !== undefined && Number.isFinite(value))
+    .sort((a, b) => a - b);
   const total = values.reduce((sum, value) => sum + value, 0);
   const middleIndex = Math.floor(values.length / 2);
   const median = values.length
@@ -85,7 +88,8 @@ function calculateStats(records: HistoricalQuoteRecord[]) {
 
 function calculatePriceChange(records: HistoricalQuoteRecord[]) {
   const ordered = [...records]
-    .filter((record) => Number.isFinite(record.unitPrice) && record.unitPrice > 0)
+    .filter((record): record is HistoricalQuoteRecord & { unitPrice: number } =>
+      record.unitPrice !== undefined && Number.isFinite(record.unitPrice) && record.unitPrice > 0)
     .sort((a, b) => a.awardedAt.localeCompare(b.awardedAt));
   const first = ordered[0];
   const last = ordered.at(-1);
@@ -249,9 +253,9 @@ export function HistoryPricesPage({
                   <td>{record.packageName}</td>
                   <td>{record.materialCode}</td>
                   <td>{record.specification}</td>
-                  <td>{record.quantity} 台</td>
+                  <td>{record.quantity === undefined ? '—' : `${record.quantity} 台`}</td>
                   <td>{record.supplier}</td>
-                  <td className="history-price-cell">{price(record.unitPrice)}</td>
+                  <td className="history-price-cell">{optionalPrice(record.unitPrice)}</td>
                   <td>{record.taxRate}</td>
                   <td>{record.awardedAt}</td>
                   <td>{record.source}</td>
@@ -377,6 +381,7 @@ function HistoryPriceDetail({
 function PriceTrendChart({ records, materialName }: { records: HistoricalQuoteRecord[]; materialName: string }) {
   const grouped = new Map<string, number[]>();
   records.forEach((record) => {
+    if (record.unitPrice === undefined || !Number.isFinite(record.unitPrice)) return;
     const month = record.awardedAt.slice(0, 7);
     const values = grouped.get(month) ?? [];
     values.push(record.unitPrice);
@@ -437,7 +442,7 @@ function PriceTrendChart({ records, materialName }: { records: HistoricalQuoteRe
         {series.map((point, index) => (
           <circle key={point.month} cx={xFor(index)} cy={yFor(point.median)} r="5" fill="#09905b" />
         ))}
-        {labels.map((index) => (
+        {labels.map((index) => series[index] ? (
           <text
             key={series[index].month}
             x={xFor(index)}
@@ -446,7 +451,7 @@ function PriceTrendChart({ records, materialName }: { records: HistoricalQuoteRe
           >
             {series[index].month}
           </text>
-        ))}
+        ) : null)}
       </svg>
       <div className="history-chart-legend">
         <span><i className="history-chart-line history-chart-line--median" />中标价中位数</span>
@@ -465,8 +470,8 @@ function ComparableTable({ records }: { records: HistoricalQuoteRecord[] }) {
         <tbody>
           {records.map((record) => (
             <tr key={record.id}>
-              <td>{record.projectName}</td><td>{record.tenderer}</td><td>{record.region}</td><td>{record.quantity} 台</td>
-              <td className="history-price-cell">{price(record.unitPrice)}</td><td>{record.awardedAt}</td><td>{record.parameterDifference}</td>
+              <td>{record.projectName}</td><td>{record.tenderer}</td><td>{record.region}</td><td>{record.quantity === undefined ? '—' : `${record.quantity} 台`}</td>
+              <td className="history-price-cell">{optionalPrice(record.unitPrice)}</td><td>{record.awardedAt}</td><td>{record.parameterDifference}</td>
               <td><span className={`history-similarity history-similarity--${record.similarity}`}>{similarityLabel[record.similarity]}</span></td>
             </tr>
           ))}

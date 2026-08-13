@@ -1041,7 +1041,7 @@ function readHistorySamples(payload: unknown) {
 function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[] {
   return samples.map((sample) => ({
     id: sample.id,
-    projectName: sample.sourceLabel,
+    projectName: '—',
     tenderer: '—',
     year: Number(sample.occurredAt.slice(0, 4)) || 0,
     packageName: '—',
@@ -1049,12 +1049,12 @@ function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[
     materialCode: sample.materialCode || sample.materialRef || sample.id,
     specification: sample.specification,
     region: sample.region || '—',
-    quantity: 0,
+    quantity: undefined,
     supplier: '—',
-    unitPrice: Number(sample.price) || 0,
+    unitPrice: Number.isFinite(Number(sample.price)) ? Number(sample.price) : undefined,
     taxRate: sample.taxIncluded ? '含税（税率未提供）' : '未税',
     awardedAt: sample.occurredAt,
-    source: '公开公告',
+    source: sample.sourceLabel,
     parameterDifference: '—',
     similarity: 'reference',
   }));

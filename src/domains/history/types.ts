@@ -8,12 +8,12 @@ export type HistoricalQuoteRecord = {
   materialCode: string;
   specification: string;
   region: string;
-  quantity: number;
+  quantity?: number;
   supplier: string;
-  unitPrice: number;
+  unitPrice?: number;
   taxRate: string;
   awardedAt: string;
-  source: '公开公告' | '企业历史';
+  source: string;
   parameterDifference: string;
   similarity: 'high' | 'partial' | 'reference';
 };

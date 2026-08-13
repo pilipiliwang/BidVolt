@@ -65,6 +65,26 @@ describe('HistoryPricesPage', () => {
     expect(screen.queryByRole('button', { name: /新增|编辑|删除/ })).not.toBeInTheDocument();
   });
 
+  it('renders missing backend history fields as unknown instead of zero', () => {
+    render(
+      <HistoryPricesPage
+        records={[{
+          ...records[0],
+          id: 'missing-fields',
+          projectName: '—',
+          quantity: undefined,
+          unitPrice: undefined,
+          source: 'external-history-provider',
+        }]}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /external-history-provider/ });
+    expect(row).toHaveTextContent('—');
+    expect(row).not.toHaveTextContent('0 台');
+    expect(row).not.toHaveTextContent('0.00');
+  });
+
   it('filters records and switches to a trend detail without mutating history', async () => {
     const user = userEvent.setup();
     renderHistory();
