@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getCompletedBidMaterialIds,
   getSupplementalMaterialIds,
+  recordCompletedBidMaterialFiles,
   recordSupplementalMaterialFiles,
 } from './supplemental-material-state';
 
@@ -25,6 +27,16 @@ describe('supplemental material session state', () => {
 
     expect(getSupplementalMaterialIds(state, 'enterprise-1', 'project-8')).toEqual([]);
     expect(getSupplementalMaterialIds(state, 'enterprise-2', 'project-7')).toEqual([]);
+    expect(getSupplementalMaterialIds({}, 'enterprise-1', 'project-7')).toEqual([]);
+  });
+
+  it('keeps completed bid ids separate from supplemental material ids', () => {
+    const completed = recordCompletedBidMaterialFiles({}, 'enterprise-1', 'project-7', [
+      { file_id: 203, name: '商务标.docx' },
+    ]);
+
+    expect(getCompletedBidMaterialIds(completed, 'enterprise-1', 'project-7')).toEqual(['203']);
+    expect(getCompletedBidMaterialIds(completed, 'enterprise-1', 'project-8')).toEqual([]);
     expect(getSupplementalMaterialIds({}, 'enterprise-1', 'project-7')).toEqual([]);
   });
 });

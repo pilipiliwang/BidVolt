@@ -21,6 +21,7 @@ describe('tenant state isolation', () => {
     const second = createEmptyTenantDomainState();
 
     expect(second).toEqual({
+      completedBidMaterialIdsByScope: {},
       editor: null,
       enterpriseAssets: [],
       enterpriseCategories: [],

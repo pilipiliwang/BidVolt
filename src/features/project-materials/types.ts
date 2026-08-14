@@ -79,6 +79,7 @@ export interface ProjectMaterialsDeliverableSummary {
   kind: ProjectMaterialsDeliverableKind;
 }
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
+  completedBidMaterialIds?: readonly string[];
   deliverables?: readonly ProjectMaterialsDeliverableSummary[];
   enterpriseCategories?: import('../enterprise-assets').EnterpriseAssetCategoryFolder[];
   enterpriseLibraryKey?: string;
@@ -87,6 +88,7 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   materials: ProjectMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
+  onCompletedBidUpload?: (projectId: string, files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   onImportTenderNoticeUrl?: (
     projectId: string,

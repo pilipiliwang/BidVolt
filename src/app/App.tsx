@@ -63,6 +63,7 @@ import {
   scoreSummaryForOverview,
   subscribeToBackendApiRequests,
   type BackendApiRequestEvent,
+  type BackendFile,
   type BackendTask,
   type Deliverable,
   type DeliverableContent,
@@ -98,8 +99,11 @@ import {
 } from './project-resource-state';
 import { getEditorDraftScopeKey, type AppSession } from './session';
 import {
+  getCompletedBidMaterialIds,
   getSupplementalMaterialIds,
+  recordCompletedBidMaterialFiles,
   recordSupplementalMaterialFiles,
+  type CompletedBidMaterialIdsByScope,
   type SupplementalMaterialIdsByScope,
 } from './supplemental-material-state';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
@@ -241,6 +245,7 @@ export function App() {
   const [projectRouteFailure, setProjectRouteFailure] = useState<ProjectRouteFailure | null>(null);
   const [projectRetryNonce, setProjectRetryNonce] = useState(0);
   const [projectResourceErrors, setProjectResourceErrors] = useState<Record<string, ProjectResourceErrors>>({});
+  const [completedBidMaterialIdsByScope, setCompletedBidMaterialIdsByScope] = useState<CompletedBidMaterialIdsByScope>({});
   const [supplementalMaterialIdsByScope, setSupplementalMaterialIdsByScope] = useState<SupplementalMaterialIdsByScope>({});
   const [backendRequestEvents, setBackendRequestEvents] = useState<Record<string, BackendApiRequestEvent>>({});
   const editorLoadKeyRef = useRef('');
@@ -281,6 +286,7 @@ export function App() {
     setMissingProjectId(null);
     setProjectRouteFailure(null);
     setProjectResourceErrors({});
+    setCompletedBidMaterialIdsByScope(empty.completedBidMaterialIdsByScope);
     setSupplementalMaterialIdsByScope(empty.supplementalMaterialIdsByScope);
     apiRouteStartedAtRef.current = Date.now();
     setBackendRequestEvents({});
@@ -879,7 +885,15 @@ export function App() {
     await loadEnterprise();
   };
 
-  const handleProjectUpload = async (projectId: string, files: File[]) => {
+  const handleProjectUpload = async (
+    projectId: string,
+    files: File[],
+    options: {
+      onUploaded?: (uploaded: BackendFile[]) => void;
+      outcomeLabel?: string;
+      successMessage?: (uploadedCount: number) => string;
+    } = {},
+  ) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('上传项目材料');
     const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'project', project_id: projectId, files });
@@ -900,35 +914,56 @@ export function App() {
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     if (uploaded.length > 0) await loadProject(projectId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
+    if (uploaded.length > 0 && options.onUploaded) {
+      tenantGuardRef.current.commit(generation, () => options.onUploaded?.(uploaded));
+    }
     const outcomeError = uploadOutcomeError(
-      '当前项目材料',
+      options.outcomeLabel ?? '当前项目材料',
       uploaded.length,
       [...outcome.errors, ...archiveErrors],
     );
     if (outcomeError) throw outcomeError;
     tenantGuardRef.current.commit(generation, () => {
-      setStatusMessage({ tone: 'info', text: `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。` });
+      setStatusMessage({
+        tone: 'info',
+        text: options.successMessage?.(uploaded.length)
+          ?? `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。`,
+      });
     });
     return uploaded;
   };
 
   const handleProjectSupplementalUpload = async (projectId: string, files: File[]) => {
     if (!session) throw new Error('当前登录会话不可用，请重新登录后再添加文件。');
-    const generation = tenantGuardRef.current.capture();
     const enterpriseId = session.enterpriseId;
-    const uploaded = await handleProjectUpload(projectId, files);
-    if (!uploaded?.length || !tenantGuardRef.current.isCurrent(generation)) return;
-    tenantGuardRef.current.commit(generation, () => {
-      setSupplementalMaterialIdsByScope((current) => recordSupplementalMaterialFiles(
-        current,
-        enterpriseId,
-        projectId,
-        uploaded,
-      ));
-      setStatusMessage({
-        tone: 'info',
-        text: `已通过项目助手添加 ${uploaded.length} 份补充资料。该分组将在当前登录会话中保留。`,
-      });
+    await handleProjectUpload(projectId, files, {
+      onUploaded: (uploaded) => {
+        setSupplementalMaterialIdsByScope((current) => recordSupplementalMaterialFiles(
+          current,
+          enterpriseId,
+          projectId,
+          uploaded,
+        ));
+      },
+      outcomeLabel: '补充资料',
+      successMessage: (uploadedCount) => `已通过项目助手添加 ${uploadedCount} 份补充资料。该分组将在当前登录会话中保留。`,
+    });
+  };
+
+  const handleCompletedBidUpload = async (projectId: string, files: File[]) => {
+    if (!session) throw new Error('当前登录会话不可用，请重新登录后再上传已完成标书。');
+    const enterpriseId = session.enterpriseId;
+    await handleProjectUpload(projectId, files, {
+      onUploaded: (uploaded) => {
+        setCompletedBidMaterialIdsByScope((current) => recordCompletedBidMaterialFiles(
+          current,
+          enterpriseId,
+          projectId,
+          uploaded,
+        ));
+      },
+      outcomeLabel: '已完成标书材料',
+      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份已完成标书材料，可用于后续校核。`,
     });
   };
 
@@ -1326,6 +1361,9 @@ export function App() {
   const supplementalMaterialIds = routeProjectId && session
     ? getSupplementalMaterialIds(supplementalMaterialIdsByScope, session.enterpriseId, routeProjectId)
     : [];
+  const completedBidMaterialIds = routeProjectId && session
+    ? getCompletedBidMaterialIds(completedBidMaterialIdsByScope, session.enterpriseId, routeProjectId)
+    : [];
   const projectMaterialsDeliverables = (activeData?.deliverables ?? []).flatMap((deliverable) => {
     const kind = routeIdForDeliverable(deliverable);
     return kind ? [{ currentVersionNo: deliverable.current_version_no, kind }] : [];
@@ -1508,6 +1546,7 @@ export function App() {
       ) : null}
       {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
+          completedBidMaterialIds={completedBidMaterialIds}
           deliverables={projectMaterialsDeliverables}
           enterpriseCategories={enterpriseCategories}
           enterpriseLibraryKey={session.enterpriseId}
@@ -1523,6 +1562,10 @@ export function App() {
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onCompletedBidUpload={(projectId, files) => handleCompletedBidUpload(projectId, files).catch((error) => {
+            setError(error, '已完成标书上传失败');
+            throw error;
+          })}
           onConfirmRequirement={handleConfirmRequirement}
           onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
           onOpenSnapshot={handleOpenSnapshot}

@@ -25,6 +25,7 @@ export function createTenantGenerationGuard(initialGeneration = 0): TenantGenera
 
 export function createEmptyTenantDomainState() {
   return {
+    completedBidMaterialIdsByScope: {},
     editor: null,
     enterpriseAssets: [],
     enterpriseCategories: [],
