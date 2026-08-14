@@ -93,7 +93,7 @@ describe('App local read-only preview', () => {
     let previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
     await user.click(within(previewNavigation).getByRole('link', { name: '项目概览' }));
 
-    expect(await screen.findByRole('heading', { name: '评分结果正在同步' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '等待标书成果生成完成' })).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '查看任务进度，当前 0%' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查看任务进度，当前 100%' }))

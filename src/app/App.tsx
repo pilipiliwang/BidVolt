@@ -220,6 +220,7 @@ const projectResourceLabels: Record<ProjectResourceKey, string> = {
   tasks: '任务进度',
   deliverables: '成果版本',
   review: '评审结果',
+  score: '最新评分',
   quote: '报价测算',
 };
 
@@ -510,19 +511,17 @@ export function App() {
           return { deliverables, deliverableVersions };
         })(),
         (async () => {
-          const [reviewRuns, score] = await Promise.all([
-            backendApi.review.listRuns(projectId),
-            backendApi.review.latestScore(projectId).catch((error) => {
-              if (isReviewScoreUnavailable(error)) return undefined;
-              throw error;
-            }),
-          ]);
+          const reviewRuns = await backendApi.review.listRuns(projectId);
           const latestRun = [...reviewRuns.items].sort((a, b) => Number(b.run_id) - Number(a.run_id))[0];
           const runDetail = latestRun
             ? await backendApi.review.getRun(projectId, latestRun.run_id)
             : undefined;
-          return { runDetail, score };
+          return { runDetail };
         })(),
+        backendApi.review.latestScore(projectId).catch((error) => {
+          if (isReviewScoreUnavailable(error)) return undefined;
+          throw error;
+        }),
         (async () => {
           const quoteList = await backendApi.quotes.list(projectId);
           const latestQuote = quoteList.items[0];
@@ -542,7 +541,16 @@ export function App() {
       if (!tenantGuardRef.current.isCurrent(tenantGeneration)
         || projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
 
-      const [filesResult, requirementsResult, snapshotsResult, tasksResult, deliverablesResult, reviewResult, quoteResult] = results;
+      const [
+        filesResult,
+        requirementsResult,
+        snapshotsResult,
+        tasksResult,
+        deliverablesResult,
+        reviewResult,
+        scoreResult,
+        quoteResult,
+      ] = results;
       const taskResultIsCurrent = taskLoadGenerationRef.current[projectId] === taskLoadGeneration;
       const resourceResults: Array<[ProjectResourceKey, PromiseSettledResult<unknown>]> = [
         ['materials', filesResult],
@@ -551,6 +559,7 @@ export function App() {
         ['tasks', taskResultIsCurrent ? tasksResult : { status: 'fulfilled', value: undefined }],
         ['deliverables', deliverablesResult],
         ['review', reviewResult],
+        ['score', scoreResult],
         ['quote', quoteResult],
       ];
       const errors = Object.fromEntries(resourceResults.flatMap(([key, result]) =>
@@ -593,8 +602,8 @@ export function App() {
         }
         if (reviewResult.status === 'fulfilled') {
           next.reviewRun = reviewResult.value.runDetail ? adaptBackendReviewRun(reviewResult.value.runDetail) : emptyReview();
-          next.score = reviewResult.value.score;
         }
+        if (scoreResult.status === 'fulfilled') next.score = scoreResult.value;
         if (quoteResult.status === 'fulfilled') {
           next.quote = quoteResult.value.quote;
           next.quoteSamples = quoteResult.value.samples;
@@ -639,6 +648,13 @@ export function App() {
           tasks: nextTasks,
         },
       };
+    });
+    setProjectResourceErrors((current) => {
+      const existing = current[projectId];
+      if (!existing?.tasks) return current;
+      const next = { ...existing };
+      delete next.tasks;
+      return { ...current, [projectId]: next };
     });
     return enteredTerminalState;
   }, [requestTaskSnapshots]);
@@ -802,7 +818,16 @@ export function App() {
         }
         return undefined;
       }).catch((error) => {
-        if (tenantGuardRef.current.isCurrent(generation)) setError(error, '任务进度刷新失败');
+        if (tenantGuardRef.current.isCurrent(generation)) {
+          setProjectResourceErrors((current) => ({
+            ...current,
+            [routeProjectId]: {
+              ...current[routeProjectId],
+              tasks: readableError(error, '任务进度刷新失败'),
+            },
+          }));
+          setError(error, '任务进度刷新失败');
+        }
       });
     }, 2500);
     return () => window.clearInterval(timer);
@@ -1501,6 +1526,21 @@ export function App() {
   const completedBidMaterialIds = routeProjectId && session
     ? getCompletedBidMaterialIds(completedBidMaterialIdsByScope, session.enterpriseId, routeProjectId)
     : [];
+  const projectTasksState = !activeData || loadingProjectId === routeProjectId
+    ? 'loading'
+    : routeProjectId && projectResourceErrors[routeProjectId]?.tasks
+      ? 'error'
+      : 'ready';
+  const projectReviewState = !activeData || loadingProjectId === routeProjectId
+    ? 'loading'
+    : routeProjectId && projectResourceErrors[routeProjectId]?.review
+      ? 'error'
+      : 'ready';
+  const projectScoreState = !activeData || loadingProjectId === routeProjectId
+    ? 'loading'
+    : routeProjectId && projectResourceErrors[routeProjectId]?.score
+      ? 'error'
+      : 'ready';
   const projectReviewSidebar = buildProjectReviewSidebarViewModel({
     deliverables: (activeData?.deliverables ?? []).flatMap((deliverable) => {
       const kind = routeIdForDeliverable(deliverable);
@@ -1518,21 +1558,21 @@ export function App() {
         ? 'error'
         : 'ready',
     tasks: taskEvents,
-    tasksState: !activeData || loadingProjectId === routeProjectId
-      ? 'loading'
-      : routeProjectId && projectResourceErrors[routeProjectId]?.tasks
-        ? 'error'
-        : 'ready',
+    tasksState: projectTasksState,
   });
   const projectOutcomeReview = buildProjectOutcomeReviewViewModel({
+    reviewRunId: activeData?.reviewRun.id,
     reviewRunStatus: activeData?.reviewRun.status,
-    reviewSourceState: !activeData || loadingProjectId === routeProjectId
-      ? 'loading'
-      : routeProjectId && projectResourceErrors[routeProjectId]?.review
-        ? 'error'
-        : 'ready',
+    reviewSourceState: projectReviewState,
     score: activeData?.overview?.score,
+    scoreIsStale: activeData?.score?.is_stale,
+    scoreReviewRunId: activeData?.score?.review_run_id === null
+      || activeData?.score?.review_run_id === undefined
+      ? undefined
+      : String(activeData.score.review_run_id),
+    scoreSourceState: projectScoreState,
     tasks: taskEvents,
+    tasksState: projectTasksState,
   });
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
   const deliverableVersionOptions = activeData

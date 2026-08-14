@@ -9,6 +9,7 @@ export type ProjectResourceKey =
   | 'tasks'
   | 'deliverables'
   | 'review'
+  | 'score'
   | 'quote';
 
 export type ProjectResourceErrors = Partial<Record<ProjectResourceKey, string>>;

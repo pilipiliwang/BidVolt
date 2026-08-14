@@ -105,4 +105,115 @@ describe('ProjectOutcomeReviewPanel', () => {
     );
     expect(screen.getByRole('heading', { name: '初次评分未完成' })).toBeInTheDocument();
   });
+
+  it.each([
+    ['loading', '最近一次评分 · 正在刷新'],
+    ['error', '最近一次评分 · 刷新失败'],
+  ] as const)('marks a cached score non-ready while the score request is %s', (sourceState, label) => {
+    const viewModel = buildProjectOutcomeReviewViewModel({
+      score: { business: 24, total: 82 },
+      scoreSourceState: sourceState,
+    });
+
+    render(
+      <ProjectOutcomeReviewPanel
+        onOpenImprovementSuggestions={vi.fn()}
+        viewModel={viewModel}
+      />,
+    );
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看提升建议' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('评分已返回')).not.toBeInTheDocument();
+  });
+
+  it('shows an old score as updating while a fresh review task is active', () => {
+    const viewModel = buildProjectOutcomeReviewViewModel({
+      score: { total: 82 },
+      tasks: [{ phase: 'bid_review', sequence: 9, status: 'running', task_type: 'bid_review' }],
+      tasksState: 'ready',
+    });
+
+    render(
+      <ProjectOutcomeReviewPanel
+        onOpenImprovementSuggestions={vi.fn()}
+        onOpenTasks={vi.fn()}
+        viewModel={viewModel}
+      />,
+    );
+
+    expect(screen.getByText('最近一次评分 · 更新中')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看提升建议' })).not.toBeInTheDocument();
+  });
+
+  it('ignores cached tasks when the task source failed', () => {
+    const staleTask = {
+      phase: 'bid_review',
+      sequence: 9,
+      status: 'running' as const,
+      task_type: 'bid_review',
+    };
+
+    const scoreView = buildProjectOutcomeReviewViewModel({
+      reviewSourceState: 'error',
+      score: { total: 88 },
+      scoreSourceState: 'ready',
+      tasks: [staleTask],
+      tasksState: 'error',
+    });
+    expect(scoreView.state).toBe('ready');
+
+    const emptyView = buildProjectOutcomeReviewViewModel({
+      reviewSourceState: 'ready',
+      scoreSourceState: 'ready',
+      tasks: [staleTask],
+      tasksState: 'error',
+    });
+    expect(emptyView).toMatchObject({
+      state: 'error',
+      title: '模拟评标状态暂不可用',
+    });
+  });
+
+  it('keeps a successfully loaded score ready when review detail alone failed', () => {
+    const viewModel = buildProjectOutcomeReviewViewModel({
+      reviewRunId: 'cached-review-run',
+      reviewRunStatus: 'running',
+      reviewSourceState: 'error',
+      score: { business: 26, total: 86 },
+      scoreReviewRunId: 'latest-score-run',
+      scoreSourceState: 'ready',
+      tasksState: 'error',
+    });
+
+    expect(viewModel).toMatchObject({
+      score: { total: 86 },
+      state: 'ready',
+    });
+  });
+
+  it('keeps suggestions closed for backend-stale or mismatched review scores', () => {
+    const stale = buildProjectOutcomeReviewViewModel({
+      score: { total: 79 },
+      scoreIsStale: true,
+    });
+    expect(stale).toMatchObject({ state: 'stale', title: '最近一次评分 · 已过期' });
+
+    const mismatched = buildProjectOutcomeReviewViewModel({
+      reviewRunId: 'review-new',
+      reviewRunStatus: 'succeeded',
+      score: { total: 79 },
+      scoreReviewRunId: 'review-old',
+    });
+    expect(mismatched).toMatchObject({ state: 'updating', title: '最近一次评分 · 更新中' });
+
+    const unlinked = buildProjectOutcomeReviewViewModel({
+      reviewRunId: 'review-new',
+      reviewRunStatus: 'succeeded',
+      score: { total: 79 },
+    });
+    expect(unlinked).toMatchObject({ state: 'updating', title: '最近一次评分 · 更新中' });
+  });
 });

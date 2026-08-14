@@ -118,6 +118,9 @@ export type ScoreSummary = {
   missing_count: number;
   improvable: number | null;
   detail: JsonObject | null;
+  /** Optional freshness metadata for newer backend contracts. */
+  is_stale?: boolean;
+  stale_reasons?: string[];
 };
 
 export type Conversation = { conversation_id: number; title: string; created_at?: string | null };
