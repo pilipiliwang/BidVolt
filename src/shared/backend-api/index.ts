@@ -40,6 +40,13 @@ export type {
 export type * from './types';
 export type { QuoteCalculationBody } from './quotes';
 export type { EditorSession } from './editor';
+export { isBackendTaskTerminal, pollBackendTask } from './tasks';
+export type {
+  BackendTaskGetter,
+  BackendTaskPollOptions,
+  BackendTaskPollReason,
+  BackendTaskPollResult,
+} from './tasks';
 export * from './adapters';
 
 export const createBackendApi = ({
