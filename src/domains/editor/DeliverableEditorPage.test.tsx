@@ -452,8 +452,9 @@ describe('DeliverableEditorPage', () => {
     expect(screen.queryByDisplayValue('TAMPERED')).not.toBeInTheDocument();
   });
 
-  it('switches the left rail between project and enterprise data and forwards uploads', async () => {
+  it('keeps the left rail enterprise-only and separates enterprise uploads from project attachments', async () => {
     const user = userEvent.setup();
+    const onAddEnterpriseFiles = vi.fn();
     const onAddFiles = vi.fn();
     render(
       <DeliverableEditorPage
@@ -461,6 +462,7 @@ describe('DeliverableEditorPage', () => {
         draftScopeId={draftScopeId}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAddFiles={onAddFiles}
         project={project}
         projectId="BV-2026-018"
@@ -468,15 +470,19 @@ describe('DeliverableEditorPage', () => {
       />,
     );
 
-    expect(screen.getByLabelText('招标文件.pdf')).toBeInTheDocument();
-    await user.click(screen.getByRole('tab', { name: '企业资料' }));
-    expect(screen.getByLabelText('企业资质证书.pdf')).toBeInTheDocument();
-    expect(screen.queryByLabelText('招标文件.pdf')).not.toBeInTheDocument();
+    const sourceRail = screen.getByRole('complementary', { name: '企业资料' });
+    expect(within(sourceRail).getByLabelText('企业资质证书.pdf')).toBeInTheDocument();
+    expect(within(sourceRail).queryByLabelText('招标文件.pdf')).not.toBeInTheDocument();
+    expect(within(sourceRail).queryByRole('tab')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: '当前招标材料' }));
-    const file = new File(['补充材料'], '补充材料.pdf', { type: 'application/pdf' });
-    await user.upload(screen.getByLabelText('补充上传当前项目资料'), file);
-    expect(onAddFiles).toHaveBeenCalledWith([file]);
+    const enterpriseFile = new File(['企业材料'], '新企业资质.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('上传企业资料并同步资料库'), enterpriseFile);
+    expect(onAddEnterpriseFiles).toHaveBeenCalledWith([enterpriseFile]);
+    expect(onAddFiles).not.toHaveBeenCalled();
+
+    const projectFile = new File(['补充材料'], '补充材料.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('添加当前项目文件'), projectFile);
+    expect(onAddFiles).toHaveBeenCalledWith([projectFile]);
     expect(screen.getByRole('link', { name: '前往评审中心确认建议' })).toHaveAttribute(
       'href',
       '/projects/BV-2026-018/review',

@@ -94,7 +94,9 @@ describe('App local read-only preview', () => {
     expect(taskCard).toHaveTextContent('已有成果编制任务正在排队');
     expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('补充上传当前项目资料')).toBeInTheDocument();
+    expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
+    expect(screen.getByText('上传企业资料')).toBeInTheDocument();
+    expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
 
     await user.click(within(taskCard).getByRole('button', { name: '查看任务进度' }));
     expect(screen.getByRole('dialog', { name: '任务进度' })).toBeInTheDocument();

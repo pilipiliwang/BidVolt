@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  ChevronDown,
   FileArchive,
   FileChartColumn,
   FileSpreadsheet,
@@ -11,7 +12,6 @@ import {
 } from 'lucide-react';
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type CSSProperties,
@@ -29,175 +29,94 @@ export type WorkspaceMaterial = {
 
 type ProjectSourceRailProps = {
   enterpriseMaterials: WorkspaceMaterial[];
-  materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
-  onAddFiles?: (files: File[]) => void | Promise<void>;
-};
-
-type UploadScope = 'enterprise' | 'project';
-
-type UploadState = {
-  error: string | null;
-  pending: boolean;
-  scope: UploadScope;
 };
 
 export function ProjectSourceRail({
   enterpriseMaterials,
-  materials,
   onAddEnterpriseFiles,
-  onAddFiles,
 }: ProjectSourceRailProps) {
-  const [activeSource, setActiveSource] = useState<'enterprise' | 'project'>('project');
-  const panelId = useId();
-  const enterpriseTabId = `${panelId}-enterprise-tab`;
-  const projectTabId = `${panelId}-project-tab`;
-  const [uploadState, setUploadState] = useState<UploadState>({
-    error: null,
-    pending: false,
-    scope: 'project',
-  });
-  const showingEnterprise = activeSource === 'enterprise';
-  const activeScope: UploadScope = showingEnterprise ? 'enterprise' : 'project';
-  const activeUploadState = uploadState.scope === activeScope ? uploadState : undefined;
-  const visibleMaterials = showingEnterprise ? enterpriseMaterials : materials;
-  const heading = showingEnterprise ? '企业资料' : '当前招标材料';
+  const [uploadState, setUploadState] = useState({ error: null as string | null, pending: false });
 
-  const uploadFiles = async (
-    scope: UploadScope,
-    files: File[],
-    handler: (selectedFiles: File[]) => void | Promise<void>,
-  ) => {
-    setUploadState({ error: null, pending: true, scope });
+  const uploadEnterpriseFiles = async (files: File[]) => {
+    if (!onAddEnterpriseFiles || uploadState.pending) return;
+    setUploadState({ error: null, pending: true });
     try {
-      await handler(files);
-      setUploadState({ error: null, pending: false, scope });
+      await onAddEnterpriseFiles(files);
+      setUploadState({ error: null, pending: false });
     } catch (error) {
       setUploadState({
         error: error instanceof Error && error.message ? error.message : '文件上传失败，请重试',
         pending: false,
-        scope,
       });
     }
   };
 
   return (
-    <aside className="bv-source-rail" aria-label="项目资料">
-      <div className="bv-source-rail__tabs" role="tablist" aria-label="资料范围">
-        <button
-          aria-controls={panelId}
-          aria-selected={showingEnterprise}
-          id={enterpriseTabId}
-          onClick={() => setActiveSource('enterprise')}
-          role="tab"
-          type="button"
+    <aside className="bv-source-rail" aria-label="企业资料">
+      <header className="bv-source-rail__header">
+        <span>
+          <Folder aria-hidden="true" size={22} />
+          <h2>
+            企业资料
+            <small>（{enterpriseMaterials.length}项）</small>
+          </h2>
+        </span>
+        <ChevronDown aria-hidden="true" size={20} />
+      </header>
+
+      {enterpriseMaterials.length > 0 ? (
+        <ul className="bv-source-rail__files">
+          {enterpriseMaterials.map((material) => (
+            <li key={material.id}>
+              <MaterialIcon tone={material.tone} />
+              <span
+                aria-label={material.name}
+                className="bv-source-rail__filename"
+                data-name={material.name}
+                title={material.name}
+              />
+              <small>{material.status ?? '已识别'}</small>
+              <CheckCircle2 aria-hidden="true" size={15} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="bv-source-rail__empty" role="status">
+          企业资料库暂无可展示资料
+        </p>
+      )}
+
+      {onAddEnterpriseFiles ? (
+        <label
+          aria-busy={uploadState.pending || undefined}
+          className="bv-source-rail__upload"
         >
-          企业资料
-        </button>
-        <button
-          aria-controls={panelId}
-          aria-selected={!showingEnterprise}
-          id={projectTabId}
-          onClick={() => setActiveSource('project')}
-          role="tab"
-          type="button"
-        >
-          当前招标材料
-        </button>
-      </div>
-
-      <div
-        aria-labelledby={showingEnterprise ? enterpriseTabId : projectTabId}
-        id={panelId}
-        role="tabpanel"
-      >
-        <div className="bv-source-rail__heading">
-          <span>
-            <Folder aria-hidden="true" size={17} />
-            {heading}（{visibleMaterials.length}项）
-          </span>
-          <span aria-hidden="true">⌄</span>
-        </div>
-
-        {visibleMaterials.length > 0 ? (
-          <ul className="bv-source-rail__files">
-            {visibleMaterials.map((material) => (
-              <li key={material.id}>
-                <MaterialIcon tone={material.tone} />
-                <span
-                  aria-label={material.name}
-                  className="bv-source-rail__filename"
-                  data-name={material.name}
-                  title={material.name}
-                />
-                <small>{material.status ?? '已识别'}</small>
-                <CheckCircle2 aria-hidden="true" size={15} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="bv-source-rail__empty" role="status">
-            {showingEnterprise ? '企业资料库暂无可展示资料' : '当前项目尚未上传招标材料'}
-          </p>
-        )}
-
-        {showingEnterprise && onAddEnterpriseFiles ? (
-          <label
-            aria-busy={activeUploadState?.pending || undefined}
-            className="bv-source-rail__upload"
-          >
-            <UploadCloud aria-hidden="true" size={21} />
-            <span>{activeUploadState?.pending ? '正在上传企业资料…' : '上传企业资料'}</span>
-            <input
-              aria-label="上传企业资料并同步资料库"
-              disabled={activeUploadState?.pending}
-              multiple
-              type="file"
-              onChange={(event) => {
-                const files = Array.from(event.currentTarget.files ?? []);
-                event.currentTarget.value = '';
-                if (files.length > 0) {
-                  void uploadFiles('enterprise', files, onAddEnterpriseFiles);
-                }
-              }}
-            />
-          </label>
-        ) : showingEnterprise ? (
-          <ReadonlyUploadControl
-            label="企业资料上传不可用"
-            title="当前页面未提供企业资料上传能力"
+          <UploadCloud aria-hidden="true" size={21} />
+          <span>{uploadState.pending ? '正在上传企业资料…' : '上传企业资料'}</span>
+          <input
+            aria-label="上传企业资料并同步资料库"
+            disabled={uploadState.pending}
+            multiple
+            type="file"
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = '';
+              if (files.length > 0) void uploadEnterpriseFiles(files);
+            }}
           />
-        ) : onAddFiles ? (
-          <label
-            aria-busy={activeUploadState?.pending || undefined}
-            className="bv-source-rail__upload"
-          >
-            <UploadCloud aria-hidden="true" size={21} />
-            <span>{activeUploadState?.pending ? '正在上传资料…' : '上传资料'}</span>
-            <input
-              aria-label="补充上传当前项目资料"
-              disabled={activeUploadState?.pending}
-              multiple
-              type="file"
-              onChange={(event) => {
-                const files = Array.from(event.currentTarget.files ?? []);
-                event.currentTarget.value = '';
-                if (files.length > 0) void uploadFiles('project', files, onAddFiles);
-              }}
-            />
-          </label>
-        ) : (
-          <ReadonlyUploadControl
-            label="添加项目文件不可用"
-            title="当前页面未提供项目文件上传能力"
-          />
-        )}
-        {activeUploadState?.error ? (
-          <p className="bv-source-rail__upload-error" role="alert">
-            {activeUploadState.error}
-          </p>
-        ) : null}
-      </div>
+        </label>
+      ) : (
+        <ReadonlyUploadControl
+          label="企业资料上传不可用"
+          title="当前页面未提供企业资料上传能力"
+        />
+      )}
+      {uploadState.error ? (
+        <p className="bv-source-rail__upload-error" role="alert">
+          {uploadState.error}
+        </p>
+      ) : null}
     </aside>
   );
 }
@@ -232,7 +151,8 @@ type ProjectWorkbenchProps = {
   enterpriseMaterials: WorkspaceMaterial[];
   footerHint?: string;
   heightMode?: 'content' | 'fill';
-  materials: WorkspaceMaterial[];
+  /** Retained for page-level compatibility; project materials render in the center workspace. */
+  materials?: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantDraftChange?: (value: string) => void;
@@ -248,7 +168,6 @@ export function ProjectWorkbench({
   children,
   enterpriseMaterials,
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
-  materials,
   onAddEnterpriseFiles,
   onAddFiles,
   onAssistantDraftChange,
@@ -260,9 +179,7 @@ export function ProjectWorkbench({
     <div className={`bv-project-workspace bv-project-workspace--${heightMode}`}>
       <ProjectSourceRail
         enterpriseMaterials={enterpriseMaterials}
-        materials={materials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
-        onAddFiles={onAddFiles}
       />
       <main className={`bv-project-workspace__main${workspaceNavigation ? ' bv-project-workspace__main--with-navigation' : ''}`}>
         {workspaceNavigation}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,6 +8,7 @@ import {
   ProjectWorkbench,
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
+import projectWorkbenchCss from './project-workbench.css?raw';
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -46,126 +47,79 @@ describe('ProjectWorkbench', () => {
 });
 
 describe('ProjectSourceRail', () => {
-  it('exposes clearly disabled controls when upload handling is unavailable', async () => {
-    const user = userEvent.setup();
-    render(<ProjectSourceRail enterpriseMaterials={[]} materials={[]} />);
-
-    expect(screen.getByText('当前招标材料（0项）')).toBeInTheDocument();
-    expect(screen.queryByLabelText('招标文件')).not.toBeInTheDocument();
-    expect(screen.queryByText('缺失材料：')).not.toBeInTheDocument();
-    expect(screen.queryByText(/同类业绩|型式试验报告/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '添加项目文件不可用' })).toBeDisabled();
-
-    await user.click(screen.getByRole('tab', { name: '企业资料' }));
-    expect(screen.getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
+  it('uses the same heading scale as the review card and removes tab styling', () => {
+    expect(projectWorkbenchCss).toMatch(
+      /\.bv-source-rail__header h2\s*\{[^}]*font-size:\s*21px/,
+    );
+    expect(projectWorkbenchCss).not.toContain('.bv-source-rail__tabs');
   });
 
-  it('keeps the real upload input when an upload handler is provided', async () => {
-    const user = userEvent.setup();
-    const onAddFiles = vi.fn();
-    render(
-      <ProjectSourceRail
-        enterpriseMaterials={enterpriseMaterials}
-        materials={projectMaterials}
-        onAddFiles={onAddFiles}
-      />,
-    );
+  it('renders enterprise data as a card heading without source tabs or project materials', () => {
+    render(<ProjectSourceRail enterpriseMaterials={enterpriseMaterials} />);
 
-    const file = new File(['project'], '补遗文件.pdf', { type: 'application/pdf' });
-    await user.upload(screen.getByLabelText('补充上传当前项目资料'), file);
-
-    expect(onAddFiles).toHaveBeenCalledWith([file]);
+    const rail = screen.getByRole('complementary', { name: '企业资料' });
+    expect(within(rail).getByRole('heading', { level: 2, name: /企业资料/ })).toBeInTheDocument();
+    expect(within(rail).queryByRole('tablist')).not.toBeInTheDocument();
+    expect(within(rail).queryByRole('tab')).not.toBeInTheDocument();
+    expect(within(rail).getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
+    expect(within(rail).queryByText('当前招标材料')).not.toBeInTheDocument();
+    expect(within(rail).queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
+    expect(within(rail).queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
+    expect(within(rail).getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
   });
 
-  it('switches enterprise data in place without mixing it into project materials', async () => {
-    const user = userEvent.setup();
-    window.history.replaceState(null, '', '/projects/BV-2026-018/review');
-
-    render(
-      <ProjectSourceRail
-        enterpriseMaterials={enterpriseMaterials}
-        materials={projectMaterials}
-        onAddEnterpriseFiles={vi.fn()}
-        onAddFiles={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByRole('tab', { name: '当前招标材料' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(screen.getByLabelText('当前招标文件.pdf')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('tab', { name: '企业资料' }));
-
-    expect(window.location.pathname).toBe('/projects/BV-2026-018/review');
-    expect(screen.getByRole('tab', { name: '企业资料' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('企业资料（1项）')).toBeInTheDocument();
-    expect(screen.getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
-    expect(screen.queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
-    expect(screen.queryByText('缺失材料：')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('tab', { name: '当前招标材料' }));
-    expect(screen.getByLabelText('当前招标文件.pdf')).toBeInTheDocument();
-    expect(screen.queryByLabelText('企业营业执照.pdf')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('补充上传当前项目资料')).toBeInTheDocument();
-  });
-
-  it('dispatches enterprise uploads without invoking the project upload callback', async () => {
+  it('dispatches the left upload only to the enterprise callback', async () => {
     const user = userEvent.setup();
     const onAddEnterpriseFiles = vi.fn();
     const onAddFiles = vi.fn();
     render(
-      <ProjectSourceRail
+      <ProjectWorkbench
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAddFiles={onAddFiles}
-      />,
+        rightRail={<div>Review</div>}
+      >
+        <div>Workspace</div>
+      </ProjectWorkbench>,
     );
 
-    await user.click(screen.getByRole('tab', { name: '企业资料' }));
     const file = new File(['enterprise'], '新企业资质.docx', {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
+    expect(screen.getByText('上传企业资料')).toBeInTheDocument();
     await user.upload(screen.getByLabelText('上传企业资料并同步资料库'), file);
 
     expect(onAddEnterpriseFiles).toHaveBeenCalledWith([file]);
     expect(onAddFiles).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
   });
 
-  it('shows project upload pending and failure states without an unhandled rejection', async () => {
+  it('shows enterprise upload pending and failure states without an unhandled rejection', async () => {
     const user = userEvent.setup();
     const upload = deferred<void>();
-    const onAddFiles = vi.fn(() => upload.promise);
+    const onAddEnterpriseFiles = vi.fn(() => upload.promise);
     render(
       <ProjectSourceRail
         enterpriseMaterials={enterpriseMaterials}
-        materials={projectMaterials}
-        onAddFiles={onAddFiles}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
       />,
     );
 
-    const input = screen.getByLabelText('补充上传当前项目资料');
-    await user.upload(input, new File(['project'], '失败补遗.pdf', { type: 'application/pdf' }));
+    const input = screen.getByLabelText('上传企业资料并同步资料库');
+    await user.upload(input, new File(['enterprise'], '失败资质.pdf', { type: 'application/pdf' }));
 
-    expect(screen.getByText('正在上传资料…')).toBeInTheDocument();
+    expect(screen.getByText('正在上传企业资料…')).toBeInTheDocument();
     expect(input).toBeDisabled();
 
-    upload.reject(new Error('项目材料上传接口不可用'));
+    upload.reject(new Error('企业资料上传接口不可用'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('项目材料上传接口不可用');
-    expect(screen.getByLabelText('补充上传当前项目资料')).toBeEnabled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('企业资料上传接口不可用');
+    expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeEnabled();
   });
 
-  it('shows a dedicated empty state for the enterprise source', async () => {
-    const user = userEvent.setup();
-    render(<ProjectSourceRail enterpriseMaterials={[]} materials={projectMaterials} />);
-
-    await user.click(screen.getByRole('tab', { name: '企业资料' }));
+  it('shows a dedicated empty state for enterprise data', () => {
+    render(<ProjectSourceRail enterpriseMaterials={[]} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('企业资料库暂无可展示资料');
   });

@@ -186,7 +186,8 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '校核已完成标书' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '请选择任务类型' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('补充上传当前项目资料')).toBeInTheDocument();
+    expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
     expect(screen.getByText('替代版本 2')).toBeInTheDocument();
 
     await user.click(within(taskCard).getByRole('button', { name: '查看任务进度' }));
