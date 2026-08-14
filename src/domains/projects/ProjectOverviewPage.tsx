@@ -270,64 +270,58 @@ function DeliverablesEmptyState({
   request,
   taskSummary,
 }: DeliverablesEmptyStateProps) {
-  if (!request || request.status === 'idle') {
-    return (
-      <div className="bv-overview-empty" role="status">
-        <FileCheck2 aria-hidden="true" size={38} />
-        <strong>项目成果尚未生成</strong>
-        <p>当前项目没有可展示的成果版本。请先上传本次招标材料并完成解析。</p>
-      </div>
-    );
-  }
-
-  const isSuccess = request.status === 'success';
-  const title = isSuccess
-    ? '成果接口调用成功，返回 0 项'
-    : request.status === 'loading'
-      ? '正在调用成果接口'
-      : '成果接口调用失败';
-  const description = isSuccess
-    ? '后端已成功返回空列表，因此页面不会生成虚拟成果卡片。'
-    : request.status === 'loading'
-      ? '请求尚未完成，页面会等待后端返回后再展示真实成果。'
-      : request.errorMessage ?? '后端未能返回成果列表，请重新测试接口或稍后重试。';
-  const taskState = taskSummary?.status ? taskStatusContent[taskSummary.status] : undefined;
+  const requestStatus = request?.status ?? 'idle';
+  const taskContent = taskSummary?.status
+    ? taskEmptyStateContent[taskSummary.status]
+    : taskSummary
+      ? genericTaskEmptyStateContent
+      : undefined;
+  const content = taskContent ?? requestEmptyStateContent[requestStatus];
+  const taskPercent = taskSummary ? normalizeTaskPercent(taskSummary.percent) : null;
+  const StateIcon = taskSummary?.status === 'succeeded'
+    ? CheckCircle2
+    : taskSummary
+      ? Clock3
+      : FileCheck2;
 
   return (
     <div
-      aria-label={title}
-      className={`bv-overview-empty bv-overview-empty--api bv-overview-empty--${request.status}`}
-      data-request-status={request.status}
+      aria-label={content.title}
+      className={`bv-overview-empty bv-overview-empty--user bv-overview-empty--${taskSummary ? 'task' : requestStatus}`}
+      data-request-status={requestStatus}
+      data-task-status={taskSummary?.status}
       role="status"
     >
-      {isSuccess
-        ? <CheckCircle2 aria-hidden="true" size={38} />
-        : <FileCheck2 aria-hidden="true" size={38} />}
-      <strong>{title}</strong>
-      <p>{description}</p>
+      <StateIcon aria-hidden="true" size={38} />
+      <strong>{content.title}</strong>
+      <p>{content.description}</p>
 
-      <dl className="bv-overview-empty__request">
-        <div>
-          <dt>成果接口</dt>
-          <dd><code>{(request.method ?? 'GET').toUpperCase()} {request.endpoint}</code></dd>
-        </div>
-        <div>
-          <dt>真实返回</dt>
-          <dd>{isSuccess ? '调用成功 · 0 项成果' : request.status === 'loading' ? '请求进行中' : '调用失败'}</dd>
-        </div>
-      </dl>
-
-      {taskState && taskSummary ? (
-        <div className={`bv-overview-empty__task bv-overview-empty__task--${taskSummary.status}`} role="note">
-          <Clock3 aria-hidden="true" size={19} />
-          <span>
-            <strong>生成任务：{taskSummary.status} · {taskState}</strong>
-            <small>{taskSummary.message}</small>
-          </span>
+      {taskSummary ? (
+        <div className={`bv-overview-empty__task bv-overview-empty__task--${taskSummary.status ?? 'unknown'}`}>
+          <div className="bv-overview-empty__task-heading">
+            <span>
+              <small>{taskSummary.title}</small>
+              <strong>{taskContent?.statusLabel ?? '任务状态更新中'}</strong>
+            </span>
+            <strong>{taskPercent === null ? '进度待更新' : `${taskPercent}%`}</strong>
+          </div>
+          {taskPercent === null ? null : (
+            <div
+              aria-label="成果生成任务进度"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={taskPercent}
+              aria-valuetext={`${taskPercent}% · ${taskContent?.statusLabel ?? '任务状态更新中'}`}
+              className="bv-overview-empty__progress"
+              role="progressbar"
+            >
+              <span style={{ width: `${taskPercent}%` }} />
+            </div>
+          )}
+          <p className="bv-overview-empty__task-message">{taskSummary.message}</p>
           <button onClick={onOpenTasks} type="button">查看任务进度</button>
         </div>
       ) : null}
-
     </div>
   );
 }
@@ -378,11 +372,71 @@ function formatVersionNumber(versionId: string) {
   return `V${normalized}`;
 }
 
-const taskStatusContent: Record<ProjectTaskStatus, string> = {
-  queued: '等待执行器',
-  running: '执行中',
-  retrying: '等待重试',
-  waiting_user: '等待用户操作',
-  succeeded: '已完成但暂无成果',
-  failed: '执行失败',
+type EmptyStateContent = {
+  description: string;
+  statusLabel?: string;
+  title: string;
 };
+
+const requestEmptyStateContent: Record<DeliverablesRequestView['status'], EmptyStateContent> = {
+  idle: {
+    title: '当前暂无标书成果',
+    description: '尚未发现成果生成任务，请完成材料准备后发起成果生成。',
+  },
+  loading: {
+    title: '正在加载标书成果',
+    description: '正在获取当前项目的成果状态，请稍候。',
+  },
+  success: {
+    title: '当前暂无标书成果',
+    description: '尚未发现成果生成任务，请完成材料准备后发起成果生成。',
+  },
+  error: {
+    title: '暂时无法加载标书成果',
+    description: '成果状态暂时不可用，请稍后重试；您也可以查看页面顶部的服务状态。',
+  },
+};
+
+const genericTaskEmptyStateContent: EmptyStateContent = {
+  title: '成果生成任务处理中',
+  description: '任务状态正在更新，请通过任务进度查看最新动态。',
+  statusLabel: '任务状态更新中',
+};
+
+const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
+  queued: {
+    title: '成果生成任务等待执行',
+    description: '任务已进入队列，正在等待后端执行器领取。',
+    statusLabel: '排队中 · 等待后端执行器',
+  },
+  running: {
+    title: '正在生成标书成果',
+    description: '后端正在根据当前项目材料生成成果，请留意任务进度。',
+    statusLabel: '生成中',
+  },
+  retrying: {
+    title: '成果生成任务正在重试',
+    description: '上次执行尚未完成，系统正在等待下一次重试。',
+    statusLabel: '等待重试',
+  },
+  waiting_user: {
+    title: '成果生成等待您的处理',
+    description: '请查看任务详情并完成所需操作，任务随后才能继续。',
+    statusLabel: '等待用户处理',
+  },
+  succeeded: {
+    title: '成果生成任务已完成',
+    description: '任务已完成，成果列表正在更新；如长时间未显示，请查看任务详情。',
+    statusLabel: '任务已完成',
+  },
+  failed: {
+    title: '成果生成失败',
+    description: '本次生成任务未成功，请查看任务详情了解可公开的失败信息。',
+    statusLabel: '生成失败',
+  },
+};
+
+function normalizeTaskPercent(percent: number) {
+  if (!Number.isFinite(percent)) return null;
+  return Math.max(0, Math.min(100, Math.round(percent)));
+}

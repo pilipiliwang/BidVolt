@@ -72,15 +72,17 @@ describe('ProjectOverviewPage', () => {
       <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} project={{ ...project, id: 'BV-2026-015' }} projectId="BV-2026-015" onOpenTasks={vi.fn()} />,
     );
 
-    expect(screen.getByText('项目成果尚未生成')).toBeInTheDocument();
+    expect(screen.getByText('当前暂无标书成果')).toBeInTheDocument();
+    expect(screen.getByText('尚未发现成果生成任务，请完成材料准备后发起成果生成。')).toBeInTheDocument();
     expect(screen.getByText('暂无模拟得分')).toBeInTheDocument();
     expect(screen.queryByLabelText('综合得分 91.4 分')).not.toBeInTheDocument();
-    const emptyState = screen.getByText('项目成果尚未生成').closest<HTMLElement>('.bv-overview-empty');
+    const emptyState = screen.getByText('当前暂无标书成果').closest<HTMLElement>('.bv-overview-empty');
     expect(emptyState).not.toBeNull();
     expect(within(emptyState!).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
+    expect(within(emptyState!).queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
   });
 
-  it('reports a successful empty deliverables response and a queued generation task without mock cards', async () => {
+  it('shows queued generation progress without exposing API diagnostics in the business area', async () => {
     const user = userEvent.setup();
     const onOpenTasks = vi.fn();
     render(
@@ -106,18 +108,21 @@ describe('ProjectOverviewPage', () => {
     );
 
     const emptyState = screen.getByRole('status', {
-      name: /成果接口调用成功，返回 0 项/,
+      name: '成果生成任务等待执行',
     });
     expect(emptyState).toHaveAttribute('data-request-status', 'success');
-    expect(screen.getByText('后端已成功返回空列表，因此页面不会生成虚拟成果卡片。')).toBeInTheDocument();
-    expect(screen.getByText('GET /api/v1/deliverables?project_id=1')).toBeInTheDocument();
-    expect(screen.getByText('调用成功 · 0 项成果')).toBeInTheDocument();
-    expect(screen.getByText('生成任务：queued · 等待执行器')).toBeInTheDocument();
+    expect(emptyState).toHaveAttribute('data-task-status', 'queued');
+    expect(within(emptyState).getByText('任务已进入队列，正在等待后端执行器领取。')).toBeInTheDocument();
+    expect(within(emptyState).getByText('排队中 · 等待后端执行器')).toBeInTheDocument();
     expect(within(emptyState).getByText('任务已经入队，尚未被 worker 领取。')).toBeInTheDocument();
-    expect(within(emptyState).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
+    expect(within(emptyState).getByRole('progressbar', { name: '成果生成任务进度' }))
+      .toHaveAttribute('aria-valuenow', '0');
+    expect(within(emptyState).getByText('0%')).toBeInTheDocument();
+    expect(within(emptyState).queryByText('/api/v1/deliverables?project_id=1')).not.toBeInTheDocument();
+    expect(emptyState).not.toHaveTextContent(/接口调用成功|返回 0 项|虚拟成果卡片|GET \/api/);
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '查看任务进度' }));
+    await user.click(within(emptyState).getByRole('button', { name: '查看任务进度' }));
     expect(onOpenTasks).toHaveBeenCalledOnce();
   });
 
@@ -140,9 +145,9 @@ describe('ProjectOverviewPage', () => {
       />,
     );
 
-    expect(screen.getByRole('status', { name: '正在调用成果接口' }))
+    expect(screen.getByRole('status', { name: '正在加载标书成果' }))
       .toHaveAttribute('data-request-status', 'loading');
-    expect(screen.getByText('请求进行中')).toBeInTheDocument();
+    expect(screen.getByText('正在获取当前项目的成果状态，请稍候。')).toBeInTheDocument();
 
     rerender(
       <ProjectOverviewPage
@@ -155,10 +160,51 @@ describe('ProjectOverviewPage', () => {
       />,
     );
 
-    expect(screen.getByRole('status', { name: '成果接口调用失败' }))
+    expect(screen.getByRole('status', { name: '暂时无法加载标书成果' }))
       .toHaveAttribute('data-request-status', 'error');
-    expect(screen.getByText('成果版本加载超时')).toBeInTheDocument();
+    expect(screen.getByText('成果状态暂时不可用，请稍后重试；您也可以查看页面顶部的服务状态。')).toBeInTheDocument();
+    expect(screen.queryByText('成果版本加载超时')).not.toBeInTheDocument();
+    expect(screen.queryByText('/api/v1/deliverables?project_id=1')).not.toBeInTheDocument();
   });
+
+  it.each([
+    ['running', 42, '正在生成标书成果', '生成中', '后端正在根据当前项目材料生成成果，请留意任务进度。'],
+    ['retrying', 35, '成果生成任务正在重试', '等待重试', '上次执行尚未完成，系统正在等待下一次重试。'],
+    ['waiting_user', 50, '成果生成等待您的处理', '等待用户处理', '请查看任务详情并完成所需操作，任务随后才能继续。'],
+    ['succeeded', 100, '成果生成任务已完成', '任务已完成', '任务已完成，成果列表正在更新；如长时间未显示，请查看任务详情。'],
+    ['failed', 63, '成果生成失败', '生成失败', '本次生成任务未成功，请查看任务详情了解可公开的失败信息。'],
+  ] as const)(
+    'shows the %s generation status in user-facing language',
+    (status, percent, title, statusLabel, description) => {
+      render(
+        <ProjectOverviewPage
+          deliverables={[]}
+          deliverablesRequest={{ endpoint: '/private/debug/path', status: 'success' }}
+          enterpriseMaterials={[]}
+          materials={[]}
+          onOpenTasks={vi.fn()}
+          project={project}
+          projectId="1"
+          taskSummary={{
+            message: '这是后端公开任务说明。',
+            percent,
+            status,
+            title: '成果编制',
+          }}
+        />,
+      );
+
+      const emptyState = screen.getByRole('status', { name: title });
+      expect(within(emptyState).getByText(statusLabel)).toBeInTheDocument();
+      expect(within(emptyState).getByText(description)).toBeInTheDocument();
+      expect(within(emptyState).getByRole('progressbar')).toHaveAttribute(
+        'aria-valuenow',
+        String(percent),
+      );
+      expect(within(emptyState).getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
+      expect(emptyState).not.toHaveTextContent('/private/debug/path');
+    },
+  );
 
   it('routes each preview to its own versioned editor and selects only real versions', async () => {
     const user = userEvent.setup();
@@ -224,8 +270,9 @@ describe('ProjectOverviewPage', () => {
       />,
     );
 
-    const emptyState = screen.getByRole('status', { name: '成果接口调用失败' });
-    expect(within(emptyState).getByText('服务不可用')).toBeInTheDocument();
+    const emptyState = screen.getByRole('status', { name: '暂时无法加载标书成果' });
+    expect(within(emptyState).queryByText('服务不可用')).not.toBeInTheDocument();
+    expect(within(emptyState).getByText('成果状态暂时不可用，请稍后重试；您也可以查看页面顶部的服务状态。')).toBeInTheDocument();
     expect(within(emptyState).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
   });
 
