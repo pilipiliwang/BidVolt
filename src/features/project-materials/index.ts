@@ -6,8 +6,6 @@ export type {
   ProjectMaterial,
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
-  ProjectMaterialsDeliverableKind,
-  ProjectMaterialsDeliverableSummary,
   ProjectMaterialsPageProps,
   ProjectMaterialUploadProps,
   ProjectRequirement,

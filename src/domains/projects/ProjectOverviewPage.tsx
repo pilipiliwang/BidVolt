@@ -1,21 +1,19 @@
 import {
   CheckCircle2,
-  ChevronDown,
   Clock3,
   Download,
   Eye,
   FileCheck2,
-  Gauge,
   Lightbulb,
 } from 'lucide-react';
 
 import { AppLink, deliverableEditorPath } from '../../app/router';
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import type { ProjectSummary } from './project-view-model';
+import { ProjectReviewSidebar, type ProjectReviewSidebarViewModel } from './ProjectReviewSidebar';
 import {
   ProjectWorkbench,
   ResultCover,
-  ScoreRing,
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
 import { ProjectWorkspaceTabs } from './ProjectWorkspaceTabs';
@@ -37,6 +35,7 @@ type ProjectOverviewPageProps = {
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
   projectId: string;
+  reviewSidebar?: ProjectReviewSidebarViewModel;
   taskSummary?: {
     message: string;
     percent: number;
@@ -111,6 +110,7 @@ export function ProjectOverviewPage({
   overview,
   project: projectOverride,
   projectId,
+  reviewSidebar,
   taskSummary,
   versionOptions,
   downloadHrefFor,
@@ -145,47 +145,7 @@ export function ProjectOverviewPage({
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
       workspaceNavigation={<ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />}
-      rightRail={
-        <section className="bv-review-summary" aria-labelledby="overview-score-title">
-          <header>
-            <span>
-              <Gauge aria-hidden="true" size={22} />
-              <h2 id="overview-score-title">模拟评标</h2>
-            </span>
-            <ChevronDown aria-hidden="true" size={20} />
-          </header>
-          {overview ? (
-            <>
-              <ScoreRing score={overview.score.total} />
-              <dl className="bv-score-breakdown">
-                <div><dt>商务分</dt><dd><strong>{overview.score.business ?? '—'}</strong> / 30</dd></div>
-                <div><dt>技术分</dt><dd><strong>{overview.score.technical ?? '—'}</strong> / 50</dd></div>
-                <div><dt>报价分</dt><dd><strong>{overview.score.pricing ?? '—'}</strong> / 20</dd></div>
-                <div><dt>否决风险数</dt><dd><strong>{overview.score.rejectionRisks ?? '—'}</strong> 项</dd></div>
-                <div className="bv-score-breakdown__warning"><dt>缺失材料数</dt><dd><strong>{overview.score.missingMaterials}</strong> 项</dd></div>
-                <div><dt>预计可提升分值</dt><dd><strong>{overview.score.estimatedLift ?? '—'}</strong> 分</dd></div>
-              </dl>
-              <AppLink className="bv-review-summary__button" to={`/projects/${projectId}/review`}>
-                <Lightbulb aria-hidden="true" size={21} />
-                查看提升建议
-              </AppLink>
-            </>
-          ) : (
-            <div className="bv-review-summary__empty" role="status">
-              <Gauge aria-hidden="true" size={34} />
-              <strong>暂无模拟得分</strong>
-              <p>完成当前项目的材料解析并生成成果后，才会展示项目评分。</p>
-            </div>
-          )}
-          {taskSummary ? (
-            <button className="bv-task-progress" type="button" onClick={onOpenTasks}>
-              <span>{taskSummary.title}</span>
-              <strong>{taskSummary.percent}%</strong>
-              <small>{taskSummary.message}</small>
-            </button>
-          ) : null}
-        </section>
-      }
+      rightRail={<ProjectReviewSidebar viewModel={reviewSidebar} />}
     >
       <section className="bv-deliverables" aria-labelledby="deliverables-title">
         <h2 className="bv-visually-hidden">{project.title}</h2>
@@ -202,6 +162,22 @@ export function ProjectOverviewPage({
               onSelectVersion={onSelectVersion}
               options={versionOptions}
             />
+            <AppLink className="bv-overview-header-action" to={`/projects/${projectId}/review`}>
+              <Lightbulb aria-hidden="true" size={17} />
+              查看提升建议
+            </AppLink>
+            {taskSummary && visibleDeliverables && visibleDeliverables.length > 0 ? (
+              <button
+                aria-label={`查看任务进度，当前 ${normalizeTaskPercent(taskSummary.percent)}%`}
+                className="bv-overview-header-action"
+                type="button"
+                onClick={onOpenTasks}
+              >
+                <Clock3 aria-hidden="true" size={17} />
+                查看任务进度
+                <span>{normalizeTaskPercent(taskSummary.percent)}%</span>
+              </button>
+            ) : null}
           </div>
         </header>
 

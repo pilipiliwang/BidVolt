@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  BadgeCheck,
   CheckCircle2,
   ChevronDown,
   FileCheck2,
@@ -10,11 +9,11 @@ import {
   Layers3,
   LoaderCircle,
   RotateCcw,
-  ShieldAlert,
   Sparkles,
 } from 'lucide-react';
 import { useId, useMemo, useState, type ReactNode } from 'react';
 
+import { ProjectReviewSidebar } from '../../domains/projects/ProjectReviewSidebar';
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
@@ -24,7 +23,6 @@ import type {
   ProjectMaterial,
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
-  ProjectMaterialsDeliverableSummary,
   ProjectMaterialsPageProps,
 } from './types';
 import './project-materials.css';
@@ -191,136 +189,10 @@ const taskActionBlockingStatuses = new Set<NonNullable<ProjectMaterialsPageProps
   'succeeded',
 ]);
 
-type ReviewMetricState = 'available' | 'generated' | 'in-progress' | 'missing' | 'unavailable';
-
-function ReviewMetricCard({
-  detail,
-  Icon,
-  label,
-  state,
-  unit,
-  value,
-}: {
-  detail: string;
-  Icon: typeof BadgeCheck;
-  label: string;
-  state: ReviewMetricState;
-  unit?: string;
-  value: number | string;
-}) {
-  return (
-    <article className="project-review-metric-card" data-metric-state={state} role="listitem">
-      <div className="project-review-metric-copy">
-        <small>{label}</small>
-        <strong>{value}{unit ? <span>{unit}</span> : null}</strong>
-        <p>{detail}</p>
-      </div>
-      <span className="project-review-metric-icon" aria-hidden="true">
-        <Icon size={22} />
-      </span>
-    </article>
-  );
-}
-
-function deliverableMetric(
-  deliverables: readonly ProjectMaterialsDeliverableSummary[],
-  kind: ProjectMaterialsDeliverableSummary['kind'],
-  generationInProgress: boolean,
-) {
-  const version = deliverables.reduce<number | undefined>((latest, deliverable) => {
-    const currentVersionNo = deliverable.currentVersionNo;
-    if (deliverable.kind !== kind
-      || !Number.isInteger(currentVersionNo)
-      || currentVersionNo === undefined
-      || currentVersionNo <= 0) return latest;
-    return Math.max(latest ?? 0, currentVersionNo);
-  }, undefined);
-
-  if (version !== undefined) {
-    return { detail: `当前版本 V${version}`, state: 'generated' as const, value: '已生成' };
-  }
-  if (generationInProgress) {
-    return { detail: '后端生成任务处理中', state: 'in-progress' as const, value: '执行中' };
-  }
-  return { detail: '暂无有效成果版本', state: 'missing' as const, value: '未生成' };
-}
-
-function SimulatedReviewPanel({
-  deliverables,
-  generationInProgress,
-  requirements,
-}: {
-  deliverables: readonly ProjectMaterialsDeliverableSummary[];
-  generationInProgress: boolean;
-  requirements: ProjectMaterialsPageProps['requirements'];
-}) {
-  const scoreRuleCount = requirements.filter((item) => item.type === 'score_rule').length;
-  const business = deliverableMetric(deliverables, 'business', generationInProgress);
-  const technical = deliverableMetric(deliverables, 'technical', generationInProgress);
-  const quote = deliverableMetric(deliverables, 'quote', generationInProgress);
-
-  return (
-    <section className="project-review-preview" aria-labelledby="project-review-preview-title">
-      <div className="project-review-preview__heading">
-        <div>
-          <h2 id="project-review-preview-title">模拟评标</h2>
-          <p>材料与成果真实状态</p>
-        </div>
-      </div>
-
-      <div className="project-review-metrics" aria-label="模拟评标六项指标" role="list">
-        <ReviewMetricCard
-          detail="来自招标要求"
-          Icon={BadgeCheck}
-          label="已识别评分项"
-          state="available"
-          unit="项"
-          value={scoreRuleCount}
-        />
-        <ReviewMetricCard
-          detail="接口待提供"
-          Icon={FileText}
-          label="已上传标书数量"
-          state="unavailable"
-          value="—"
-        />
-        <ReviewMetricCard
-          {...business}
-          Icon={FileCheck2}
-          label="商务标状态"
-        />
-        <ReviewMetricCard
-          {...technical}
-          Icon={FolderCheck}
-          label="技术标状态"
-        />
-        <ReviewMetricCard
-          {...quote}
-          Icon={FileLock2}
-          label="报价单状态"
-        />
-        <ReviewMetricCard
-          detail="接口待提供"
-          Icon={ShieldAlert}
-          label="待校核内容数量"
-          state="unavailable"
-          value="—"
-        />
-      </div>
-
-      <p className="project-review-disclaimer">
-        指标仅展示后端可复核数据；缺少读取接口的项目不会由前端推算。
-      </p>
-    </section>
-  );
-}
-
 export function ProjectMaterialsPage({
-  deliverables = [],
   enterpriseCategories = [],
   enterpriseLibraryKey,
   enterpriseMaterials = [],
-  generationInProgress = false,
   onAddEnterpriseFiles,
   onAssistantAddFiles,
   onAssistantSend,
@@ -328,6 +200,7 @@ export function ProjectMaterialsPage({
   onImportTenderNoticeUrl,
   projectId,
   projectName,
+  reviewSidebar,
   materials,
   requirements,
   snapshots,
@@ -420,13 +293,7 @@ export function ProjectMaterialsPage({
       onAssistantSend={onAssistantSend}
       workspaceNavigation={<ProjectWorkspaceTabs activeTab="materials" projectId={projectId} />}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
-      rightRail={
-        <SimulatedReviewPanel
-          deliverables={deliverables}
-          generationInProgress={generationInProgress}
-          requirements={requirements}
-        />
-      }
+      rightRail={<ProjectReviewSidebar viewModel={reviewSidebar} />}
     >
       <section className="project-material-page">
         <div className="project-material-content">
@@ -610,8 +477,6 @@ export type {
   ProjectMaterial,
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
-  ProjectMaterialsDeliverableKind,
-  ProjectMaterialsDeliverableSummary,
   ProjectMaterialsPageProps,
   ProjectMaterialUploadProps,
   ProjectRequirement,

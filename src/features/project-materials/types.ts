@@ -1,4 +1,5 @@
 import type { PublicTaskEvent } from '../../shared/task-events';
+import type { ProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
 
 export type ProjectMaterialKind =
   | 'tender_notice'
@@ -72,19 +73,11 @@ export interface ProjectMaterialUploadProps {
   onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
 }
 
-export type ProjectMaterialsDeliverableKind = 'business' | 'technical' | 'quote';
-
-export interface ProjectMaterialsDeliverableSummary {
-  currentVersionNo?: number;
-  kind: ProjectMaterialsDeliverableKind;
-}
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   completedBidMaterialIds?: readonly string[];
-  deliverables?: readonly ProjectMaterialsDeliverableSummary[];
   enterpriseCategories?: import('../enterprise-assets').EnterpriseAssetCategoryFolder[];
   enterpriseLibraryKey?: string;
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
-  generationInProgress?: boolean;
   materials: ProjectMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
@@ -95,6 +88,7 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
     url: string,
   ) => Promise<{ message?: string; status?: 'queued' | 'processing' | 'completed' } | void>;
   requirements: ProjectRequirement[];
+  reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];
   supplementalMaterialIds?: readonly string[];
   taskStatus?: PublicTaskEvent['status'];

@@ -26,6 +26,7 @@ import {
   type ProjectTaskStatus,
 } from '../domains/projects/ProjectOverviewPage';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
+import { buildProjectReviewSidebarViewModel } from '../domains/projects/ProjectReviewSidebar';
 import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
 import { ReviewCenter } from '../domains/review/ReviewCenter';
 import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
@@ -1355,8 +1356,10 @@ export function App() {
   const workspaceEnterprise = toWorkspaceEnterpriseMaterials(enterpriseAssets);
   const taskEvents = activeData?.tasks ?? [];
   const activeTaskCount = taskEvents.filter((event) => isActiveTaskStatus(event.status)).length;
-  const latestTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) =>
-    !latest || event.sequence > latest.sequence ? event : latest, undefined);
+  const latestGenerationTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) => {
+    if ((event.task_type ?? event.phase) !== 'bid_generate') return latest;
+    return !latest || event.sequence > latest.sequence ? event : latest;
+  }, undefined);
   const latestSubmissionTask = findCurrentProjectSubmissionTask(taskEvents);
   const supplementalMaterialIds = routeProjectId && session
     ? getSupplementalMaterialIds(supplementalMaterialIdsByScope, session.enterpriseId, routeProjectId)
@@ -1364,12 +1367,29 @@ export function App() {
   const completedBidMaterialIds = routeProjectId && session
     ? getCompletedBidMaterialIds(completedBidMaterialIdsByScope, session.enterpriseId, routeProjectId)
     : [];
-  const projectMaterialsDeliverables = (activeData?.deliverables ?? []).flatMap((deliverable) => {
-    const kind = routeIdForDeliverable(deliverable);
-    return kind ? [{ currentVersionNo: deliverable.current_version_no, kind }] : [];
+  const projectReviewSidebar = buildProjectReviewSidebarViewModel({
+    deliverables: (activeData?.deliverables ?? []).flatMap((deliverable) => {
+      const kind = routeIdForDeliverable(deliverable);
+      return kind ? [{ currentVersionNo: deliverable.current_version_no, kind }] : [];
+    }),
+    deliverablesState: !activeData || loadingProjectId === routeProjectId
+      ? 'loading'
+      : routeProjectId && projectResourceErrors[routeProjectId]?.deliverables
+        ? 'error'
+        : 'ready',
+    requirements: activeData?.requirements ?? [],
+    requirementsState: !activeData || loadingProjectId === routeProjectId
+      ? 'loading'
+      : routeProjectId && projectResourceErrors[routeProjectId]?.requirements
+        ? 'error'
+        : 'ready',
+    tasks: taskEvents,
+    tasksState: !activeData || loadingProjectId === routeProjectId
+      ? 'loading'
+      : routeProjectId && projectResourceErrors[routeProjectId]?.tasks
+        ? 'error'
+        : 'ready',
   });
-  const generationInProgress = taskEvents.some((event) =>
-    (event.task_type ?? event.phase) === 'bid_generate' && isActiveTaskStatus(event.status));
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
   const deliverableVersionOptions = activeData
     ? buildProjectOverviewVersionOptions(
@@ -1535,11 +1555,12 @@ export function App() {
           overview={activeData?.overview}
           project={activeProject}
           projectId={route.projectId}
-          taskSummary={latestTask?.percent !== null && latestTask?.percent !== undefined ? {
-            message: latestTask.public_message,
-            percent: latestTask.percent,
-            status: toProjectTaskStatus(latestTask.status),
-            title: taskPhaseLabel(latestTask.phase),
+          reviewSidebar={projectReviewSidebar}
+          taskSummary={latestGenerationTask?.percent !== null && latestGenerationTask?.percent !== undefined ? {
+            message: latestGenerationTask.public_message,
+            percent: latestGenerationTask.percent,
+            status: toProjectTaskStatus(latestGenerationTask.status),
+            title: taskPhaseLabel(latestGenerationTask.phase),
           } : undefined}
           versionOptions={deliverableVersionOptions}
         />
@@ -1547,11 +1568,9 @@ export function App() {
       {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
           completedBidMaterialIds={completedBidMaterialIds}
-          deliverables={projectMaterialsDeliverables}
           enterpriseCategories={enterpriseCategories}
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
-          generationInProgress={generationInProgress}
           materials={activeMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');
@@ -1577,6 +1596,7 @@ export function App() {
           projectId={route.projectId}
           projectName={activeProject.title}
           requirements={activeData?.requirements ?? []}
+          reviewSidebar={projectReviewSidebar}
           snapshots={activeData?.snapshots ?? []}
           supplementalMaterialIds={supplementalMaterialIds}
           taskStatus={latestSubmissionTask?.status}

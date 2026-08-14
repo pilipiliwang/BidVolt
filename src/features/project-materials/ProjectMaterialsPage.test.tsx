@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { buildProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
 import { ProjectMaterialsPage } from './ProjectMaterialsPage';
 import type { ProjectMaterial, ProjectRequirement, ProjectSnapshot } from './types';
 
@@ -369,25 +370,30 @@ describe('ProjectMaterialsPage', () => {
   });
 
   it('shows the six review metrics from real requirement and deliverable data', () => {
+    const reviewRequirements = [
+      ...requirements,
+      {
+        ...requirements[0],
+        id: 'score-rule-1',
+        title: '技术评分标准',
+        type: 'score_rule' as const,
+      },
+    ];
     render(
       <ProjectMaterialsPage
-        deliverables={[
-          { currentVersionNo: 2, kind: 'business' },
-          { currentVersionNo: 0, kind: 'technical' },
-        ]}
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
         materials={materials}
         onStartTask={vi.fn()}
-        requirements={[
-          ...requirements,
-          {
-            ...requirements[0],
-            id: 'score-rule-1',
-            title: '技术评分标准',
-            type: 'score_rule',
-          },
-        ]}
+        requirements={reviewRequirements}
+        reviewSidebar={buildProjectReviewSidebarViewModel({
+          deliverables: [
+            { currentVersionNo: 2, kind: 'business' },
+            { currentVersionNo: 0, kind: 'technical' },
+          ],
+          requirements: reviewRequirements,
+          tasks: [],
+        })}
         snapshots={snapshots}
       />,
     );
@@ -435,19 +441,27 @@ describe('ProjectMaterialsPage', () => {
 
   it('keeps existing versions generated while a real generation task is active', () => {
     const onStartTask = vi.fn();
+    const activeGenerationTask = {
+      phase: 'generate_sections',
+      status: 'running' as const,
+      task_type: 'bid_generate',
+    };
     const { rerender } = render(
       <ProjectMaterialsPage
-        deliverables={[
-          { currentVersionNo: 2, kind: 'business' },
-          { currentVersionNo: 4, kind: 'business' },
-          { currentVersionNo: 0, kind: 'technical' },
-        ]}
-        generationInProgress
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
         materials={materials}
         onStartTask={onStartTask}
         requirements={requirements}
+        reviewSidebar={buildProjectReviewSidebarViewModel({
+          deliverables: [
+            { currentVersionNo: 2, kind: 'business' },
+            { currentVersionNo: 4, kind: 'business' },
+            { currentVersionNo: 0, kind: 'technical' },
+          ],
+          requirements,
+          tasks: [activeGenerationTask],
+        })}
         snapshots={snapshots}
       />,
     );
@@ -467,15 +481,19 @@ describe('ProjectMaterialsPage', () => {
 
     rerender(
       <ProjectMaterialsPage
-        deliverables={[
-          { currentVersionNo: 4, kind: 'business' },
-          { currentVersionNo: 0, kind: 'technical' },
-        ]}
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
         materials={materials}
         onStartTask={onStartTask}
         requirements={requirements}
+        reviewSidebar={buildProjectReviewSidebarViewModel({
+          deliverables: [
+            { currentVersionNo: 4, kind: 'business' },
+            { currentVersionNo: 0, kind: 'technical' },
+          ],
+          requirements,
+          tasks: [],
+        })}
         snapshots={snapshots}
       />,
     );
