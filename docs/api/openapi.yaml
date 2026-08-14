@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: BidVolt Web API
+  title: AI电网投标助手 Web API
   version: 0.2.0
   description: |
     Web-only frontend contract. Enterprise assets and project materials use separate upload
@@ -1009,6 +1009,35 @@ components:
         message: { type: string }
         suggestion: { type: [string, 'null'] }
         evidence_refs: { type: array, items: { $ref: '#/components/schemas/EvidenceRef' } }
+    ReviewCategoryCount:
+      type: object
+      additionalProperties: false
+      required: [category_key, label, count]
+      properties:
+        category_key: { type: string, minLength: 1 }
+        label: { type: string, minLength: 1 }
+        count: { type: integer, minimum: 0 }
+    ReviewSectionLifts:
+      type: object
+      additionalProperties: false
+      required: [business, technical, pricing]
+      properties:
+        business: { type: number, minimum: 0 }
+        technical: { type: number, minimum: 0 }
+        pricing: { type: number, minimum: 0 }
+    ReviewSummary:
+      type: object
+      additionalProperties: false
+      required: [total_finding_count, category_counts, current_score, predicted_score, total_lift, section_lifts]
+      properties:
+        total_finding_count: { type: integer, minimum: 0 }
+        category_counts:
+          type: array
+          items: { $ref: '#/components/schemas/ReviewCategoryCount' }
+        current_score: { type: number, minimum: 0, maximum: 100 }
+        predicted_score: { type: number, minimum: 0, maximum: 100 }
+        total_lift: { type: number, minimum: 0 }
+        section_lifts: { $ref: '#/components/schemas/ReviewSectionLifts' }
     ReviewRun:
       type: object
       additionalProperties: false
@@ -1023,6 +1052,7 @@ components:
         status: { type: string, enum: [queued, running, succeeded, failed, invalid_response, timed_out] }
         raw_response_hash: { type: [string, 'null'] }
         findings: { type: array, items: { $ref: '#/components/schemas/ReviewFinding' } }
+        review_summary: { $ref: '#/components/schemas/ReviewSummary' }
         created_at: { type: string, format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
     HistoryPriceSample:

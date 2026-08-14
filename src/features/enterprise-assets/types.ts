@@ -10,11 +10,18 @@ export type EnterpriseAssetCategory =
 
 export type EnterpriseAssetStatus = 'processing' | 'needs_review' | 'ready' | 'failed';
 
+export interface EnterpriseAssetCategoryFolder {
+  id: string;
+  label: string;
+  parentId: string | null;
+}
+
 export interface EnterpriseFact {
+  id?: string;
   key: string;
   label: string;
   value: string;
-  confidence: number;
+  confidence?: number;
   sourceLabel: string;
   sourcePage?: number;
   needsReview?: boolean;
@@ -33,7 +40,9 @@ export interface EnterpriseAsset {
   id: string;
   name: string;
   category: EnterpriseAssetCategory;
-  classificationConfidence: number;
+  categoryId: string | null;
+  categoryLabel: string;
+  classificationConfidence?: number;
   status: EnterpriseAssetStatus;
   updatedAt: string;
   expiresAt?: string;
@@ -45,17 +54,19 @@ export interface EnterpriseIngestionItem {
   id: string;
   name: string;
   status: 'queued' | 'classifying' | 'extracting' | 'completed' | 'failed';
-  progress: number;
+  progress?: number;
 }
 
 export interface EnterpriseAssetUploadProps {
   enterpriseName: string;
   ingestionItems?: EnterpriseIngestionItem[];
-  onUpload?: (files: File[]) => void;
+  onUpload?: (files: File[]) => Promise<{ message?: string } | void> | void;
 }
 
 export interface EnterpriseAssetPageProps extends EnterpriseAssetUploadProps {
   assets: EnterpriseAsset[];
-  onCorrectFact?: (assetId: string, factKey: string, value: string) => void;
+  categories: EnterpriseAssetCategoryFolder[];
+  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
+  onRefresh?: () => Promise<void> | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }

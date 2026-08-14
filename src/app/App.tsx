@@ -1,15 +1,40 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
+import { LoginPage, type LoginCredentials, type RegisterCredentials } from '../domains/auth/LoginPage';
+import {
+  DeliverableEditorPage,
+  backendQuoteRows,
+  toBackendEditorContent,
+  type OfficeMockSavePayload,
+} from '../domains/editor';
+import { HistoryPricesPage } from '../domains/history';
+import type { HistoricalQuoteRecord } from '../domains/history/types';
+import { LandingPage } from '../domains/marketing/LandingPage';
 import { PricingCenter } from '../domains/pricing/PricingCenter';
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
 import { ProjectListPage } from '../domains/projects/ProjectListPage';
-import { ProjectOverviewPage } from '../domains/projects/ProjectOverviewPage';
+import {
+  ProjectOverviewPage,
+  type DeliverablesRequestView,
+  type ProjectOverviewView,
+  type ProjectTaskStatus,
+} from '../domains/projects/ProjectOverviewPage';
+import type { ProjectSummary } from '../domains/projects/project-view-model';
+import { buildProjectOutcomeReviewViewModel } from '../domains/projects/ProjectOutcomeReviewPanel';
+import { buildProjectReviewSidebarViewModel } from '../domains/projects/ProjectReviewSidebar';
+import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
 import { ReviewCenter } from '../domains/review/ReviewCenter';
-import type { ReviewRunView } from '../domains/review/types';
-import { getProjectSummary } from '../domains/projects/project-view-model';
+import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
 import {
   EnterpriseAssetsPage,
   type EnterpriseAsset,
+  type EnterpriseAssetCategoryFolder,
   type EnterpriseIngestionItem,
 } from '../features/enterprise-assets';
 import {
@@ -18,369 +43,2080 @@ import {
   type ProjectRequirement,
   type ProjectSnapshot,
 } from '../features/project-materials';
-import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
-import type { PublicTaskEvent } from '../shared/api/task-events';
-import { AppShell } from './AppShell';
+import type { PublicTaskEvent } from '../shared/task-events';
 import {
-  defaultProjectId,
-  enterpriseAssetsDemo,
-  enterpriseIngestionDemo,
-  historyPriceSamplesDemo,
-  projectMaterialsDemo,
-  projectRequirementsDemo,
-  projectSnapshotsDemo,
-  publicTaskEventsDemo,
-  quoteCalculationDemo,
-  reviewProvidersDemo,
-  reviewRunDemo,
-} from './demo-data';
-import { AppLink, useUrlRoute } from './router';
-import { demoSession, getProjectScopeKey } from './session';
+  BackendApiError,
+  adaptBackendDeliverableCards,
+  adaptBackendEnterpriseAssets,
+  adaptBackendEnterpriseCategories,
+  adaptBackendFiles,
+  adaptBackendHistorySamples,
+  adaptBackendProjectOverview,
+  adaptBackendProject,
+  adaptBackendProjects,
+  adaptBackendQuoteCalculation,
+  adaptBackendRequirements,
+  adaptBackendReviewProviders,
+  adaptBackendReviewRun,
+  adaptBackendSnapshots,
+  adaptBackendTaskEvent,
+  backendApi,
+  isBackendTaskTerminal,
+  scoreSummaryForOverview,
+  subscribeToBackendApiRequests,
+  type BackendApiRequestEvent,
+  type BackendFile,
+  type BackendTask,
+  type BackendTaskStreamUpdate,
+  type Deliverable,
+  type DeliverableContent,
+  type EditorSession,
+  type EnterpriseIngestion,
+  type JsonObject,
+  type MeResponse,
+  type ScoreSummary,
+} from '../shared/backend-api';
+import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
+import { ApiTestPanel } from './ApiTestPanel';
+import { AppShell } from './AppShell';
+import { BackendApiStatusBar } from './BackendApiStatusBar';
+import { shouldShowApiTestPanel } from './api-test-panel-gate';
+import {
+  BACKEND_SESSION_EXPIRED_EVENT,
+  clearBackendSession,
+  getBackendAccessToken,
+  getBackendRefreshToken,
+  getRememberedEnterpriseName,
+  saveBackendSession,
+} from './backend-session';
+import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
+import { mergeProjectPage, upsertProjectSummary } from './project-state';
+import {
+  findLatestActiveBidGenerateTask,
+  findCurrentProjectSubmissionTask,
+  hasTaskEnteredTerminalState,
+  isActiveTaskStatus,
+  isProjectNotFound,
+  isReviewScoreUnavailable,
+  mergeTaskStreamUpdate,
+  resolveTaskPollingInterval,
+  type ProjectResourceErrors,
+  type ProjectResourceKey,
+} from './project-resource-state';
+import { getEditorDraftScopeKey, type AppSession } from './session';
+import {
+  getCompletedBidMaterialIds,
+  getSupplementalMaterialIds,
+  recordCompletedBidMaterialFiles,
+  recordSupplementalMaterialFiles,
+  type CompletedBidMaterialIdsByScope,
+  type SupplementalMaterialIdsByScope,
+} from './supplemental-material-state';
+import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
+import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
+import { createEditorSaveGate } from './editor-save-gate';
+import { buildPageApiActivity } from './page-api-activity';
+import { pageApiCatalog } from './page-api-catalog';
+import {
+  buildProjectOverviewVersionOptions,
+  loadDeliverableVersionLists,
+  type DeliverableVersionsById,
+} from './deliverable-versions';
+import {
+  isLocalPreviewAvailable,
+  localPreviewWriteError,
+} from './local-preview-gate';
 
-type ProjectDomainState<T> = Record<string, T[]>;
+type LocalPreviewPayload = typeof import('./local-preview');
+
+const loadLocalPreviewPayload = import.meta.env.DEV
+  ? () => import('./local-preview')
+  : undefined;
+
+type ProjectData = {
+  deliverables: Deliverable[];
+  deliverableVersions: DeliverableVersionsById;
+  historyRecords: HistoricalQuoteRecord[];
+  materials: ProjectMaterial[];
+  overview?: ProjectOverviewView;
+  quote: QuoteCalculationView;
+  quoteSamples: HistoryPriceSample[];
+  requirements: ProjectRequirement[];
+  reviewRun: ReviewRunView;
+  score?: ScoreSummary;
+  snapshots: ProjectSnapshot[];
+  tasks: PublicTaskEvent[];
+};
+
+type HistoryState = {
+  records: HistoricalQuoteRecord[];
+  samples: HistoryPriceSample[];
+  total: number;
+};
+
+type ActiveEditor = {
+  content: DeliverableContent;
+  deliverable: Deliverable;
+  readOnlyReason?: string;
+  session?: EditorSession;
+};
+
+type ProjectRouteFailure = {
+  message: string;
+  projectId: string;
+};
+
+type TaskStreamConnection = {
+  key: string | null;
+  status: 'idle' | 'connecting' | 'connected' | 'fallback';
+};
+
+async function loadBackendTaskSnapshots(projectId: string) {
+  const response = await backendApi.tasks.list(projectId);
+  const snapshots = [...response.items];
+  const activeTaskIndexes = response.items.flatMap((task, index) =>
+    isBackendTaskTerminal(task) ? [] : [index]).slice(0, 8);
+  const detailResults = await Promise.allSettled(activeTaskIndexes.map((index) =>
+    backendApi.tasks.get(response.items[index].task_id)));
+  detailResults.forEach((result, detailIndex) => {
+    if (result.status === 'fulfilled') snapshots[activeTaskIndexes[detailIndex]] = result.value;
+  });
+  return snapshots;
+}
+
+const backendApiBaseLabel = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+
+const projectTaskStatuses = new Set<ProjectTaskStatus>([
+  'queued',
+  'running',
+  'retrying',
+  'waiting_user',
+  'succeeded',
+  'failed',
+]);
+
+function toProjectTaskStatus(status: PublicTaskEvent['status']): ProjectTaskStatus | undefined {
+  return projectTaskStatuses.has(status as ProjectTaskStatus)
+    ? status as ProjectTaskStatus
+    : undefined;
+}
+
+const terminalStreamProgressStatuses = new Set([
+  'done',
+  'succeeded',
+  'cancelled',
+  'canceled',
+  'failed',
+]);
+
+function isTerminalTaskStreamUpdate(update: BackendTaskStreamUpdate) {
+  return terminalStreamProgressStatuses.has(update.progress.status.toLocaleLowerCase())
+    || (update.type === 'snapshot' && [3, 5, 6].includes(update.status));
+}
+
+const projectResourceLabels: Record<ProjectResourceKey, string> = {
+  materials: '项目材料',
+  requirements: '招标要求',
+  snapshots: '项目快照',
+  tasks: '任务进度',
+  deliverables: '成果版本',
+  review: '评审结果',
+  score: '最新评分',
+  quote: '报价测算',
+};
+
+const emptyQuote = (projectId: string): QuoteCalculationView => ({
+  id: `project-${projectId}-no-calculation`,
+  status: 'needs_input',
+  algorithmVersion: '尚未测算',
+  sampleSnapshotId: '',
+  querySnapshotId: '',
+  message: '当前项目尚无确定性报价测算结果。',
+  strategies: [],
+});
+
+const emptyReview = (): ReviewRunView => ({
+  id: '',
+  status: 'idle',
+  projectSnapshotId: '',
+  deliverableVersions: [],
+  findings: [],
+});
 
 export function App() {
-  const session = demoSession;
-  const defaultScopeKey = getProjectScopeKey(session.enterpriseId, defaultProjectId);
   const route = useUrlRoute();
-  const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
-  const [enterpriseAssets, setEnterpriseAssets] = useState<
-    ProjectDomainState<EnterpriseAsset>
-  >({ [session.enterpriseId]: enterpriseAssetsDemo });
-  const [enterpriseIngestion, setEnterpriseIngestion] = useState<
-    ProjectDomainState<EnterpriseIngestionItem>
-  >({ [session.enterpriseId]: enterpriseIngestionDemo });
-  const [projectMaterials, setProjectMaterials] = useState<ProjectDomainState<ProjectMaterial>>({
-    [defaultScopeKey]: projectMaterialsDemo,
-  });
-  const [projectRequirements, setProjectRequirements] = useState<
-    ProjectDomainState<ProjectRequirement>
-  >({
-    [defaultScopeKey]: projectRequirementsDemo,
-  });
-  const [projectSnapshots] = useState<ProjectDomainState<ProjectSnapshot>>({
-    [defaultScopeKey]: projectSnapshotsDemo,
-  });
-  const [reviewRuns, setReviewRuns] = useState<Record<string, ReviewRunView>>({
-    [defaultScopeKey]: reviewRunDemo,
-  });
-  const [appliedStrategyIds, setAppliedStrategyIds] = useState<Record<string, string>>({});
-  const [quoteCalculations] = useState<Record<string, QuoteCalculationView>>({
-    [defaultScopeKey]: quoteCalculationDemo,
-  });
-  const [historyPriceSamples] = useState<Record<string, HistoryPriceSample[]>>({
-    [defaultScopeKey]: historyPriceSamplesDemo,
-  });
-  const [taskEvents] = useState<Record<string, PublicTaskEvent[]>>({
-    [defaultScopeKey]: publicTaskEventsDemo,
-  });
-
+  const showApiTestPanel = shouldShowApiTestPanel();
   const routeProjectId = 'projectId' in route ? route.projectId : undefined;
-  const activeScopeKey = routeProjectId
-    ? getProjectScopeKey(session.enterpriseId, routeProjectId)
-    : undefined;
-  const activeProject = routeProjectId ? getProjectSummary(routeProjectId) : undefined;
+  const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking');
+  const [localPreviewActive, setLocalPreviewActive] = useState(false);
+  const [localPreviewProjectId, setLocalPreviewProjectId] = useState<string | null>(null);
+  const [session, setSession] = useState<AppSession | null>(null);
+  const [loginError, setLoginError] = useState('');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsTotal, setProjectsTotal] = useState(0);
+  const [history, setHistory] = useState<HistoryState>({ records: [], samples: [], total: 0 });
+  const [projectData, setProjectData] = useState<Record<string, ProjectData>>({});
+  const [enterpriseAssets, setEnterpriseAssets] = useState<EnterpriseAsset[]>([]);
+  const [enterpriseCategories, setEnterpriseCategories] = useState<EnterpriseAssetCategoryFolder[]>([]);
+  const [enterpriseIngestions, setEnterpriseIngestions] = useState<EnterpriseIngestionItem[]>([]);
+  const [reviewProviders, setReviewProviders] = useState<ReviewProvider[]>([]);
+  const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
+  const [taskStreamConnection, setTaskStreamConnection] = useState<TaskStreamConnection>({
+    key: null,
+    status: 'idle',
+  });
+  const [statusMessage, setStatusMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
+  const [snapshotDetail, setSnapshotDetail] = useState<{ id: string; value: unknown } | null>(null);
+  const [editor, setEditor] = useState<ActiveEditor | null>(null);
+  const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [missingProjectId, setMissingProjectId] = useState<string | null>(null);
+  const [projectRouteFailure, setProjectRouteFailure] = useState<ProjectRouteFailure | null>(null);
+  const [projectRetryNonce, setProjectRetryNonce] = useState(0);
+  const [projectResourceErrors, setProjectResourceErrors] = useState<Record<string, ProjectResourceErrors>>({});
+  const [completedBidMaterialIdsByScope, setCompletedBidMaterialIdsByScope] = useState<CompletedBidMaterialIdsByScope>({});
+  const [supplementalMaterialIdsByScope, setSupplementalMaterialIdsByScope] = useState<SupplementalMaterialIdsByScope>({});
+  const [backendRequestEvents, setBackendRequestEvents] = useState<Record<string, BackendApiRequestEvent>>({});
+  const editorLoadKeyRef = useRef('');
+  const activeEditorRef = useRef<ActiveEditor | null>(null);
+  const editorSaveGateRef = useRef(createEditorSaveGate());
+  const tenantGuardRef = useRef(createTenantGenerationGuard());
+  const projectLoadGenerationRef = useRef(0);
+  const projectResourceGenerationRef = useRef<Record<string, number>>({});
+  const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
+  const taskLoadGenerationRef = useRef<Record<string, number>>({});
+  const taskSnapshotRequestRef = useRef(new Map<string, Promise<BackendTask[]>>());
+  const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
+  const localPreviewLoadRef = useRef(false);
+  const apiRouteStartedAtRef = useRef(Date.now());
+  const routeProjectIdRef = useRef(routeProjectId);
+  routeProjectIdRef.current = routeProjectId;
+  activeEditorRef.current = editor;
 
-  const pageMeta = useMemo(() => {
-    switch (route.name) {
-      case 'project-overview':
-        return { eyebrow: '项目工作台', title: '项目概览' };
-      case 'project-materials':
-        return { eyebrow: '项目工作台', title: '当前招标材料' };
-      case 'enterprise-assets':
-        return { eyebrow: '企业知识中心', title: '企业资料库' };
-      case 'review-center':
-        return { eyebrow: '项目工作台', title: '外部评审中心' };
-      case 'pricing-center':
-        return { eyebrow: '项目工作台', title: '报价测算中心' };
-      case 'not-found':
-        return { eyebrow: 'BidVolt Web', title: '页面未找到' };
-      default:
-        return { eyebrow: '投标协同中心', title: '项目列表' };
+  const clearTenantDomainState = useCallback(() => {
+    const empty = createEmptyTenantDomainState();
+    tenantGuardRef.current.invalidate();
+    setProjects(empty.projects);
+    setProjectsTotal(empty.projectsTotal);
+    setHistory(empty.history);
+    setProjectData(empty.projectData);
+    setEnterpriseAssets(empty.enterpriseAssets);
+    setEnterpriseCategories(empty.enterpriseCategories);
+    setEnterpriseIngestions(empty.enterpriseIngestions);
+    setReviewProviders(empty.reviewProviders);
+    setLocalPreviewProjectId(null);
+    localPreviewPayloadRef.current = null;
+    setTaskDrawerProjectId(empty.taskDrawerProjectId);
+    setTaskStreamConnection({ key: null, status: 'idle' });
+    setSnapshotDetail(empty.snapshotDetail);
+    setEditor(empty.editor);
+    activeEditorRef.current = null;
+    editorSaveGateRef.current.reset();
+    setLoadingProjectId(empty.loadingProjectId);
+    setMissingProjectId(null);
+    setProjectRouteFailure(null);
+    setProjectResourceErrors({});
+    setCompletedBidMaterialIdsByScope(empty.completedBidMaterialIdsByScope);
+    setSupplementalMaterialIdsByScope(empty.supplementalMaterialIdsByScope);
+    apiRouteStartedAtRef.current = Date.now();
+    setBackendRequestEvents({});
+    setStatusMessage(empty.statusMessage);
+    editorLoadKeyRef.current = '';
+    projectResourceGenerationRef.current = {};
+    taskEventsRef.current = {};
+    taskLoadGenerationRef.current = {};
+    taskSnapshotRequestRef.current.clear();
+  }, []);
+
+  const becomeAnonymous = useCallback((options: { clearStoredSession?: boolean } = {}) => {
+    if (options.clearStoredSession !== false) clearBackendSession();
+    clearTenantDomainState();
+    setAuthSubmitting(false);
+    setSession(null);
+    setAuthState('anonymous');
+  }, [clearTenantDomainState]);
+
+  const setError = useCallback((error: unknown, fallback: string) => {
+    if (error instanceof BackendApiError
+      && error.accessToken
+      && error.accessToken !== getBackendAccessToken()) return;
+    if (error instanceof BackendApiError && error.status === 401) {
+      becomeAnonymous();
+      navigate('/login', { replace: true });
+      return;
     }
-  }, [route.name]);
+    setStatusMessage({ tone: 'error', text: readableError(error, fallback) });
+  }, [becomeAnonymous]);
+
+  const apiRouteActivityKey = route.name === 'deliverable-editor'
+    ? `${route.name}:${route.projectId}:${route.deliverableId}:${route.versionId}`
+    : `${route.name}:${routeProjectId ?? ''}`;
+
+  useEffect(() => subscribeToBackendApiRequests((event) => {
+    if (Date.parse(event.startedAt) < apiRouteStartedAtRef.current) return;
+    setBackendRequestEvents((current) => {
+      const next = { ...current, [event.requestId]: event };
+      const retained = Object.values(next)
+        .sort((left, right) => right.sequence - left.sequence)
+        .slice(0, 500);
+      return Object.fromEntries(retained.map((item) => [item.requestId, item]));
+    });
+  }), []);
 
   useEffect(() => {
-    document.title = `${pageMeta.title} · BidVolt Web`;
+    apiRouteStartedAtRef.current = Date.now();
+    setBackendRequestEvents({});
+  }, [apiRouteActivityKey]);
+
+  const establishSession = useCallback(async (
+    me?: MeResponse,
+    generation = tenantGuardRef.current.capture(),
+  ) => {
+    const profile = me ?? await backendApi.auth.me();
+    const nextSession: AppSession = {
+      enterpriseId: String(profile.enterprise_id),
+      enterpriseName: profile.enterprise_name || getRememberedEnterpriseName() || `企业 #${profile.enterprise_id}`,
+      userId: String(profile.user_id),
+      user: {
+        displayName: profile.email || `用户 #${profile.user_id}`,
+        role: profile.permissions.includes('admin.user') ? '企业管理员' : '投标用户',
+      },
+    };
+    const established = tenantGuardRef.current.commit(generation, () => {
+      setSession(nextSession);
+      setAuthState('authenticated');
+    });
+    return established ? nextSession : null;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!getBackendAccessToken()) {
+      setAuthState('anonymous');
+      return undefined;
+    }
+    const generation = tenantGuardRef.current.capture();
+    backendApi.auth.me().then((me) => {
+      if (!cancelled) void establishSession(me, generation);
+    }).catch(() => {
+      if (cancelled || !tenantGuardRef.current.isCurrent(generation)) return;
+      becomeAnonymous();
+    });
+    return () => { cancelled = true; };
+  }, [becomeAnonymous, establishSession]);
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      if (localPreviewActive) return;
+      becomeAnonymous({ clearStoredSession: false });
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
+    return () => window.removeEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
+  }, [becomeAnonymous, localPreviewActive]);
+
+  const loadProjects = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
+    const response = await backendApi.projects.list({ page: 1, size: 100 });
+    tenantGuardRef.current.commit(generation, () => {
+      setProjects((current) => mergeProjectPage(
+        adaptBackendProjects(response.items),
+        current,
+        routeProjectIdRef.current,
+      ));
+      setProjectsTotal(response.total);
+    });
+  }, []);
+
+  const loadEnterprise = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
+    const [categories, assets, ingestionResponse] = await Promise.all([
+      backendApi.enterprise.listCategories(),
+      backendApi.enterprise.listAssets(),
+      backendApi.enterprise.listIngestions().catch(() => ({ items: [] as EnterpriseIngestion[] })),
+    ]);
+    const bundles = await Promise.all(assets.map(async (asset) => {
+      const [detail, revisions] = await Promise.all([
+        backendApi.enterprise.getAsset(asset.asset_id).catch(() => undefined),
+        backendApi.enterprise.listRevisions(asset.asset_id).then((response) => response.items).catch(() => []),
+      ]);
+      return { asset, detail, revisions };
+    }));
+    tenantGuardRef.current.commit(generation, () => {
+      setEnterpriseAssets(adaptBackendEnterpriseAssets(bundles, categories));
+      setEnterpriseCategories(adaptBackendEnterpriseCategories(categories));
+      setEnterpriseIngestions(ingestionResponse.items.map(adaptIngestion));
+    });
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
+    const payload = await backendApi.quotes.history();
+    const parsed = readHistorySamples(payload);
+    const samples = adaptBackendHistorySamples(parsed.samples, parsed.snapshotIds);
+    const record = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : {};
+    const total = typeof record.sample_count === 'number' ? record.sample_count : samples.length;
+    tenantGuardRef.current.commit(generation, () => {
+      setHistory({ records: toHistoryRecords(samples), samples, total });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (authState !== 'authenticated' || localPreviewActive) return;
+    const generation = tenantGuardRef.current.capture();
+    void Promise.all([loadProjects(), loadEnterprise(), loadHistory(), backendApi.review.listProviders()])
+      .then(([, , , providers]) => tenantGuardRef.current.commit(generation, () => {
+        setReviewProviders(adaptBackendReviewProviders(providers));
+      }))
+      .catch((error) => {
+        if (tenantGuardRef.current.isCurrent(generation)) setError(error, '基础数据加载失败');
+      });
+  }, [authState, loadEnterprise, loadHistory, loadProjects, localPreviewActive, setError]);
+
+  const requestTaskSnapshots = useCallback((projectId: string) => {
+    const existing = taskSnapshotRequestRef.current.get(projectId);
+    if (existing) return existing;
+
+    const request = loadBackendTaskSnapshots(projectId);
+    taskSnapshotRequestRef.current.set(projectId, request);
+    const clearRequest = () => {
+      if (taskSnapshotRequestRef.current.get(projectId) === request) {
+        taskSnapshotRequestRef.current.delete(projectId);
+      }
+    };
+    request.then(clearRequest, clearRequest);
+    return request;
+  }, []);
+
+  const loadProject = useCallback(async (projectId: string) => {
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const resourceGeneration = (projectResourceGenerationRef.current[projectId] ?? 0) + 1;
+    const taskLoadGeneration = (taskLoadGenerationRef.current[projectId] ?? 0) + 1;
+    projectResourceGenerationRef.current[projectId] = resourceGeneration;
+    taskLoadGenerationRef.current[projectId] = taskLoadGeneration;
+    tenantGuardRef.current.commit(tenantGeneration, () => setLoadingProjectId(projectId));
+    try {
+      const results = await Promise.allSettled([
+        backendApi.files.list({ target: 'project', project_id: projectId, page: 1, size: 100 }),
+        backendApi.requirements.list(projectId),
+        backendApi.snapshots.list(projectId),
+        requestTaskSnapshots(projectId),
+        (async () => {
+          const deliverables = await backendApi.deliverables.list(projectId);
+          const deliverableVersions = await loadDeliverableVersionLists(
+            deliverables,
+            (deliverableId) => backendApi.deliverables.listVersions(deliverableId),
+          );
+          return { deliverables, deliverableVersions };
+        })(),
+        (async () => {
+          const reviewRuns = await backendApi.review.listRuns(projectId);
+          const latestRun = [...reviewRuns.items].sort((a, b) => Number(b.run_id) - Number(a.run_id))[0];
+          const runDetail = latestRun
+            ? await backendApi.review.getRun(projectId, latestRun.run_id)
+            : undefined;
+          return { runDetail };
+        })(),
+        backendApi.review.latestScore(projectId).catch((error) => {
+          if (isReviewScoreUnavailable(error)) return undefined;
+          throw error;
+        }),
+        (async () => {
+          const quoteList = await backendApi.quotes.list(projectId);
+          const latestQuote = quoteList.items[0];
+          const quoteId = asId(latestQuote?.calc_id);
+          const quoteDetail = quoteId ? await backendApi.quotes.get(quoteId) : undefined;
+          const quote = quoteDetail
+            ? adaptBackendQuoteCalculation(quoteDetail as Parameters<typeof adaptBackendQuoteCalculation>[0])
+            : emptyQuote(projectId);
+          const quoteSamplePayload = readHistorySamples(quoteDetail);
+          const samples = adaptBackendHistorySamples(
+            quoteSamplePayload.samples,
+            quoteSamplePayload.snapshotIds,
+          );
+          return { quote, samples };
+        })(),
+      ]);
+      if (!tenantGuardRef.current.isCurrent(tenantGeneration)
+        || projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
+
+      const [
+        filesResult,
+        requirementsResult,
+        snapshotsResult,
+        tasksResult,
+        deliverablesResult,
+        reviewResult,
+        scoreResult,
+        quoteResult,
+      ] = results;
+      const taskResultIsCurrent = taskLoadGenerationRef.current[projectId] === taskLoadGeneration;
+      const resourceResults: Array<[ProjectResourceKey, PromiseSettledResult<unknown>]> = [
+        ['materials', filesResult],
+        ['requirements', requirementsResult],
+        ['snapshots', snapshotsResult],
+        ['tasks', taskResultIsCurrent ? tasksResult : { status: 'fulfilled', value: undefined }],
+        ['deliverables', deliverablesResult],
+        ['review', reviewResult],
+        ['score', scoreResult],
+        ['quote', quoteResult],
+      ];
+      const errors = Object.fromEntries(resourceResults.flatMap(([key, result]) =>
+        result.status === 'rejected'
+          ? [[key, readableError(result.reason, `${projectResourceLabels[key]}加载失败`)]]
+          : [])) as ProjectResourceErrors;
+
+      setProjectData((current) => {
+        const previous = current[projectId] ?? {
+          deliverables: [],
+          deliverableVersions: {},
+          historyRecords: [],
+          materials: [],
+          quote: emptyQuote(projectId),
+          quoteSamples: [],
+          requirements: [],
+          reviewRun: emptyReview(),
+          snapshots: [],
+          tasks: [],
+        };
+        const next: ProjectData = { ...previous };
+        if (filesResult.status === 'fulfilled') next.materials = adaptBackendFiles(filesResult.value.items);
+        if (requirementsResult.status === 'fulfilled') {
+          const fileNamesById = filesResult.status === 'fulfilled'
+            ? Object.fromEntries(filesResult.value.items.map((file) => [String(file.file_id), file.name]))
+            : {};
+          next.requirements = adaptBackendRequirements(requirementsResult.value, { fileNamesById });
+        }
+        if (snapshotsResult.status === 'fulfilled') next.snapshots = adaptBackendSnapshots(snapshotsResult.value.items);
+        if (tasksResult.status === 'fulfilled' && taskResultIsCurrent) {
+          next.tasks = tasksResult.value.map((task, index, tasks) => adaptBackendTaskEvent(task, {
+            projectId,
+            sequence: tasks.length - index,
+          }));
+          taskEventsRef.current[projectId] = next.tasks;
+        }
+        if (deliverablesResult.status === 'fulfilled') {
+          next.deliverables = deliverablesResult.value.deliverables;
+          next.deliverableVersions = deliverablesResult.value.deliverableVersions;
+        }
+        if (reviewResult.status === 'fulfilled') {
+          next.reviewRun = reviewResult.value.runDetail ? adaptBackendReviewRun(reviewResult.value.runDetail) : emptyReview();
+        }
+        if (scoreResult.status === 'fulfilled') next.score = scoreResult.value;
+        if (quoteResult.status === 'fulfilled') {
+          next.quote = quoteResult.value.quote;
+          next.quoteSamples = quoteResult.value.samples;
+          next.historyRecords = toHistoryRecords(quoteResult.value.samples);
+        }
+        next.overview = adaptBackendProjectOverview(
+          next.deliverables,
+          next.score ? scoreSummaryForOverview(next.score) : undefined,
+        );
+        return { ...current, [projectId]: next };
+      });
+      setProjectResourceErrors((current) => ({ ...current, [projectId]: errors }));
+    } finally {
+      if (projectResourceGenerationRef.current[projectId] === resourceGeneration) {
+        tenantGuardRef.current.commit(tenantGeneration, () => {
+          setLoadingProjectId((current) => current === projectId ? null : current);
+        });
+      }
+    }
+  }, [requestTaskSnapshots]);
+
+  const refreshTaskEvents = useCallback(async (projectId: string) => {
+    const generation = tenantGuardRef.current.capture();
+    const taskLoadGeneration = (taskLoadGenerationRef.current[projectId] ?? 0) + 1;
+    taskLoadGenerationRef.current[projectId] = taskLoadGeneration;
+    const tasks = await requestTaskSnapshots(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)
+      || taskLoadGenerationRef.current[projectId] !== taskLoadGeneration) return false;
+    const nextTasks = tasks.map((task, index) => adaptBackendTaskEvent(task, {
+      projectId,
+      sequence: tasks.length - index,
+    }));
+    const enteredTerminalState = hasTaskEnteredTerminalState(taskEventsRef.current[projectId] ?? [], nextTasks);
+    taskEventsRef.current[projectId] = nextTasks;
+    setProjectData((current) => {
+      const existing = current[projectId];
+      if (!existing) return current;
+      return {
+        ...current,
+        [projectId]: {
+          ...existing,
+          tasks: nextTasks,
+        },
+      };
+    });
+    setProjectResourceErrors((current) => {
+      const existing = current[projectId];
+      if (!existing?.tasks) return current;
+      const next = { ...existing };
+      delete next.tasks;
+      return { ...current, [projectId]: next };
+    });
+    return enteredTerminalState;
+  }, [requestTaskSnapshots]);
+
+  useEffect(() => {
+    if (authState !== 'authenticated' || !routeProjectId || localPreviewActive) return;
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const projectGeneration = ++projectLoadGenerationRef.current;
+    setLoadingProjectId(routeProjectId);
+    setMissingProjectId((current) => current === routeProjectId ? null : current);
+    setProjectRouteFailure((current) => current?.projectId === routeProjectId ? null : current);
+    void backendApi.projects.get(routeProjectId).then(async (project) => {
+      if (!tenantGuardRef.current.isCurrent(tenantGeneration)
+        || projectLoadGenerationRef.current !== projectGeneration) return;
+      setProjects((current) => upsertProjectSummary(current, adaptBackendProject(project)));
+      setMissingProjectId((current) => current === routeProjectId ? null : current);
+      setProjectRouteFailure((current) => current?.projectId === routeProjectId ? null : current);
+      await loadProject(routeProjectId);
+    }).catch((error) => {
+      if (tenantGuardRef.current.isCurrent(tenantGeneration)
+        && projectLoadGenerationRef.current === projectGeneration) {
+        if (isProjectNotFound(error)) {
+          setMissingProjectId(routeProjectId);
+          setProjectRouteFailure((current) => current?.projectId === routeProjectId ? null : current);
+        } else {
+          setMissingProjectId((current) => current === routeProjectId ? null : current);
+          setProjectRouteFailure({
+            message: readableError(error, '项目数据加载失败'),
+            projectId: routeProjectId,
+          });
+        }
+        setError(error, '项目数据加载失败');
+      }
+    }).finally(() => {
+      if (tenantGuardRef.current.isCurrent(tenantGeneration)
+        && projectLoadGenerationRef.current === projectGeneration) {
+        setLoadingProjectId((current) => current === routeProjectId ? null : current);
+      }
+    });
+    return () => {
+      if (projectLoadGenerationRef.current === projectGeneration) projectLoadGenerationRef.current += 1;
+    };
+  }, [authState, loadProject, localPreviewActive, projectRetryNonce, routeProjectId, setError]);
+
+  const routeTaskEvents = routeProjectId ? projectData[routeProjectId]?.tasks ?? [] : [];
+  const activeBidGenerateTask = findLatestActiveBidGenerateTask(routeTaskEvents);
+  const activeBidGenerateTaskId = activeBidGenerateTask?.task_id;
+  const activeTaskStreamKey = routeProjectId && activeBidGenerateTaskId && session
+    ? `${session.enterpriseId}:${routeProjectId}:${activeBidGenerateTaskId}`
+    : null;
+
+  useEffect(() => {
+    if (authState !== 'authenticated'
+      || localPreviewActive
+      || !routeProjectId
+      || !activeBidGenerateTaskId
+      || !activeTaskStreamKey) {
+      setTaskStreamConnection((current) => current.key === null && current.status === 'idle'
+        ? current
+        : { key: null, status: 'idle' });
+      return undefined;
+    }
+
+    const projectId = routeProjectId;
+    const taskId = activeBidGenerateTaskId;
+    const streamKey = activeTaskStreamKey;
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const controller = new AbortController();
+    setTaskStreamConnection({ key: streamKey, status: 'connecting' });
+
+    const isCurrentSubscription = () =>
+      !controller.signal.aborted
+      && tenantGuardRef.current.isCurrent(tenantGeneration)
+      && routeProjectIdRef.current === projectId;
+
+    void backendApi.tasks.stream(taskId, {
+      signal: controller.signal,
+      onUpdate: (update) => {
+        if (!isCurrentSubscription() || update.taskId !== taskId) return;
+        const occurredAt = new Date().toISOString();
+        const previous = taskEventsRef.current[projectId] ?? [];
+        const next = mergeTaskStreamUpdate(previous, update, {
+          projectId,
+          occurredAt,
+          // The backend sends a terminal progress frame immediately before the
+          // terminal event. Keep the task subscribed until GET /tasks/{id}
+          // confirms that terminal state.
+          holdTerminalStatus: isTerminalTaskStreamUpdate(update),
+        });
+        if (next !== previous) {
+          taskEventsRef.current[projectId] = next;
+          setProjectData((current) => {
+            const existing = current[projectId];
+            if (!existing) return current;
+            return { ...current, [projectId]: { ...existing, tasks: next } };
+          });
+        }
+        setTaskStreamConnection((current) => current.key === streamKey
+          ? { key: streamKey, status: 'connected' }
+          : current);
+      },
+    }).then(async (terminal) => {
+      if (!isCurrentSubscription() || terminal.taskId !== taskId) return;
+      const detail = await backendApi.tasks.get(taskId, { signal: controller.signal });
+      if (!isCurrentSubscription() || String(detail.task_id) !== taskId) return;
+
+      const previous = taskEventsRef.current[projectId] ?? [];
+      const existing = previous.find((event) =>
+        event.task_id === taskId && event.project_id === projectId);
+      if (existing) {
+        const converged = adaptBackendTaskEvent(detail, {
+          projectId,
+          sequence: existing.sequence,
+          occurredAt: new Date().toISOString(),
+        });
+        const next = previous.map((event) => event === existing ? converged : event);
+        taskEventsRef.current[projectId] = next;
+        setProjectData((current) => {
+          const project = current[projectId];
+          if (!project) return current;
+          return { ...current, [projectId]: { ...project, tasks: next } };
+        });
+      }
+      await loadProject(projectId);
+    }).catch(() => {
+      if (controller.signal.aborted || !tenantGuardRef.current.isCurrent(tenantGeneration)) return;
+      // A transport/protocol failure falls back to the existing truthful GET
+      // polling. It never invents intermediate progress.
+      setTaskStreamConnection((current) => current.key === streamKey
+        ? { key: streamKey, status: 'fallback' }
+        : current);
+    });
+
+    return () => controller.abort();
+  }, [
+    activeBidGenerateTaskId,
+    activeTaskStreamKey,
+    authState,
+    loadProject,
+    localPreviewActive,
+    routeProjectId,
+  ]);
+
+  const hasActiveTasks = routeTaskEvents.some((event) => isActiveTaskStatus(event.status));
+  const hasOtherActiveTasks = routeTaskEvents.some((event) =>
+    isActiveTaskStatus(event.status) && event.task_id !== activeBidGenerateTaskId);
+  const taskPollingIntervalMs = resolveTaskPollingInterval({
+    hasActiveBidGenerateTask: Boolean(activeBidGenerateTaskId),
+    hasActiveTasks,
+    hasOtherActiveTasks,
+    localPreviewActive,
+    streamMatchesActiveTask: Boolean(activeTaskStreamKey
+      && taskStreamConnection.key === activeTaskStreamKey),
+    streamStatus: taskStreamConnection.status,
+  });
+  useEffect(() => {
+    if (!routeProjectId || taskPollingIntervalMs === null) return undefined;
+    const timer = window.setInterval(() => {
+      const generation = tenantGuardRef.current.capture();
+      void refreshTaskEvents(routeProjectId).then((enteredTerminalState) => {
+        if (enteredTerminalState && tenantGuardRef.current.isCurrent(generation)) {
+          return loadProject(routeProjectId);
+        }
+        return undefined;
+      }).catch((error) => {
+        if (tenantGuardRef.current.isCurrent(generation)) {
+          setProjectResourceErrors((current) => ({
+            ...current,
+            [routeProjectId]: {
+              ...current[routeProjectId],
+              tasks: readableError(error, '任务进度刷新失败'),
+            },
+          }));
+          setError(error, '任务进度刷新失败');
+        }
+      });
+    }, taskPollingIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [loadProject, refreshTaskEvents, routeProjectId, setError, taskPollingIntervalMs]);
+
+  const pageMeta = useMemo(() => pageMetadata(route.name), [route.name]);
+  useEffect(() => {
+    document.title = `${pageMeta.title} · AI电网投标助手`;
     document.getElementById('main-content')?.focus();
   }, [pageMeta.title, routeProjectId]);
 
-  const handleEnterpriseUpload = (files: File[]) => {
-    const incoming = files.map<EnterpriseIngestionItem>((file, index) => ({
-      id: `enterprise-upload-${Date.now()}-${index}`,
-      name: file.name,
-      status: 'classifying',
-      progress: 18,
-    }));
-    setEnterpriseIngestion((current) => ({
-      ...current,
-      [session.enterpriseId]: [...incoming, ...(current[session.enterpriseId] ?? [])],
-    }));
-  };
-
-  const handleEnterpriseCorrection = (assetId: string, factKey: string, value: string) => {
-    setEnterpriseAssets((current) => ({
-      ...current,
-      [session.enterpriseId]: (current[session.enterpriseId] ?? []).map((asset) => {
-        if (asset.id !== assetId) return asset;
-
-        const facts = asset.facts.map((fact) =>
-          fact.key === factKey
-            ? { ...fact, value, confidence: 1, needsReview: false }
-            : fact,
-        );
-        const nextRevisionNo = Math.max(0, ...asset.revisions.map((item) => item.revisionNo)) + 1;
-        return {
-          ...asset,
-          facts,
-          status: facts.some((fact) => fact.needsReview) ? 'needs_review' : 'ready',
-          updatedAt: '刚刚',
-          revisions: [
-            {
-              id: `${asset.id}-revision-${nextRevisionNo}`,
-              revisionNo: nextRevisionNo,
-              createdAt: '刚刚',
-              createdBy: '当前用户',
-              changeNote: `人工纠正字段：${factKey}`,
-              isCurrent: true,
-            },
-            ...asset.revisions.map((revision) => ({ ...revision, isCurrent: false })),
-          ],
-        };
-      }),
-    }));
-  };
-
-  const handleProjectUpload = (projectId: string, files: File[]) => {
-    setProjectMaterials((current) => {
-      const scopeKey = getProjectScopeKey(session.enterpriseId, projectId);
-      const existing = current[scopeKey] ?? [];
-      const incoming = files.map<ProjectMaterial>((file, index) => ({
-        id: `${projectId}-upload-${Date.now()}-${index}`,
-        name: file.name,
-        kind: 'other',
-        revisionNo: 1,
-        parseStatus: 'queued',
-        parseProgress: 0,
-        uploadedAt: '刚刚',
-      }));
-      return { ...current, [scopeKey]: [...incoming, ...existing] };
-    });
-  };
-
-  const handleConfirmRequirement = (projectId: string, requirementId: string) => {
-    const scopeKey = getProjectScopeKey(session.enterpriseId, projectId);
-    setProjectRequirements((current) => ({
-      ...current,
-      [scopeKey]: (current[scopeKey] ?? []).map((requirement) =>
-        requirement.id === requirementId
-          ? { ...requirement, confirmationStatus: 'confirmed' }
-          : requirement,
-      ),
-    }));
-  };
-
-  const activeReviewRun =
-    activeScopeKey && routeProjectId
-      ? reviewRuns[activeScopeKey] ?? createEmptyReviewRun(routeProjectId)
-      : undefined;
-  const activeQuoteCalculation =
-    activeScopeKey && routeProjectId
-      ? quoteCalculations[activeScopeKey] ?? createEmptyQuoteCalculation(routeProjectId)
-      : undefined;
-  const activeHistoryPriceSamples = activeScopeKey
-    ? historyPriceSamples[activeScopeKey] ?? []
-    : [];
-  const activeTaskEvents = activeScopeKey ? taskEvents[activeScopeKey] ?? [] : [];
-  const latestTaskEvent = activeTaskEvents.reduce<PublicTaskEvent | undefined>(
-    (latest, event) => (!latest || event.sequence > latest.sequence ? event : latest),
-    undefined,
-  );
-  const activeTaskCount = activeTaskEvents.some((event) =>
-    ['queued', 'running', 'retrying', 'waiting_user'].includes(event.status),
-  )
-    ? 1
-    : 0;
-  const selectedStrategy = activeQuoteCalculation?.strategies.find(
-    (strategy) => activeScopeKey && strategy.id === appliedStrategyIds[activeScopeKey],
-  );
-  const openTaskDrawer = () => {
-    if (routeProjectId) {
-      setTaskDrawerProjectId(routeProjectId);
+  const handleLogin = async ({ email, password, remember }: LoginCredentials) => {
+    setLocalPreviewActive(false);
+    becomeAnonymous();
+    setAuthSubmitting(true);
+    setLoginError('');
+    const generation = tenantGuardRef.current.capture();
+    try {
+      const tokens = await backendApi.auth.login({ email, password });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      saveBackendSession(tokens, { remember });
+      if (!await establishSession(undefined, generation)) return;
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      navigate('/projects', { replace: true });
+    } catch (error) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      clearBackendSession();
+      setLoginError(readableError(error, '登录失败，请检查账号和密码。'));
+    } finally {
+      tenantGuardRef.current.commit(generation, () => setAuthSubmitting(false));
     }
   };
 
-  return (
-    <AppShell
-      currentProjectId={routeProjectId}
-      currentRoute={route.name}
-      eyebrow={pageMeta.eyebrow}
-      enterpriseName={session.enterpriseName}
-      title={pageMeta.title}
-      onOpenTasks={openTaskDrawer}
-      taskCount={activeTaskCount}
-      user={session.user}
-    >
-      {route.name === 'projects' ? <ProjectListPage /> : null}
-      {route.name === 'project-overview' ? (
-        <ProjectOverviewPage
-          projectId={route.projectId}
-          onOpenTasks={openTaskDrawer}
-          taskSummary={
-            latestTaskEvent?.percent != null && activeTaskCount > 0
-              ? {
-                  message: latestTaskEvent.public_message,
-                  percent: latestTaskEvent.percent,
-                  title: taskPhaseLabel(latestTaskEvent.phase),
-                }
-              : undefined
+  const handleRegister = async ({ email, enterpriseName, password }: RegisterCredentials) => {
+    setLocalPreviewActive(false);
+    becomeAnonymous();
+    setAuthSubmitting(true);
+    setLoginError('');
+    const generation = tenantGuardRef.current.capture();
+    try {
+      const tokens = await backendApi.auth.register({ email, enterprise_name: enterpriseName, password });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      saveBackendSession(tokens, { enterpriseName, remember: true });
+      if (!await establishSession(undefined, generation)) return;
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      navigate('/projects', { replace: true });
+    } catch (error) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      clearBackendSession();
+      setLoginError(readableError(error, '注册失败，请检查填写内容。'));
+    } finally {
+      tenantGuardRef.current.commit(generation, () => setAuthSubmitting(false));
+    }
+  };
+
+  const blockLocalPreviewWrite = (action: string) => {
+    const error = localPreviewWriteError(action);
+    setStatusMessage({ tone: 'error', text: error.message });
+    return error;
+  };
+
+  const handleOpenLocalPreview = async () => {
+    if (localPreviewLoadRef.current) return;
+    if (!isLocalPreviewAvailable() || !loadLocalPreviewPayload) {
+      setLoginError('本地预览仅能在 localhost 的 local-preview 开发模式中使用。');
+      return;
+    }
+    localPreviewLoadRef.current = true;
+    setAuthSubmitting(true);
+    setLoginError('');
+    let preview: LocalPreviewPayload;
+    try {
+      preview = await loadLocalPreviewPayload();
+    } catch {
+      setLoginError('本地只读预览快照加载失败，请重新启动开发服务。');
+      setAuthSubmitting(false);
+      localPreviewLoadRef.current = false;
+      return;
+    }
+    if (!isLocalPreviewAvailable()) {
+      setAuthSubmitting(false);
+      localPreviewLoadRef.current = false;
+      return;
+    }
+    clearBackendSession();
+    clearTenantDomainState();
+    localPreviewPayloadRef.current = preview;
+    setLocalPreviewProjectId(preview.LOCAL_PREVIEW_PROJECT_ID);
+    taskEventsRef.current[preview.LOCAL_PREVIEW_PROJECT_ID] = preview.localPreviewTasks;
+    setLocalPreviewActive(true);
+    setSession(preview.localPreviewSession);
+    setProjects([preview.localPreviewProject]);
+    setProjectsTotal(1);
+    setEnterpriseAssets(preview.localPreviewEnterpriseAssets);
+    setEnterpriseCategories(preview.localPreviewEnterpriseCategories);
+    setEnterpriseIngestions(preview.localPreviewIngestions);
+    setReviewProviders(preview.localPreviewProviders);
+    setHistory({
+      records: preview.localPreviewHistoryRecords,
+      samples: preview.localPreviewQuoteSamples,
+      total: preview.localPreviewHistoryRecords.length,
+    });
+    setProjectData({
+      [preview.LOCAL_PREVIEW_PROJECT_ID]: {
+        deliverables: preview.localPreviewDeliverables,
+        deliverableVersions: {},
+        historyRecords: preview.localPreviewHistoryRecords,
+        materials: preview.localPreviewMaterials,
+        quote: preview.localPreviewQuote,
+        quoteSamples: preview.localPreviewQuoteSamples,
+        requirements: preview.localPreviewRequirements,
+        reviewRun: preview.localPreviewReview,
+        snapshots: preview.localPreviewSnapshots,
+        tasks: preview.localPreviewTasks,
+      },
+    });
+    setStatusMessage(null);
+    setAuthState('authenticated');
+    setAuthSubmitting(false);
+    localPreviewLoadRef.current = false;
+    navigate('/projects', { replace: true });
+  };
+
+  const handleLogout = async () => {
+    if (localPreviewActive) {
+      setLocalPreviewActive(false);
+      becomeAnonymous();
+      navigate('/login', { replace: true });
+      return;
+    }
+    const refreshToken = getBackendRefreshToken();
+    const logoutRequest = refreshToken
+      ? backendApi.auth.logout(refreshToken).catch(() => undefined)
+      : Promise.resolve();
+    becomeAnonymous();
+    navigate('/login', { replace: true });
+    await logoutRequest;
+  };
+
+  const handleCreateProject = async (project: ProjectSummary) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('新增项目');
+    const generation = tenantGuardRef.current.capture();
+    const created = await backendApi.projects.create({
+      name: project.title,
+      tender_no: project.code,
+      deadline: toIsoOrNull(project.deadline),
+      note: project.buyer ? `招标人：${project.buyer}` : undefined,
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    tenantGuardRef.current.commit(generation, () => {
+      setProjects((current) => upsertProjectSummary(current, adaptBackendProject(created)));
+      setProjectsTotal((current) => current + 1);
+      navigate(`/projects/${encodeURIComponent(String(created.project_id))}/materials`);
+    });
+  };
+
+  const handleArchiveProject = async (projectId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('归档项目');
+    const generation = tenantGuardRef.current.capture();
+    await backendApi.projects.archive(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    tenantGuardRef.current.commit(generation, () => {
+      setProjects((current) => current.filter((project) => project.id !== projectId));
+      setProjectsTotal((current) => Math.max(0, current - 1));
+    });
+  };
+
+  const handleEnterpriseUpload = async (files: File[]) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('上传企业资料');
+    const generation = tenantGuardRef.current.capture();
+    const result = await backendApi.files.upload({ target: 'enterprise', files });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    const outcome = readUploadOutcome(result.files);
+    const uploadedIds = outcome.uploaded.map((file) => file.file_id);
+    let assetIds: number[] = [];
+    if (uploadedIds.length > 0) {
+      await loadEnterprise();
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      const assets = await backendApi.enterprise.listAssets();
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      assetIds = assets
+        .filter((asset) => asset.source_file_id !== null && uploadedIds.includes(asset.source_file_id))
+        .map((asset) => asset.asset_id);
+      if (assetIds.length) await backendApi.enterprise.ingest(assetIds);
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      await loadEnterprise();
+    }
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    const outcomeError = uploadOutcomeError('企业资料', uploadedIds.length, outcome.errors);
+    if (outcomeError) throw outcomeError;
+    tenantGuardRef.current.commit(generation, () => {
+      setStatusMessage({
+        tone: 'info',
+        text: assetIds.length
+          ? `已接收 ${uploadedIds.length} 份企业资料，并已提交 ${assetIds.length} 份资料的归类任务。`
+          : `已上传 ${uploadedIds.length} 份企业资料，待服务端完成文件与企业资料关联后再启动归类。`,
+      });
+    });
+    return {
+      message: assetIds.length
+        ? '企业资料上传完成，服务端归类任务已提交。'
+        : '企业资料上传完成，待服务端关联到企业资料后再启动归类。',
+    };
+  };
+
+  const handleCorrectEnterpriseFact = async (assetId: string, factId: string, value: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('修改企业资料字段');
+    const generation = tenantGuardRef.current.capture();
+    await backendApi.enterprise.updateFact(factId, {
+      fact_value: value,
+      confirmed: true,
+      note: `企业资料 ${assetId} 人工纠正`,
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await loadEnterprise();
+  };
+
+  const handleProjectUpload = async (
+    projectId: string,
+    files: File[],
+    options: {
+      onUploaded?: (uploaded: BackendFile[]) => void;
+      outcomeLabel?: string;
+      successMessage?: (uploadedCount: number) => string;
+    } = {},
+  ) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('上传项目材料');
+    const generation = tenantGuardRef.current.capture();
+    const result = await backendApi.files.upload({ target: 'project', project_id: projectId, files });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    const outcome = readUploadOutcome(result.files);
+    const { uploaded } = outcome;
+    const archives = uploaded.filter((file) => /\.(zip|rar|7z)$/i.test(file.name));
+    const archiveErrors: string[] = [];
+    for (const archive of archives) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      try {
+        await backendApi.files.archive({ archive_file_id: archive.file_id, target: 'project', project_id: projectId });
+      } catch (error) {
+        if (!tenantGuardRef.current.isCurrent(generation)) return;
+        archiveErrors.push(`${archive.name}：${readableError(error, '压缩包解包失败')}`);
+      }
+    }
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    if (uploaded.length > 0) await loadProject(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    if (uploaded.length > 0 && options.onUploaded) {
+      tenantGuardRef.current.commit(generation, () => options.onUploaded?.(uploaded));
+    }
+    const outcomeError = uploadOutcomeError(
+      options.outcomeLabel ?? '当前项目材料',
+      uploaded.length,
+      [...outcome.errors, ...archiveErrors],
+    );
+    if (outcomeError) throw outcomeError;
+    tenantGuardRef.current.commit(generation, () => {
+      setStatusMessage({
+        tone: 'info',
+        text: options.successMessage?.(uploaded.length)
+          ?? `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。`,
+      });
+    });
+    return uploaded;
+  };
+
+  const handleProjectSupplementalUpload = async (projectId: string, files: File[]) => {
+    if (!session) throw new Error('当前登录会话不可用，请重新登录后再添加文件。');
+    const enterpriseId = session.enterpriseId;
+    await handleProjectUpload(projectId, files, {
+      onUploaded: (uploaded) => {
+        setSupplementalMaterialIdsByScope((current) => recordSupplementalMaterialFiles(
+          current,
+          enterpriseId,
+          projectId,
+          uploaded,
+        ));
+      },
+      outcomeLabel: '补充资料',
+      successMessage: (uploadedCount) => `已通过项目助手添加 ${uploadedCount} 份补充资料。该分组将在当前登录会话中保留。`,
+    });
+  };
+
+  const handleCompletedBidUpload = async (projectId: string, files: File[]) => {
+    if (!session) throw new Error('当前登录会话不可用，请重新登录后再上传已完成标书。');
+    const enterpriseId = session.enterpriseId;
+    await handleProjectUpload(projectId, files, {
+      onUploaded: (uploaded) => {
+        setCompletedBidMaterialIdsByScope((current) => recordCompletedBidMaterialFiles(
+          current,
+          enterpriseId,
+          projectId,
+          uploaded,
+        ));
+      },
+      outcomeLabel: '已完成标书材料',
+      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份已完成标书材料，可用于后续校核。`,
+    });
+  };
+
+  const handleImportTenderNoticeUrl = async (projectId: string, url: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('导入招标公告网址');
+    const generation = tenantGuardRef.current.capture();
+    const job = await backendApi.tenderNotices.importFromUrl(projectId, url);
+    if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('会话已切换，已忽略旧企业的导入结果。');
+    if (job.status === 'succeeded') {
+      await loadProject(projectId);
+      tenantGuardRef.current.commit(generation, () => {
+        setStatusMessage({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
+      });
+      return { status: 'completed' as const, message: '导入完成，招标公告已加入当前项目材料。' };
+    }
+    if (job.status === 'failed') {
+      throw new Error(job.error || '招标公告网址解析失败。');
+    }
+    tenantGuardRef.current.commit(generation, () => {
+      setStatusMessage({ tone: 'info', text: '招标公告网址已提交，服务端正在安全下载并解析。' });
+    });
+    void pollTenderImport(
+      projectId,
+      String(job.import_id),
+      generation,
+      tenantGuardRef.current,
+      loadProject,
+      setStatusMessage,
+    );
+    return { status: 'queued' as const, message: '网址已提交，正在下载并解析招标公告。' };
+  };
+
+  const handleConfirmRequirement = () => {
+    if (localPreviewActive) {
+      blockLocalPreviewWrite('确认招标要求');
+      return;
+    }
+    setStatusMessage({
+      tone: 'error',
+      text: '后端尚未提供 Requirement 确认接口；已保留按钮，但不会在浏览器内伪造确认成功。',
+    });
+  };
+
+  const handleOpenSnapshot = async (projectId: string, snapshotId: string) => {
+    if (localPreviewActive) {
+      setSnapshotDetail({
+        id: snapshotId,
+        value: {
+          notice: '这是本地只读界面预览，未请求后端快照详情。',
+          project_id: projectId,
+          snapshot_id: snapshotId,
+        },
+      });
+      return;
+    }
+    const generation = tenantGuardRef.current.capture();
+    try {
+      const detail = await backendApi.snapshots.get(projectId, snapshotId);
+      tenantGuardRef.current.commit(generation, () => {
+        setSnapshotDetail({ id: snapshotId, value: detail });
+      });
+    } catch (error) {
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '项目快照加载失败');
+    }
+  };
+
+  const handleStartTask = async (projectId: string, mode: 'generate' | 'validate') => {
+    if (localPreviewActive) throw blockLocalPreviewWrite(mode === 'generate' ? '创建成果生成任务' : '创建校核任务');
+    const generation = tenantGuardRef.current.capture();
+    try {
+      await backendApi.tasks.create(projectId, {
+        task_type: mode === 'generate' ? 'bid_generate' : 'bid_review',
+        idempotency_key: crypto.randomUUID(),
+        payload: {},
+      });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      taskSnapshotRequestRef.current.delete(projectId);
+      await loadProject(projectId);
+      tenantGuardRef.current.commit(generation, () => setTaskDrawerProjectId(projectId));
+    } catch (error) {
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        setError(error, mode === 'generate' ? '成果生成任务创建失败' : '校核任务创建失败');
+        throw error;
+      }
+    }
+  };
+
+  const handleAssistantSend = async (projectId: string, value: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('发送项目助手消息');
+    const generation = tenantGuardRef.current.capture();
+    try {
+      const list = await backendApi.chat.listConversations(projectId);
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      const conversation = list.items[0] ?? await backendApi.chat.createConversation(projectId, '项目助手');
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      const response = await backendApi.chat.sendMessage(projectId, conversation.conversation_id, value);
+      tenantGuardRef.current.commit(generation, () => {
+        setStatusMessage({ tone: 'info', text: response.reply });
+      });
+    } catch (error) {
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        setError(error, '项目助手请求失败');
+        throw error;
+      }
+    }
+  };
+
+  const handleRunReview = async (projectId: string, providerId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('执行外部评审');
+    const generation = tenantGuardRef.current.capture();
+    try {
+      await backendApi.review.evaluate(projectId, { provider_id: providerId });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      await loadProject(projectId);
+    } catch (error) {
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        setError(error, '评审任务执行失败');
+        throw error;
+      }
+    }
+  };
+
+  const handleSaveSuggestion = async (projectId: string, findingId: string, suggestion: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('保存评审建议');
+    const generation = tenantGuardRef.current.capture();
+    const scoreId = projectData[projectId]?.score?.score_id;
+    if (!scoreId) throw new Error('当前评审没有可更新的评分版本。');
+    await backendApi.review.updateSuggestion(projectId, scoreId, findingId, suggestion);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await loadProject(projectId);
+  };
+
+  const handleApplyQuote = async (projectId: string, strategyId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('应用报价策略');
+    const generation = tenantGuardRef.current.capture();
+    const data = projectData[projectId];
+    const quoteDeliverable = data?.deliverables.find((item) => item.deliverable_type === 3);
+    if (!data || !quoteDeliverable || !/^\d+$/.test(data.quote.id)) {
+      const error = new Error('当前项目缺少可应用的报价测算或报价成果。');
+      setStatusMessage({ tone: 'error', text: error.message });
+      throw error;
+    }
+    try {
+      await backendApi.quotes.strategy(data.quote.id, strategyId as 'win' | 'balance' | 'profit');
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      await backendApi.quotes.apply({
+        calc_id: data.quote.id,
+        deliverable_id: quoteDeliverable.deliverable_id,
+        expected_version_no: quoteDeliverable.current_version_no,
+        idempotency_key: crypto.randomUUID(),
+      });
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      await loadProject(projectId);
+      tenantGuardRef.current.commit(generation, () => {
+        setStatusMessage({ tone: 'info', text: '报价策略已由服务端重算并生成新的受控报价版本。' });
+      });
+    } catch (error) {
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, '报价策略应用失败');
+      throw error;
+    }
+  };
+
+  const loadEditor = useCallback(async (
+    projectId: string,
+    routeId: DeliverableRouteId,
+    versionId: string,
+  ) => {
+    const generation = tenantGuardRef.current.capture();
+    const data = projectData[projectId];
+    const deliverable = data?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
+    if (!deliverable?.current_version_no) {
+      setEditor(null);
+      return;
+    }
+    const version = versionId === 'latest' ? deliverable.current_version_no : Number(versionId);
+    if (!Number.isInteger(version) || version <= 0) {
+      setEditor(null);
+      return;
+    }
+    const content = await backendApi.deliverables.getVersion(deliverable.deliverable_id, version);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    if (version !== deliverable.current_version_no) {
+      tenantGuardRef.current.commit(generation, () => {
+        setEditor({
+          content,
+          deliverable,
+          readOnlyReason: `当前打开的是历史版本 V${version}，仅支持预览和下载。请打开最新版本 V${deliverable.current_version_no} 进行编辑。`,
+        });
+      });
+      return;
+    }
+
+    try {
+      const editorSession = await backendApi.editor.createSession(deliverable.deliverable_id);
+      if (editorSession.base_version_no !== version || !editorSession.lease_token) {
+        if (editorSession.lease_token) {
+          await backendApi.editor.cancel(
+            deliverable.deliverable_id,
+            editorSession.session_id,
+            editorSession.lease_token,
+          ).catch(() => undefined);
+        }
+        tenantGuardRef.current.commit(generation, () => {
+          setEditor({
+            content,
+            deliverable,
+            readOnlyReason: '编辑会话版本或租约与当前成果不匹配，已切换为只读预览。请刷新后重试。',
+          });
+        });
+        return;
+      }
+      tenantGuardRef.current.commit(generation, () => {
+        setEditor({ content, deliverable, session: editorSession });
+      });
+    } catch (error) {
+      if (!(error instanceof BackendApiError) || error.status !== 409) throw error;
+      const listed = await backendApi.editor.list(deliverable.deliverable_id).catch(() => ({ items: [] }));
+      const existing = listed.items.find((sessionItem) =>
+        sessionItem.status === 1 && sessionItem.base_version_no === version,
+      );
+      const existingDetail = existing
+        ? await backendApi.editor.get(deliverable.deliverable_id, existing.session_id).catch(() => undefined)
+        : undefined;
+      const checkpoint = existingDetail?.checkpoint;
+      tenantGuardRef.current.commit(generation, () => {
+        setEditor({
+          content: checkpoint
+            ? { ...content, model: checkpoint }
+            : content,
+          deliverable,
+          readOnlyReason: existingDetail
+            ? '该成果已有进行中的编辑会话；后端未返回可恢复租约，已加载其最近检查点并切换为只读预览。'
+            : '该成果已有进行中的编辑会话，当前页面无法安全恢复租约，已切换为只读预览。',
+        });
+      });
+    }
+  }, [projectData]);
+
+  useEffect(() => {
+    if (route.name !== 'deliverable-editor' || !projectData[route.projectId]) {
+      editorLoadKeyRef.current = '';
+      setEditor(null);
+      return;
+    }
+    const editorKey = `${route.projectId}:${route.deliverableId}:${route.versionId}`;
+    if (editorLoadKeyRef.current === editorKey) return;
+    editorLoadKeyRef.current = editorKey;
+    if (localPreviewActive) {
+      setEditor(localPreviewPayloadRef.current?.getLocalPreviewEditor(route.deliverableId, route.versionId) ?? null);
+      return;
+    }
+    const generation = tenantGuardRef.current.capture();
+    void loadEditor(route.projectId, route.deliverableId, route.versionId)
+      .catch((error) => {
+        if (!tenantGuardRef.current.isCurrent(generation)) return;
+        if (editorLoadKeyRef.current === editorKey) editorLoadKeyRef.current = '';
+        setError(error, '成果编辑会话创建失败');
+      });
+  }, [loadEditor, localPreviewActive, projectData, route, setError]);
+
+  const editorRouteKey = route.name === 'deliverable-editor'
+    ? `${route.projectId}:${route.deliverableId}:${route.versionId}`
+    : '';
+  useEffect(() => {
+    if (!editorRouteKey) return;
+    return () => {
+      const activeEditor = activeEditorRef.current;
+      activeEditorRef.current = null;
+      editorSaveGateRef.current.reset();
+      if (!activeEditor?.session?.lease_token) return;
+      void backendApi.editor.cancel(
+        activeEditor.deliverable.deliverable_id,
+        activeEditor.session.session_id,
+        activeEditor.session.lease_token,
+      ).catch(() => undefined);
+    };
+  }, [editorRouteKey]);
+
+  const handleSaveEditor = (payload: OfficeMockSavePayload) => {
+    if (localPreviewActive) return Promise.reject(blockLocalPreviewWrite('保存成果'));
+    const activeEditor = activeEditorRef.current;
+    if (!activeEditor?.session?.lease_token || activeEditor.readOnlyReason) {
+      return Promise.reject(new Error(activeEditor?.readOnlyReason || '编辑会话缺少有效租约，请刷新页面后重试。'));
+    }
+    if (Number(payload.versionId) !== activeEditor.session.base_version_no) {
+      return Promise.reject(new Error('页面版本与编辑会话基础版本不一致，已阻止保存。'));
+    }
+    const content = toBackendEditorContent(payload) as JsonObject;
+    const signature = JSON.stringify({
+      content,
+      deliverableId: activeEditor.deliverable.deliverable_id,
+      sessionId: activeEditor.session.session_id,
+    });
+    const generation = tenantGuardRef.current.capture();
+    return editorSaveGateRef.current.run(signature, async (idempotencyKey) => {
+      await backendApi.editor.checkpoint(
+        activeEditor.deliverable.deliverable_id,
+        activeEditor.session!.session_id,
+        {
+          lease_token: activeEditor.session!.lease_token!,
+          content,
+        },
+      );
+      const completed = await backendApi.editor.complete(
+        activeEditor.deliverable.deliverable_id,
+        activeEditor.session!.session_id,
+        {
+          lease_token: activeEditor.session!.lease_token!,
+          content,
+          expected_version_no: activeEditor.session!.base_version_no,
+          idempotency_key: idempotencyKey,
+        },
+      );
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      activeEditorRef.current = null;
+      setEditor(null);
+      try {
+        await loadProject(payload.projectId);
+      } catch (error) {
+        if (tenantGuardRef.current.isCurrent(generation)) {
+          setStatusMessage({
+            tone: 'error',
+            text: `成果已保存为 V${completed.version_no}，但项目数据刷新失败；请刷新页面。${readableError(error, '')}`,
+          });
+        }
+      }
+      navigate(deliverableEditorPath(payload.projectId, payload.deliverableId, String(completed.version_no)), { replace: true });
+    });
+  };
+
+  const downloadDeliverable = async (
+    projectId: string,
+    routeId: DeliverableRouteId,
+    requestedVersion?: string | number,
+  ) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('下载成果文件');
+    const generation = tenantGuardRef.current.capture();
+    const deliverable = projectData[projectId]?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
+    if (!deliverable?.current_version_no) throw new Error('当前成果没有可下载版本。');
+    const version = requestedVersion === undefined
+      ? deliverable.current_version_no
+      : Number(requestedVersion);
+    if (!Number.isInteger(version) || version <= 0) throw new Error('成果版本号无效，无法下载。');
+    const blob = await backendApi.deliverables.downloadVersion(deliverable.deliverable_id, version);
+    tenantGuardRef.current.commit(generation, () => {
+      downloadBlob(blob, `${deliverable.title || routeId}-V${version}${routeId === 'quote' ? '.xlsx' : '.docx'}`);
+    });
+  };
+
+  const pageApiActivity = buildPageApiActivity(
+    pageApiCatalog(route),
+    Object.values(backendRequestEvents),
+    { preview: localPreviewActive },
+  );
+
+  if (route.name === 'landing') return <LandingPage />;
+  if (authState === 'checking') return <LoadingScreen />;
+  if (authState === 'anonymous' || route.name === 'login' || !session) {
+    return (
+      <>
+        {showApiTestPanel ? (
+          <ApiTestPanel className="login-api-test-panel">
+            <BackendApiStatusBar
+              checkedAt={pageApiActivity.checkedAt}
+              checks={pageApiActivity.checks}
+              endpointLabel={backendApiBaseLabel}
+              latencyMs={pageApiActivity.latencyMs}
+              message={pageApiActivity.message}
+              status={pageApiActivity.status}
+            />
+          </ApiTestPanel>
+        ) : null}
+        <LoginPage
+          error={loginError}
+          isSubmitting={authSubmitting}
+          localPreviewAvailable={isLocalPreviewAvailable()}
+          onLogin={handleLogin}
+          onOpenLocalPreview={handleOpenLocalPreview}
+          onRegister={handleRegister}
+        />
+      </>
+    );
+  }
+
+  const activeProject = routeProjectId ? projects.find((project) => project.id === routeProjectId) : undefined;
+  const activeData = routeProjectId ? projectData[routeProjectId] : undefined;
+  const activeMaterials = activeData?.materials ?? [];
+  const workspaceMaterials = toWorkspaceMaterials(activeMaterials);
+  const workspaceEnterprise = toWorkspaceEnterpriseMaterials(enterpriseAssets);
+  const taskEvents = activeData?.tasks ?? [];
+  const activeTaskCount = taskEvents.filter((event) => isActiveTaskStatus(event.status)).length;
+  const latestGenerationTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) => {
+    if ((event.task_type ?? event.phase) !== 'bid_generate') return latest;
+    return !latest || event.sequence > latest.sequence ? event : latest;
+  }, undefined);
+  const latestSubmissionTask = findCurrentProjectSubmissionTask(taskEvents);
+  const supplementalMaterialIds = routeProjectId && session
+    ? getSupplementalMaterialIds(supplementalMaterialIdsByScope, session.enterpriseId, routeProjectId)
+    : [];
+  const completedBidMaterialIds = routeProjectId && session
+    ? getCompletedBidMaterialIds(completedBidMaterialIdsByScope, session.enterpriseId, routeProjectId)
+    : [];
+  const projectTasksState = !activeData || loadingProjectId === routeProjectId
+    ? 'loading'
+    : routeProjectId && projectResourceErrors[routeProjectId]?.tasks
+      ? 'error'
+      : 'ready';
+  const projectReviewState = !activeData || loadingProjectId === routeProjectId
+    ? 'loading'
+    : routeProjectId && projectResourceErrors[routeProjectId]?.review
+      ? 'error'
+      : 'ready';
+  const projectScoreState = !activeData || loadingProjectId === routeProjectId
+    ? 'loading'
+    : routeProjectId && projectResourceErrors[routeProjectId]?.score
+      ? 'error'
+      : 'ready';
+  const projectReviewSidebar = buildProjectReviewSidebarViewModel({
+    deliverables: (activeData?.deliverables ?? []).flatMap((deliverable) => {
+      const kind = routeIdForDeliverable(deliverable);
+      return kind ? [{ currentVersionNo: deliverable.current_version_no, kind }] : [];
+    }),
+    deliverablesState: !activeData || loadingProjectId === routeProjectId
+      ? 'loading'
+      : routeProjectId && projectResourceErrors[routeProjectId]?.deliverables
+        ? 'error'
+        : 'ready',
+    requirements: activeData?.requirements ?? [],
+    requirementsState: !activeData || loadingProjectId === routeProjectId
+      ? 'loading'
+      : routeProjectId && projectResourceErrors[routeProjectId]?.requirements
+        ? 'error'
+        : 'ready',
+    tasks: taskEvents,
+    tasksState: projectTasksState,
+  });
+  const projectOutcomeReview = buildProjectOutcomeReviewViewModel({
+    reviewRunId: activeData?.reviewRun.id,
+    reviewRunStatus: activeData?.reviewRun.status,
+    reviewSourceState: projectReviewState,
+    score: activeData?.overview?.score,
+    scoreIsStale: activeData?.score?.is_stale,
+    scoreReviewRunId: activeData?.score?.review_run_id === null
+      || activeData?.score?.review_run_id === undefined
+      ? undefined
+      : String(activeData.score.review_run_id),
+    scoreSourceState: projectScoreState,
+    tasks: taskEvents,
+    tasksState: projectTasksState,
+  });
+  const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
+  const deliverableVersionOptions = activeData
+    ? buildProjectOverviewVersionOptions(
+        activeData.deliverables,
+        activeData.deliverableVersions,
+      )
+    : [];
+  const deliverableVersionIds = Object.fromEntries((deliverableCards ?? [])
+    .filter((item) => item.versionId)
+    .map((item) => [item.id, item.versionId])) as Partial<Record<DeliverableRouteId, string>>;
+  const currentResourceErrorCount = routeProjectId
+    ? Object.keys(projectResourceErrors[routeProjectId] ?? {}).length
+    : 0;
+  const deliverablesEndpoint = routeProjectId
+    ? `${backendApiBaseLabel.replace(/\/+$/, '')}/deliverables?project_id=${encodeURIComponent(routeProjectId)}`
+    : `${backendApiBaseLabel.replace(/\/+$/, '')}/deliverables`;
+  const deliverablesRequest: DeliverablesRequestView = localPreviewActive
+    ? { endpoint: deliverablesEndpoint, method: 'GET', status: 'idle' }
+    : loadingProjectId === routeProjectId
+      ? { endpoint: deliverablesEndpoint, method: 'GET', status: 'loading' }
+      : routeProjectId && projectResourceErrors[routeProjectId]?.deliverables
+        ? {
+            endpoint: deliverablesEndpoint,
+            errorMessage: projectResourceErrors[routeProjectId]?.deliverables,
+            method: 'GET',
+            status: 'error',
           }
+        : activeData
+          ? { endpoint: deliverablesEndpoint, method: 'GET', status: 'success' }
+          : { endpoint: deliverablesEndpoint, method: 'GET', status: 'idle' };
+  const backendActivityMessage = currentResourceErrorCount > 0
+    ? `${pageApiActivity.message} 当前页面另有 ${currentResourceErrorCount} 组业务数据加载失败，相关区域可能保留上次成功数据。`
+    : pageApiActivity.message;
+
+  return (
+    <>
+      {showApiTestPanel ? (
+        <ApiTestPanel className="page-api-test-panel">
+          <BackendApiStatusBar
+            checkedAt={pageApiActivity.checkedAt}
+            checks={pageApiActivity.checks}
+            endpointLabel={localPreviewActive
+              ? '未调用真实 API'
+              : `${backendApiBaseLabel} · 企业 #${session.enterpriseId} · ${session.user.displayName}`}
+            latencyMs={pageApiActivity.latencyMs}
+            message={backendActivityMessage}
+            status={pageApiActivity.status}
+          />
+        </ApiTestPanel>
+      ) : null}
+      <AppShell
+        currentProjectId={routeProjectId}
+        currentRoute={route.name}
+        eyebrow={pageMeta.eyebrow}
+        enterpriseName={session.enterpriseName}
+        title={pageMeta.title}
+        onLogout={() => void handleLogout()}
+        onOpenTasks={() => routeProjectId && setTaskDrawerProjectId(routeProjectId)}
+        projectSummary={activeProject}
+        taskCount={activeTaskCount}
+        user={session.user}
+      >
+      {localPreviewActive && localPreviewProjectId ? (
+        <aside className="local-preview-banner" aria-label="本地只读预览状态">
+          <div>
+            <strong>本地只读预览 · 无真实后端</strong>
+            <span>当前数据是明确标记的界面快照；未请求 API，所有写入、AI、下载操作均已阻止。</span>
+          </div>
+          <nav aria-label="预览页面快速导航">
+            <AppLink to="/projects">项目列表</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/overview`}>项目概览</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/materials`}>招标材料</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/review`}>评审中心</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/pricing`}>报价测算</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/deliverables/technical/versions/latest`}>成果编辑器</AppLink>
+            <AppLink to="/enterprise-assets">企业资料</AppLink>
+            <AppLink to="/history-prices">历史报价</AppLink>
+          </nav>
+        </aside>
+      ) : null}
+      {statusMessage ? (
+        <div className={`integration-status integration-status--${statusMessage.tone}`} role={statusMessage.tone === 'error' ? 'alert' : 'status'}>
+          <span>{statusMessage.text}</span>
+          <button aria-label="关闭提示" type="button" onClick={() => setStatusMessage(null)}>×</button>
+        </div>
+      ) : null}
+      {routeProjectId && projectResourceErrors[routeProjectId]
+        && Object.keys(projectResourceErrors[routeProjectId]).length > 0 ? (
+        <div className="integration-status integration-status--error" role="alert">
+          <span>
+            部分项目数据加载失败，已保留上次成功数据：
+            {' '}
+            {Object.entries(projectResourceErrors[routeProjectId])
+              .map(([key, message]) => `${projectResourceLabels[key as ProjectResourceKey]}（${message}）`)
+              .join('；')}
+          </span>
+          <button type="button" onClick={() => void loadProject(routeProjectId)}>重试</button>
+        </div>
+      ) : null}
+      {route.name === 'projects' ? (
+        <ProjectListPage
+          error={undefined}
+          isLive={!localPreviewActive}
+          projects={projects}
+          total={projectsTotal}
+          onArchiveProject={handleArchiveProject}
+          onCreateProject={handleCreateProject}
         />
       ) : null}
       {route.name === 'enterprise-assets' ? (
         <EnterpriseAssetsPage
-          assets={enterpriseAssets[session.enterpriseId] ?? []}
+          assets={enterpriseAssets}
+          categories={enterpriseCategories}
           enterpriseName={session.enterpriseName}
-          ingestionItems={enterpriseIngestion[session.enterpriseId] ?? []}
-          onCorrectFact={handleEnterpriseCorrection}
-          onUpload={handleEnterpriseUpload}
+          ingestionItems={enterpriseIngestions}
+          onRefresh={() => (localPreviewActive
+            ? Promise.reject(blockLocalPreviewWrite('刷新企业资料'))
+            : loadEnterprise()).catch((error) => {
+            setError(error, '企业资料刷新失败');
+            throw error;
+          })}
+          onUpload={(files) => handleEnterpriseUpload(files).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onCorrectFact={(assetId, factId, value) => handleCorrectEnterpriseFact(assetId, factId, value).catch((error) => {
+            setError(error, '企业资料字段纠正失败');
+            throw error;
+          })}
         />
       ) : null}
-      {route.name === 'project-materials' && activeProject && activeScopeKey ? (
+      {route.name === 'history-prices' ? (
+        <HistoryPricesPage records={history.records} totalCount={history.total} />
+      ) : null}
+      {route.name === 'project-overview' && activeProject ? (
+        <ProjectOverviewPage
+          deliverables={deliverableCards}
+          deliverablesRequest={deliverablesRequest}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
+          enterpriseMaterials={workspaceEnterprise}
+          materials={workspaceMaterials}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id, item.versionId).catch((error) => setError(error, '成果下载失败'))}
+          onOpenImprovementSuggestions={() => navigate(`/projects/${encodeURIComponent(route.projectId)}/review`)}
+          onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
+          onSelectVersion={(option) => navigate(deliverableEditorPath(
+            route.projectId,
+            option.deliverableId,
+            option.versionId,
+          ))}
+          overview={activeData?.overview}
+          outcomeReview={projectOutcomeReview}
+          project={activeProject}
+          projectId={route.projectId}
+          taskSummary={latestGenerationTask ? {
+            message: latestGenerationTask.public_message,
+            percent: latestGenerationTask.percent,
+            status: toProjectTaskStatus(latestGenerationTask.status),
+            title: taskPhaseLabel(latestGenerationTask.phase),
+          } : undefined}
+          versionOptions={deliverableVersionOptions}
+        />
+      ) : null}
+      {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
-          key={route.projectId}
-          materials={projectMaterials[activeScopeKey] ?? []}
+          completedBidMaterialIds={completedBidMaterialIds}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
+          enterpriseMaterials={workspaceEnterprise}
+          materials={activeMaterials}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onCompletedBidUpload={(projectId, files) => handleCompletedBidUpload(projectId, files).catch((error) => {
+            setError(error, '已完成标书上传失败');
+            throw error;
+          })}
+          onConfirmRequirement={handleConfirmRequirement}
+          onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
+          onOpenSnapshot={handleOpenSnapshot}
+          onStartTask={handleStartTask}
+          onUpload={(projectId, files) => handleProjectUpload(projectId, files).then(() => undefined).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
           projectId={route.projectId}
           projectName={activeProject.title}
-          requirements={projectRequirements[activeScopeKey] ?? []}
-          snapshots={projectSnapshots[activeScopeKey] ?? []}
-          onConfirmRequirement={handleConfirmRequirement}
-          onUpload={handleProjectUpload}
+          requirements={activeData?.requirements ?? []}
+          reviewSidebar={projectReviewSidebar}
+          snapshots={activeData?.snapshots ?? []}
+          supplementalMaterialIds={supplementalMaterialIds}
+          taskStatus={latestSubmissionTask?.status}
         />
       ) : null}
-      {route.name === 'review-center' && activeProject && activeReviewRun && activeScopeKey ? (
+      {route.name === 'review-center' && activeProject ? (
         <ReviewCenter
-          key={route.projectId}
-          providers={reviewProvidersDemo}
-          runAllowed={Boolean(reviewRuns[activeScopeKey])}
-          runBlockReason="请先冻结项目快照并生成至少一个成果版本。"
-          run={{
-            ...activeReviewRun,
-            projectSnapshotId: `${route.projectId} · ${activeReviewRun.projectSnapshotId}`,
-          }}
-          onRun={(providerId) => {
-            const provider = reviewProvidersDemo.find((item) => item.id === providerId);
-            setReviewRuns((current) => {
-              const existing = current[activeScopeKey] ?? createEmptyReviewRun(route.projectId);
-              return {
-                ...current,
-                [activeScopeKey]: {
-                  ...existing,
-                  id: `${route.projectId}-review-pending`,
-                  providerId,
-                  providerVersion: provider?.version,
-                  responseHash: undefined,
-                  finishedAt: undefined,
-                  findings: [],
-                  status: 'running',
-                },
-              };
-            });
-          }}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
+          enterpriseMaterials={workspaceEnterprise}
+          materials={workspaceMaterials}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onRun={(providerId) => handleRunReview(route.projectId, providerId)}
+          onSaveSuggestion={(_runId, findingId, suggestion) => handleSaveSuggestion(route.projectId, findingId, suggestion)}
+          projectId={route.projectId}
+          providers={reviewProviders}
+          run={activeData?.reviewRun ?? emptyReview()}
+          runAllowed={Boolean(activeData?.snapshots.length && activeData.deliverables.length)}
+          runBlockReason="请先完成材料解析并生成至少一个成果版本。"
         />
       ) : null}
-      {route.name === 'pricing-center' && activeProject && activeQuoteCalculation && activeScopeKey ? (
-        <>
-          {selectedStrategy ? (
-            <div className="integration-status" role="status">
-              已确认“{selectedStrategy.name}”，系统将创建新的报价单版本；外部历史库保持只读。
-            </div>
-          ) : null}
-          <PricingCenter
-            key={route.projectId}
-            calculation={activeQuoteCalculation}
-            samples={activeHistoryPriceSamples}
-            onApply={(strategyId) =>
-              setAppliedStrategyIds((current) => ({
-                ...current,
-                [activeScopeKey]: strategyId,
-              }))
-            }
-          />
-        </>
+      {route.name === 'pricing-center' && activeProject ? (
+        <PricingCenter
+          calculation={activeData?.quote ?? emptyQuote(route.projectId)}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
+          enterpriseMaterials={workspaceEnterprise}
+          materials={workspaceMaterials}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
+            throw error;
+          })}
+          onApply={(strategyId) => handleApplyQuote(route.projectId, strategyId)}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          samples={activeData?.quoteSamples ?? []}
+        />
       ) : null}
-      {['project-materials', 'review-center', 'pricing-center'].includes(route.name) &&
-      !activeProject ? (
-        <MissingProject />
+      {route.name === 'deliverable-editor' && activeProject && editor ? (
+        <DeliverableEditorPage
+          deliverableId={route.deliverableId}
+          deliverableLabel={deliverableTypeLabel(route.deliverableId)}
+          deliverableLabels={Object.fromEntries((deliverableCards ?? []).map((item) => [item.id, item.title]))}
+          deliverableTitle={editor.deliverable.title}
+          draftScopeId={getEditorDraftScopeKey(session.enterpriseId, session.userId, route.projectId)}
+          editorContent={editor.content.model}
+          editorKind={route.deliverableId === 'quote' ? 'spreadsheet' : 'word'}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
+          enterpriseMaterials={workspaceEnterprise}
+          initialQuoteRows={route.deliverableId === 'quote' ? backendQuoteRows(editor.content.model) : undefined}
+          isBackendConnected={!localPreviewActive}
+          isReadOnly={Boolean(editor.readOnlyReason)}
+          materials={workspaceMaterials}
+          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+            setError(error, '企业资料上传失败');
+            throw error;
+          })}
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
+            setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
+            throw error;
+          })}
+          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onDownload={localPreviewActive
+            ? undefined
+            : () => downloadDeliverable(route.projectId, route.deliverableId, editor.content.version_no)}
+          onSave={editor.session && !editor.readOnlyReason ? handleSaveEditor : undefined}
+          project={activeProject}
+          projectId={route.projectId}
+          versionId={String(editor.content.version_no)}
+          versionIds={deliverableVersionIds}
+          readOnlyReason={editor.readOnlyReason}
+        />
       ) : null}
+      {route.name === 'deliverable-editor' && activeProject && !editor ? (
+        <MissingDeliverable projectId={route.projectId} loading={loadingProjectId === route.projectId} />
+      ) : null}
+      {routeProjectId && !activeProject && projectRouteFailure?.projectId === routeProjectId ? (
+        <ProjectLoadFailure
+          message={projectRouteFailure.message}
+          onRetry={() => setProjectRetryNonce((value) => value + 1)}
+        />
+      ) : null}
+      {routeProjectId && !activeProject && missingProjectId !== routeProjectId
+        && projectRouteFailure?.projectId !== routeProjectId ? <LoadingProject /> : null}
+      {routeProjectId && !activeProject && missingProjectId === routeProjectId ? <MissingProject /> : null}
       {route.name === 'not-found' ? <NotFoundPage /> : null}
 
       {routeProjectId && activeProject ? (
         <TaskProgressDrawer
-          events={activeTaskEvents}
+          events={taskEvents}
           isOpen={taskDrawerProjectId === routeProjectId}
           onClose={() => setTaskDrawerProjectId(null)}
-          projectTitle={activeProject.title}
         />
       ) : null}
-    </AppShell>
+      {snapshotDetail ? <SnapshotDialog detail={snapshotDetail} onClose={() => setSnapshotDetail(null)} /> : null}
+      </AppShell>
+    </>
   );
 }
 
-function createEmptyReviewRun(projectId: string): ReviewRunView {
-  return {
-    id: `${projectId}-review-not-started`,
-    status: 'idle',
-    projectSnapshotId: '尚未创建评审快照',
-    deliverableVersions: ['暂无成果版本'],
-    findings: [],
+function pageMetadata(route: string) {
+  const labels: Record<string, { eyebrow: string; title: string }> = {
+    projects: { eyebrow: '投标协同中心', title: '投标工作台' },
+    'project-overview': { eyebrow: '项目工作台', title: '项目概览' },
+    'project-materials': { eyebrow: '项目工作台', title: '当前招标材料' },
+    'enterprise-assets': { eyebrow: '企业知识中心', title: '企业资料库' },
+    'review-center': { eyebrow: '项目工作台', title: '外部评审中心' },
+    'pricing-center': { eyebrow: '项目工作台', title: '报价测算中心' },
+    'deliverable-editor': { eyebrow: '项目工作台', title: '成果在线编辑' },
+    'history-prices': { eyebrow: '报价数据中心', title: '历史报价' },
   };
+  return labels[route] ?? { eyebrow: 'AI电网投标助手', title: '页面' };
+}
+
+function adaptIngestion(item: EnterpriseIngestion): EnterpriseIngestionItem {
+  const status: EnterpriseIngestionItem['status'] = item.status === 3
+    ? 'completed'
+    : item.status >= 4
+      ? 'failed'
+      : item.status === 2
+        ? 'extracting'
+        : 'queued';
+  return {
+    id: String(item.ingest_id),
+    name: `资料归类任务 #${item.ingest_id}`,
+    status,
+    progress: status === 'completed' ? 100 : undefined,
+  };
+}
+
+function readableError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function toIsoOrNull(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function routeIdForDeliverable(deliverable: Deliverable): DeliverableRouteId | undefined {
+  return ({ 1: 'business', 2: 'technical', 3: 'quote' } as const)[deliverable.deliverable_type];
+}
+
+function deliverableTypeLabel(id: DeliverableRouteId) {
+  return ({ business: '商务标', technical: '技术标', quote: '报价单' } as const)[id];
+}
+
+function toWorkspaceMaterials(materials: ProjectMaterial[]): WorkspaceMaterial[] {
+  const statuses: Record<ProjectMaterial['parseStatus'], string> = {
+    failed: '解析失败', needs_confirmation: '待确认', parsed: '已识别', parsing: '解析中', queued: '待解析',
+  };
+  return materials.map((material) => ({
+    id: material.id,
+    name: material.name,
+    status: statuses[material.parseStatus],
+    tone: material.kind === 'quote_template' ? 'red' : 'blue',
+  }));
+}
+
+function toWorkspaceEnterpriseMaterials(assets: EnterpriseAsset[]): WorkspaceMaterial[] {
+  const statuses: Record<EnterpriseAsset['status'], string> = {
+    failed: '处理失败', needs_review: '待确认', processing: '处理中', ready: '已归档',
+  };
+  const tones: Record<EnterpriseAsset['status'], WorkspaceMaterial['tone']> = {
+    failed: 'red', needs_review: 'orange', processing: 'blue', ready: 'green',
+  };
+  return assets.map((asset) => ({
+    categoryId: asset.categoryId,
+    id: `enterprise:${asset.id}`,
+    name: asset.name,
+    status: statuses[asset.status],
+    tone: tones[asset.status],
+  }));
+}
+
+function asId(value: unknown): string | undefined {
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+}
+
+function readHistorySamples(payload: unknown) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { samples: [], snapshotIds: [] };
+  const record = payload as Record<string, unknown>;
+  const samples = Array.isArray(record.samples) ? record.samples : [];
+  const snapshotIds = Array.isArray(record.snapshot_ids) ? record.snapshot_ids : [];
+  return {
+    samples: samples.filter((sample): sample is Parameters<typeof adaptBackendHistorySamples>[0][number] =>
+      Boolean(sample && typeof sample === 'object' && 'material_name' in sample && 'win_price' in sample && 'win_date' in sample)),
+    snapshotIds: snapshotIds.filter((id): id is string | number => typeof id === 'string' || typeof id === 'number'),
+  };
+}
+
+function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[] {
+  return samples.map((sample) => ({
+    id: sample.id,
+    projectName: '—',
+    tenderer: '—',
+    year: Number(sample.occurredAt.slice(0, 4)) || 0,
+    packageName: '—',
+    materialName: sample.materialName,
+    materialCode: sample.materialCode || sample.materialRef || sample.id,
+    specification: sample.specification,
+    region: sample.region || '—',
+    quantity: undefined,
+    supplier: '—',
+    unitPrice: Number.isFinite(Number(sample.price)) ? Number(sample.price) : undefined,
+    taxRate: sample.taxIncluded === undefined
+      ? '税口径未提供'
+      : sample.taxIncluded
+        ? '含税（税率未提供）'
+        : '未税',
+    awardedAt: sample.occurredAt,
+    source: sample.sourceLabel,
+    parameterDifference: '—',
+    similarity: 'reference',
+  }));
 }
 
 function taskPhaseLabel(phase: string) {
-  const labels: Record<string, string> = {
-    checking: '技术方案检查',
-    drafting: '成果编制',
-    parsing: '材料解析',
-    queued: '任务排队',
-  };
-  return labels[phase] ?? '智能任务';
+  return ({ bid_review: '成果校核', bid_generate: '成果编制', tender_parse: '材料解析' } as Record<string, string>)[phase] ?? '智能任务';
 }
 
-function createEmptyQuoteCalculation(projectId: string): QuoteCalculationView {
-  return {
-    id: `${projectId}-quote-not-started`,
-    status: 'needs_input',
-    algorithmVersion: quoteCalculationDemo.algorithmVersion,
-    sampleSnapshotId: '尚未生成样本快照',
-    querySnapshotId: '尚未查询历史数据',
-    message: '当前项目尚未查询历史样本或执行报价测算。',
-    strategies: [],
-  };
+function downloadBlob(blob: Blob, filename: string) {
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
+async function pollTenderImport(
+  projectId: string,
+  importId: string,
+  generation: number,
+  guard: ReturnType<typeof createTenantGenerationGuard>,
+  reload: (projectId: string) => Promise<void>,
+  setStatus: (message: { tone: 'error' | 'info'; text: string } | null) => void,
+) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (!guard.isCurrent(generation)) return;
+    try {
+      const job = await backendApi.tenderNotices.getImport(projectId, importId);
+      if (job.status === 'succeeded') {
+        await reload(projectId);
+        guard.commit(generation, () => {
+          setStatus({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
+        });
+        return;
+      }
+      if (job.status === 'failed') {
+        guard.commit(generation, () => {
+          setStatus({ tone: 'error', text: job.error || '招标公告网址解析失败。' });
+        });
+        return;
+      }
+    } catch (error) {
+      guard.commit(generation, () => {
+        setStatus({ tone: 'error', text: readableError(error, '招标公告导入状态查询失败。') });
+      });
+      return;
+    }
+  }
+  guard.commit(generation, () => {
+    setStatus({ tone: 'info', text: '招标公告仍在后台处理，可稍后刷新项目材料查看。' });
+  });
+}
+
+function LoadingScreen() {
+  return <main className="empty-page" aria-busy="true"><span className="empty-page__code">加载中</span><h1>正在恢复登录状态</h1></main>;
 }
 
 function MissingProject() {
+  return <section className="empty-page"><span className="empty-page__code">未找到</span><h1>这个项目不存在或无权访问</h1><AppLink className="button button--primary" to="/projects">返回项目列表</AppLink></section>;
+}
+
+function LoadingProject() {
+  return <section className="empty-page" aria-busy="true"><span className="empty-page__code">加载中</span><h1>正在加载项目工作台</h1></section>;
+}
+
+function ProjectLoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="empty-page" aria-labelledby="missing-project-title">
-      <span className="empty-page__code">未找到</span>
-      <h1 id="missing-project-title">这个项目不存在或已被移出当前企业</h1>
-      <p>返回项目列表选择一个可访问的工作台。</p>
-      <AppLink className="button button--primary" to="/projects">
-        返回项目列表
-      </AppLink>
+    <section className="empty-page" role="alert">
+      <span className="empty-page__code">加载失败</span>
+      <h1>项目暂时无法加载</h1>
+      <p>{message}</p>
+      <button className="button button--primary" type="button" onClick={onRetry}>重试</button>
     </section>
   );
 }
 
+function MissingDeliverable({ projectId, loading }: { projectId: string; loading: boolean }) {
+  return <section className="empty-page"><span className="empty-page__code">{loading ? '加载中' : '未找到'}</span><h1>{loading ? '正在加载成果版本' : '当前项目没有这个成果版本'}</h1><AppLink className="button button--primary" to={`/projects/${encodeURIComponent(projectId)}/overview`}>返回项目概览</AppLink></section>;
+}
+
 function NotFoundPage() {
+  return <section className="empty-page"><span className="empty-page__code">404</span><h1>这个页面不存在</h1><AppLink className="button button--primary" to="/projects">返回项目列表</AppLink></section>;
+}
+
+function SnapshotDialog({ detail, onClose }: { detail: { id: string; value: unknown }; onClose: () => void }) {
   return (
-    <section className="empty-page" aria-labelledby="not-found-title">
-      <span className="empty-page__code">404</span>
-      <h1 id="not-found-title">这个页面还没有接入</h1>
-      <p>请返回项目列表继续当前投标工作。</p>
-      <AppLink className="button button--primary" to="/projects">
-        返回项目列表
-      </AppLink>
-    </section>
+    <div className="enterprise-modal-layer">
+      <button className="enterprise-modal-backdrop" aria-label="关闭项目快照" type="button" onClick={onClose} />
+      <section className="enterprise-modal enterprise-modal--detail" role="dialog" aria-modal="true" aria-labelledby="snapshot-detail-title">
+        <button className="enterprise-modal__close enterprise-modal__close--floating" aria-label="关闭项目快照" type="button" onClick={onClose}>×</button>
+        <div style={{ padding: 24 }}><h2 id="snapshot-detail-title">项目快照 #{detail.id}</h2><pre style={{ maxHeight: '70vh', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{JSON.stringify(detail.value, null, 2)}</pre></div>
+      </section>
+    </div>
   );
 }

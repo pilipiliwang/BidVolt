@@ -48,7 +48,9 @@ export function RequirementsPanel({
 
       <div className="project-requirement-list">
         {requirements.map((requirement) => {
-          const confidence = confidencePercent(requirement.confidence);
+          const confidence = requirement.confidence === undefined
+            ? undefined
+            : confidencePercent(requirement.confidence);
           const needsConfirmation = requirement.confirmationStatus === 'needs_confirmation';
           const { coordinate } = requirement;
 
@@ -64,15 +66,15 @@ export function RequirementsPanel({
               <div className="project-requirement__body">
                 <div className="project-requirement__title-row">
                   <h3>{requirement.title}</h3>
-                  <span className={confidence < 70 ? 'project-confidence project-confidence--low' : 'project-confidence'}>
-                    置信度 {confidence}%
+                  <span className={confidence !== undefined && confidence < 70 ? 'project-confidence project-confidence--low' : 'project-confidence'}>
+                    {confidence === undefined ? '置信度未提供' : `置信度 ${confidence}%`}
                   </span>
                 </div>
                 <p>{requirement.content}</p>
                 <div className="project-requirement__source">
                   <MapPin aria-hidden="true" size={14} />
                   <span>
-                    {coordinate.fileName} · 文件版本 {coordinate.fileRevisionNo}
+                    {coordinate.fileName} · {coordinate.fileRevisionNo === undefined ? '文件版本未提供' : `文件版本 ${coordinate.fileRevisionNo}`}
                     {coordinate.pageNo ? ` · 第 ${coordinate.pageNo} 页` : ''}
                     {coordinate.blockIndex ? ` · 文本块 ${coordinate.blockIndex}` : ''}
                   </span>

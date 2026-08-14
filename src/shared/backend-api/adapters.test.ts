@@ -1,0 +1,463 @@
+import { describe, expect, it } from 'vitest';
+
+import type {
+  BackendTask,
+  EnterpriseAsset,
+  EnterpriseAssetDetail,
+  EnterpriseAssetRevision,
+  ProjectResponse,
+} from './types';
+import {
+  adaptBackendEnterpriseAsset,
+  adaptBackendEnterpriseCategories,
+  adaptBackendDeliverableCards,
+  adaptBackendFile,
+  adaptBackendHistorySamples,
+  adaptBackendProject,
+  adaptBackendProjectOverview,
+  adaptBackendQuoteCalculation,
+  adaptBackendRequirement,
+  adaptBackendReviewRun,
+  adaptBackendSnapshots,
+  adaptBackendTaskEvent,
+} from './adapters';
+
+describe('backend DTO adapters', () => {
+  it('adapts a project without inventing unavailable aggregate data', () => {
+    const project: ProjectResponse = {
+      project_id: 18,
+      name: '海上平台电气设备采购项目',
+      tender_no: null,
+      deadline: null,
+      status: 2,
+      note: null,
+      updated_at: '2026-08-14T00:00:00Z',
+    };
+
+    expect(adaptBackendProject(project)).toEqual({
+      id: '18',
+      code: '项目-18',
+      title: '海上平台电气设备采购项目',
+      buyer: '招标人待补充',
+      stage: '方案编制',
+      progress: 45,
+      deadline: '截止时间待补充',
+      materialCount: 0,
+      riskCount: 0,
+      updatedAt: '2026-08-14T00:00:00Z',
+    });
+  });
+
+  it('reads buyer only from an explicit project note prefix', () => {
+    const project: ProjectResponse = {
+      project_id: 19,
+      name: '海上风电项目',
+      tender_no: 'HY-2026-019',
+      deadline: null,
+      status: 1,
+      note: '招标人：海洋能源建设有限公司',
+      updated_at: '2026-08-14T00:00:00Z',
+    };
+
+    expect(adaptBackendProject(project).buyer).toBe('海洋能源建设有限公司');
+    expect(adaptBackendProject({ ...project, note: '重点项目，优先处理' }).buyer)
+      .toBe('招标人待补充');
+  });
+
+  it('maps backend file status and infers a UI material category only from its labels', () => {
+    expect(adaptBackendFile({
+      file_id: 9,
+      name: '附件 3：技术规范书.docx',
+      size: 42,
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      status: 3,
+      category: null,
+    })).toMatchObject({
+      id: '9',
+      kind: 'technical_specification',
+      parseStatus: 'parsed',
+      parseProgress: 100,
+      revisionNo: 1,
+      uploadedAt: '上传时间未提供',
+    });
+  });
+
+  it('does not turn absent deliverable and score metrics into real zero values', () => {
+    const deliverables = [{
+      deliverable_id: 3,
+      project_id: 18,
+      deliverable_type: 2,
+      title: '技术标文件',
+      current_version_no: 1,
+      status: 1,
+      stat: {},
+    }];
+
+    expect(adaptBackendDeliverableCards(deliverables)).toEqual([
+      expect.objectContaining({ pages: undefined, missing: undefined }),
+    ]);
+    expect(adaptBackendProjectOverview(deliverables, {
+      total_score: 82,
+      missing_count: 0,
+      improvable: null,
+    })?.score).toEqual({
+      business: undefined,
+      technical: undefined,
+      pricing: undefined,
+      total: 82,
+      rejectionRisks: undefined,
+      missingMaterials: 0,
+      estimatedLift: undefined,
+    });
+  });
+
+  it('preserves zero metrics explicitly returned by the backend', () => {
+    const deliverables = [{
+      deliverable_id: 3,
+      project_id: 18,
+      deliverable_type: 2,
+      title: '技术标文件',
+      current_version_no: 1,
+      status: 1,
+      stat: { pages: 0, missing: 0 },
+    }];
+
+    expect(adaptBackendDeliverableCards(deliverables)).toEqual([
+      expect.objectContaining({ pages: 0, missing: 0 }),
+    ]);
+    expect(adaptBackendProjectOverview(deliverables, {
+      total_score: 0,
+      biz_score: 0,
+      tech_score: 0,
+      quote_score: 0,
+      reject_count: 0,
+      missing_count: 0,
+      improvable: 0,
+    })?.score).toEqual({
+      business: 0,
+      technical: 0,
+      pricing: 0,
+      total: 0,
+      rejectionRisks: 0,
+      missingMaterials: 0,
+      estimatedLift: 0,
+    });
+  });
+
+  it('keeps fact_id as the mutation key for enterprise fact correction', () => {
+    const asset: EnterpriseAsset = {
+      asset_id: 5,
+      name: '营业执照.pdf',
+      asset_type: '证照',
+      category_id: 1,
+      status: 2,
+      source_file_id: 7,
+    };
+    const detail: EnterpriseAssetDetail = {
+      ...asset,
+      facts: [{
+        fact_id: 81,
+        fact_key: 'credit_code',
+        fact_value: { value: '91310000ABC' },
+        confidence: 0.94,
+        status: 1,
+      }],
+    };
+    const revisions: EnterpriseAssetRevision[] = [{
+      revision_id: 12,
+      revision_no: 1,
+      file_id: 7,
+      sha256: 'a'.repeat(64),
+      source_location: null,
+      created_by: 3,
+      created_at: '2026-08-14T01:00:00Z',
+    }];
+
+    const result = adaptBackendEnterpriseAsset(
+      { asset, detail, revisions },
+      [{ category_id: 1, name: '证照', parent_id: null }],
+    );
+
+    expect(result).toMatchObject({
+      category: 'license',
+      categoryId: '1',
+      categoryLabel: '证照',
+      status: 'needs_review',
+    });
+    expect(result.facts[0]).toMatchObject({
+      id: '81',
+      key: '81',
+      label: '统一社会信用代码',
+      value: '91310000ABC',
+      needsReview: true,
+    });
+    expect(result.revisions[0]).toMatchObject({ isCurrent: true, createdBy: '用户 #3' });
+  });
+
+  it('keeps backend enterprise category ids, labels, and hierarchy without mock folders', () => {
+    expect(adaptBackendEnterpriseCategories([
+      { category_id: 10, name: ' 企业证照 ', parent_id: null },
+      { category_id: 11, name: '安全许可证', parent_id: 10 },
+      { category_id: 11, name: '重复分类不会覆盖', parent_id: null },
+    ])).toEqual([
+      { id: '10', label: '企业证照', parentId: null },
+      { id: '11', label: '安全许可证', parentId: '10' },
+    ]);
+  });
+
+  it('adapts requirement coordinates but marks confirmation as unavailable', () => {
+    expect(adaptBackendRequirement({
+      req_id: 3,
+      req_type: 'score_rule',
+      req_key: null,
+      content: '技术参数满分 20 分',
+      structured: { title: '技术参数响应' },
+      coordinates: [{ page_no: 12, block_index: 4 }],
+      confidence: 0.87,
+      revision: 2,
+      source_file_id: 9,
+    }, { fileNamesById: { '9': '招标文件.pdf' } })).toEqual({
+      id: '3',
+      type: 'score_rule',
+      title: '技术参数响应',
+      content: '技术参数满分 20 分',
+      confidence: 0.87,
+      confirmationStatus: 'needs_confirmation',
+      revisionNo: 2,
+      coordinate: {
+        fileName: '招标文件.pdf',
+        fileRevisionNo: undefined,
+        pageNo: 12,
+        blockIndex: 4,
+      },
+    });
+  });
+
+  it('preserves backend task public progress in the existing drawer event contract', () => {
+    const task: BackendTask = {
+      task_id: 21,
+      task_type: 'bid_generate',
+      status: 2,
+      retry_count: 0,
+      created_at: '2026-08-14T02:00:00Z',
+      progress: {
+        phase: 'bid_generate',
+        status: 'running',
+        percent: 42,
+        current_work: '正在生成技术标',
+      },
+    };
+
+    expect(adaptBackendTaskEvent(task, { projectId: '18', sequence: 4 })).toEqual({
+      schema_version: '1',
+      event_id: '21-4',
+      sequence: 4,
+      task_id: '21',
+      task_type: 'bid_generate',
+      project_id: '18',
+      phase: 'bid_generate',
+      status: 'running',
+      percent: 42,
+      public_message: '正在生成技术标',
+      error_code: null,
+      occurred_at: '2026-08-14T02:00:00Z',
+    });
+  });
+
+  it('does not expose a backend deliverable without a positive saved version as V0', () => {
+    expect(adaptBackendDeliverableCards([{
+      deliverable_id: 3,
+      project_id: 18,
+      deliverable_type: 2,
+      title: '技术标文件',
+      current_version_no: 0,
+      stat: {},
+    }])).toEqual([
+      expect.objectContaining({ versionId: undefined }),
+    ]);
+  });
+
+  it('distinguishes a queued task from a task that is already executing', () => {
+    expect(adaptBackendTaskEvent({
+      task_id: 22,
+      task_type: 'bid_review',
+      status: 1,
+      retry_count: 0,
+      progress: {},
+    }, { projectId: '18' })).toMatchObject({
+      status: 'queued',
+      public_message: '任务已提交，等待后端执行器领取',
+    });
+  });
+
+  it('preserves a backend task that is waiting for user input', () => {
+    expect(adaptBackendTaskEvent({
+      task_id: 23,
+      task_type: 'bid_generate',
+      status: 2,
+      retry_count: 0,
+      progress: { status: 'waiting_user', current_work: '请确认缺失材料' },
+    }, { projectId: '18' })).toMatchObject({
+      status: 'waiting_user',
+      task_type: 'bid_generate',
+      public_message: '请确认缺失材料',
+    });
+  });
+
+  it('does not call the first backend snapshot current without an explicit marker', () => {
+    expect(adaptBackendSnapshots([
+      {
+        snapshot_id: 2,
+        snapshot_type: 'review',
+        created_at: '2026-08-14T03:00:00Z',
+        input_refs: { materials: [1, 2], requirement_revision_no: 3 },
+        rules_version: {},
+      },
+      {
+        snapshot_id: 1,
+        snapshot_type: 'review',
+        created_at: '2026-08-13T03:00:00Z',
+        input_refs: {},
+        rules_version: {},
+      },
+    ])).toMatchObject([
+      { id: '2', isCurrent: false, materialRevisionCount: 2, requirementRevisionNo: 3 },
+      { id: '1', isCurrent: false },
+    ]);
+  });
+
+  it('hides unverified backend review evidence instead of rendering internal evidence fields', () => {
+    const view = adaptBackendReviewRun({
+      run_id: 7,
+      status: 2,
+      snapshot_id: 6,
+      provider: {
+        provider_id: 2,
+        provider_code: 'external_api',
+        provider_type: 'api',
+        provider_version: 'v1',
+        name: '外部评审',
+        enabled: true,
+      },
+      score: {
+        score_id: 2,
+        total_score: 66.7,
+        missing_count: 1,
+        improvable: 10,
+        detail: { items_count: 1 },
+      },
+      items: [{
+        item_id: 99,
+        category: '完整性',
+        problem_description: '缺少技术标',
+        got: 0,
+        full: 10,
+        improvable: 10,
+        risk_level: '2',
+        suggestion: '请生成技术标',
+        suggestion_override: null,
+        effective_suggestion: '请生成技术标',
+        action_type: 'edit_deliverable',
+        evidence: { exact_quote: '不应直接展示', source_version_id: 3 },
+        status: 1,
+        confidence: 0.91,
+        ruleset_version: 'builtin-code-1.0',
+      }],
+    });
+
+    expect(view.status).toBe('succeeded');
+    expect(view.validatedSummary).toMatchObject({
+      totalFindingCount: 1,
+      categoryCounts: [{ key: '完整性', label: '完整性', count: 1 }],
+      currentScore: 66.7,
+      predictedScore: undefined,
+      totalLift: 10,
+    });
+    expect(view.validatedSummary?.sectionLifts).toBeUndefined();
+    expect(view.findings[0]).toMatchObject({
+      category: '完整性',
+      currentScore: 0,
+      fullScore: 10,
+      improvableScore: 10,
+      riskLevel: 'high',
+      confidence: 0.91,
+      ruleVersion: 'builtin-code-1.0',
+    });
+    expect(view.findings[0].evidence).toEqual({
+      sourceLabel: '成果版本 #3',
+      locator: '证据未通过前端冻结快照校验，定位内容已隐藏',
+      verification: 'hidden_unverified',
+    });
+  });
+
+  it('uses deterministic quote result/strategy fields without AI-derived values', () => {
+    expect(adaptBackendQuoteCalculation({
+      calc_id: 8,
+      result: { suggested: 119.4, engine_version: '1.0.0' },
+      snapshot_refs: [101, 102],
+      strategy_results: {
+        balance: {
+          strategy: 'balance',
+          suggested_price: 119.4,
+          score: 88.06,
+          gross_margin: 0.16,
+          risk_level: 'medium',
+        },
+      },
+    })).toMatchObject({
+      id: '8',
+      status: 'calculated',
+      algorithmVersion: '1.0.0',
+      sampleSnapshotId: '101,102',
+      strategies: [{
+        id: 'balance',
+        amount: '119.4',
+        predictedScore: '88.06',
+        grossMargin: '0.16',
+        recommended: false,
+      }],
+    });
+  });
+
+  it('preserves backend history material identifiers and region for page filtering', () => {
+    expect(adaptBackendHistorySamples([{
+      sample_id: 33,
+      material_ref: 'CABLE-YJV-3x95',
+      material_code: 'MAT-0095',
+      material_name: '电力电缆',
+      spec: '3x95',
+      region: '华东',
+      win_price: '118.00',
+      win_date: '2026-08-01',
+      provider_id: 'external-history',
+      source_hash: 'abc',
+    }])).toEqual([expect.objectContaining({
+      id: '33',
+      materialRef: 'CABLE-YJV-3x95',
+      materialCode: 'MAT-0095',
+      region: '华东',
+      sourceHash: 'abc',
+      taxIncluded: undefined,
+      usable: false,
+      excludedReason: '税口径未提供，不能直接用于测算',
+    })]);
+  });
+
+  it('preserves quote status and does not synthesize confidence ranges or recommendations', () => {
+    const view = adaptBackendQuoteCalculation({
+      calc_id: 9,
+      status: 2,
+      result: { suggested: 210, engine_version: '1.0.0' },
+      strategy_results: {
+        win: { strategy: 'win', suggested_price: 210 },
+      },
+    });
+
+    expect(view.status).toBe('applied');
+    expect(view.strategies[0]).toMatchObject({
+      recommended: false,
+      confidenceLow: undefined,
+      confidenceHigh: undefined,
+    });
+  });
+});

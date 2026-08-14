@@ -1,3 +1,6 @@
+import type { PublicTaskEvent } from '../../shared/task-events';
+import type { ProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
+
 export type ProjectMaterialKind =
   | 'tender_notice'
   | 'tender_document'
@@ -31,7 +34,7 @@ export interface ProjectMaterial {
   kind: ProjectMaterialKind;
   revisionNo: number;
   parseStatus: ProjectMaterialParseStatus;
-  parseProgress: number;
+  parseProgress?: number;
   blocksCount?: number;
   uploadedAt: string;
   supersedesRevisionNo?: number;
@@ -39,7 +42,7 @@ export interface ProjectMaterial {
 
 export interface RequirementCoordinate {
   fileName: string;
-  fileRevisionNo: number;
+  fileRevisionNo?: number;
   pageNo?: number;
   blockIndex?: number;
 }
@@ -49,7 +52,7 @@ export interface ProjectRequirement {
   type: RequirementType;
   title: string;
   content: string;
-  confidence: number;
+  confidence?: number;
   confirmationStatus: 'confirmed' | 'needs_confirmation';
   revisionNo: number;
   coordinate: RequirementCoordinate;
@@ -60,20 +63,36 @@ export interface ProjectSnapshot {
   label: string;
   createdAt: string;
   materialRevisionCount: number;
-  requirementRevisionNo: number;
+  requirementRevisionNo?: number;
   isCurrent: boolean;
 }
 
 export interface ProjectMaterialUploadProps {
   projectId: string;
   projectName: string;
-  onUpload?: (projectId: string, files: File[]) => void;
+  onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
 }
 
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
+  completedBidMaterialIds?: readonly string[];
+  enterpriseCategories?: import('../enterprise-assets').EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
+  enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
+  onCompletedBidUpload?: (projectId: string, files: File[]) => void | Promise<void>;
+  onAssistantSend?: (value: string) => void | Promise<void>;
+  onImportTenderNoticeUrl?: (
+    projectId: string,
+    url: string,
+  ) => Promise<{ message?: string; status?: 'queued' | 'processing' | 'completed' } | void>;
   requirements: ProjectRequirement[];
+  reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];
+  supplementalMaterialIds?: readonly string[];
+  taskStatus?: PublicTaskEvent['status'];
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
+  onStartTask: (projectId: string, mode: 'generate' | 'validate') => Promise<void> | void;
 }

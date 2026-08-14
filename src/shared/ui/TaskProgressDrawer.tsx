@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Check, Clock3, FileCheck2, LoaderCircle, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Check, Clock3, LoaderCircle, X } from 'lucide-react';
 
-import type { PublicTaskEvent } from '../api/task-events';
+import type { PublicTaskEvent } from '../task-events';
 
 type TaskProgressDrawerProps = {
   isOpen: boolean;
   onClose: () => void;
-  projectTitle: string;
   events: PublicTaskEvent[];
 };
 
@@ -45,24 +44,24 @@ function statusClass(status: PublicTaskEvent['status']) {
   return 'waiting';
 }
 
+function phaseLabel(phase: string) {
+  const labels: Record<string, string> = {
+    bid_generate: '成果生成',
+    bid_review: '成果校核',
+    tender_parse: '招标材料解析',
+  };
+  return labels[phase] ?? phase;
+}
+
 export function TaskProgressDrawer({
   isOpen,
   onClose,
-  projectTitle,
   events,
 }: TaskProgressDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
-  const latestEvent = useMemo(
-    () => events.reduce<PublicTaskEvent | undefined>(
-      (latest, event) => (!latest || event.sequence > latest.sequence ? event : latest),
-      undefined,
-    ),
-    [events],
-  );
-
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
@@ -123,8 +122,6 @@ export function TaskProgressDrawer({
     return null;
   }
 
-  const latestPercent = latestEvent?.percent ?? null;
-
   return (
     <div className="drawer-layer">
       <button
@@ -157,35 +154,9 @@ export function TaskProgressDrawer({
           </button>
         </header>
 
-        <section className="active-task-card" aria-labelledby="active-task-title">
-          <div className="active-task-card__heading">
-            <span className="active-task-card__icon" aria-hidden="true">
-              <FileCheck2 size={19} />
-            </span>
-            <div>
-              <span>当前工作台项目</span>
-              <h3 id="active-task-title">{projectTitle}</h3>
-            </div>
-            <strong>{latestPercent === null ? '—' : `${latestPercent}%`}</strong>
-          </div>
-          {latestPercent === null ? null : (
-            <div
-              className="progress-track progress-track--large"
-              role="progressbar"
-              aria-label={`${projectTitle}任务进度`}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={latestPercent}
-            >
-              <span style={{ width: `${latestPercent}%` }} />
-            </div>
-          )}
-          <p>这里只展示后端公开事件中的说明、进度和发生时间。</p>
-        </section>
-
         <section className="event-stream" aria-labelledby="event-stream-title" aria-live="polite">
           <div className="event-stream__heading">
-            <h3 id="event-stream-title">最新动态</h3>
+            <h3 id="event-stream-title">任务当前状态</h3>
             <span>自动更新</span>
           </div>
           {events.length === 0 ? (
@@ -198,6 +169,7 @@ export function TaskProgressDrawer({
                     <StatusIcon status={event.status} />
                   </span>
                   <div>
+                    <strong>{phaseLabel(event.phase)}</strong>
                     <p>{event.public_message}</p>
                     <small>
                       {event.percent === null ? '进度待更新' : `${event.percent}%`}
@@ -214,7 +186,7 @@ export function TaskProgressDrawer({
         <footer className="task-drawer__footer">
           <p>
             <span aria-hidden="true" />
-            这里只展示可公开的任务状态，详细处理信息保留在系统审计中。
+            每一行代表一个独立任务的最新状态，不是同一任务的多段执行日志。
           </p>
         </footer>
       </aside>

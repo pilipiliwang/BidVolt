@@ -15,16 +15,38 @@ export type ReviewEvidenceVerification = 'verified' | 'hidden_unverified' | 'mis
 
 export type ReviewFinding = {
   id: string;
+  category?: string;
   title: string;
   outcome: ReviewFindingOutcome;
   ruleVersion: string;
   confidence?: number;
+  currentScore?: number;
+  fullScore?: number;
+  improvableScore?: number;
+  riskLevel?: 'low' | 'medium' | 'high';
   suggestion: string;
   evidence: {
     sourceLabel: string;
     locator: string;
     exactQuote?: string;
     verification: ReviewEvidenceVerification;
+  };
+};
+
+export type ReviewValidatedSummary = {
+  totalFindingCount: number;
+  categoryCounts: Array<{
+    key: string;
+    label: string;
+    count: number;
+  }>;
+  currentScore: number;
+  predictedScore?: number;
+  totalLift: number;
+  sectionLifts?: {
+    business?: number;
+    technical?: number;
+    pricing?: number;
   };
 };
 
@@ -46,4 +68,6 @@ export type ReviewRunView = {
   responseHash?: string;
   finishedAt?: string;
   findings: ReviewFinding[];
+  /** Provider/backend-validated aggregate values; never infer these from UI placeholders. */
+  validatedSummary?: ReviewValidatedSummary;
 };

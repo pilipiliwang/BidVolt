@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ReviewCenter } from './ReviewCenter';
@@ -23,6 +24,34 @@ const providers: ReviewProvider[] = [
   },
 ];
 
+const reviewProvidersDemo = providers;
+const reviewRunDemo: ReviewRunView = {
+  id: 'review-1',
+  status: 'succeeded',
+  projectSnapshotId: 'snapshot-1',
+  deliverableVersions: ['技术标 V1'],
+  findings: runFindings(),
+  validatedSummary: {
+    totalFindingCount: 18,
+    categoryCounts: [
+      { key: 'letter', label: '商务标-投标函', count: 4 },
+      { key: 'business', label: '商务标文件', count: 4 },
+    ],
+    currentScore: 76,
+    predictedScore: 91.6,
+    totalLift: 15.6,
+    sectionLifts: { business: 6.2, technical: 6.8, pricing: 2.6 },
+  },
+};
+
+function runFindings(): ReviewRunView['findings'] {
+  return [{
+    id: 'fixture-finding', title: '测试提升项', outcome: 'risk', ruleVersion: 'fixture-v1',
+    suggestion: '请复核该项内容。',
+    evidence: { sourceLabel: '测试文件', locator: '测试定位', verification: 'verified' },
+  }];
+}
+
 const run: ReviewRunView = {
   id: 'review_01',
   status: 'succeeded',
@@ -37,6 +66,10 @@ const run: ReviewRunView = {
       outcome: 'risk',
       ruleVersion: 'rule-18',
       confidence: 0.96,
+      currentScore: 3,
+      fullScore: 5,
+      improvableScore: 2,
+      riskLevel: 'high',
       suggestion: '请确认资质证书在投标截止日仍然有效。',
       evidence: {
         sourceLabel: '招标文件',
@@ -50,18 +83,66 @@ const run: ReviewRunView = {
 
 describe('ReviewCenter', () => {
   it('shows provider type, frozen snapshot, evidence and controlled result notice', () => {
-    render(<ReviewCenter providers={providers} run={run} />);
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={run}
+      />,
+    );
 
     expect(screen.getByText('远程 API · 2026.08')).toBeInTheDocument();
     expect(screen.getByText('沙箱代码 · v3')).toBeInTheDocument();
     expect(screen.getByText('snap_20260805')).toBeInTheDocument();
     expect(screen.getByText('评审结果不会直接修改成果')).toBeInTheDocument();
     expect(screen.getByText('第 12 页 · 资格条件 3.1')).toBeInTheDocument();
+    expect(screen.getByText('3.0 / 5.0')).toBeInTheDocument();
+    expect(screen.getByText('+2.0 分')).toBeInTheDocument();
+    expect(screen.getByText(/共识别 1 项可提升点/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /商务标-投标函/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /商务标文件/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+    expect(screen.getByText('暂无可用提升效果')).toBeInTheDocument();
+  });
+
+  it('renders the P07 totals and impact only from the demo validated summary', () => {
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={reviewProvidersDemo}
+        run={reviewRunDemo}
+      />,
+    );
+
+    expect(screen.getByText(/共识别 18 项可提升点/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '商务标-投标函 4' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '商务标文件 4' })).toBeInTheDocument();
+    expect(screen.getByText('76.0')).toBeInTheDocument();
+    expect(screen.getByLabelText('执行建议后预估 91.6 分')).toBeInTheDocument();
+    expect(screen.getByText('+15.6 分')).toBeInTheDocument();
+    expect(screen.getByText('+6.2 分')).toBeInTheDocument();
+    expect(screen.getByText('+6.8 分')).toBeInTheDocument();
+    expect(screen.getByText('+2.6 分')).toBeInTheDocument();
   });
 
   it('runs only the user-selected provider', () => {
     const onRun = vi.fn();
-    render(<ReviewCenter onRun={onRun} providers={providers} run={run} />);
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        onRun={onRun}
+        providers={providers}
+        run={run}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /本地规则代码/ }));
     fireEvent.click(screen.getByRole('button', { name: '基于冻结快照运行评审' }));
@@ -69,9 +150,106 @@ describe('ReviewCenter', () => {
     expect(onRun).toHaveBeenCalledWith('provider-code');
   });
 
+  it('filters loaded findings by required action, category and optimizable status', async () => {
+    const user = userEvent.setup();
+    const filterableRun: ReviewRunView = {
+      ...run,
+      findings: [
+        {
+          ...run.findings[0],
+          id: 'qualification-failure',
+          category: '商务标',
+          title: '资质文件缺失',
+          outcome: 'fail',
+        },
+        {
+          ...run.findings[0],
+          id: 'technical-risk',
+          category: '技术标',
+          title: '实施周期存在风险',
+          outcome: 'risk',
+        },
+        {
+          ...run.findings[0],
+          id: 'technical-pass',
+          category: '技术标',
+          title: '技术参数完整',
+          outcome: 'pass',
+        },
+      ],
+      validatedSummary: {
+        totalFindingCount: 3,
+        categoryCounts: [
+          { key: '商务标', label: '商务标', count: 1 },
+          { key: '技术标', label: '技术标', count: 2 },
+        ],
+        currentScore: 80,
+        predictedScore: 85,
+        totalLift: 5,
+      },
+    };
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={filterableRun}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '必须处理 1' }));
+    expect(screen.getByText('资质文件缺失')).toBeInTheDocument();
+    expect(screen.queryByText('实施周期存在风险')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '必须处理 1' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: '技术标 2' }));
+    expect(screen.queryByText('资质文件缺失')).not.toBeInTheDocument();
+    expect(screen.getByText('实施周期存在风险')).toBeInTheDocument();
+    expect(screen.getByText('技术参数完整')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '可以优化内容 2' }));
+    expect(screen.getByText('资质文件缺失')).toBeInTheDocument();
+    expect(screen.getByText('实施周期存在风险')).toBeInTheDocument();
+    expect(screen.queryByText('技术参数完整')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '全部 3' }));
+    expect(screen.getByText('技术参数完整')).toBeInTheDocument();
+  });
+
+  it('keeps the run action pending and exposes backend submission errors', async () => {
+    const user = userEvent.setup();
+    let rejectRun: ((reason?: unknown) => void) | undefined;
+    const onRun = vi.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectRun = reject;
+    }));
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        onRun={onRun}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '基于冻结快照运行评审' }));
+    expect(screen.getByRole('button', { name: '正在提交评审任务' })).toBeDisabled();
+
+    rejectRun?.(new Error('评审服务暂不可用'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('评审服务暂不可用');
+    expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeEnabled();
+    expect(onRun).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks execution until a frozen snapshot and deliverable versions exist', () => {
     render(
       <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
         providers={providers}
         run={{
           ...run,
@@ -89,5 +267,200 @@ describe('ReviewCenter', () => {
     expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeDisabled();
     expect(screen.getByText('请先冻结项目快照并生成至少一个成果版本。')).toBeInTheDocument();
     expect(screen.getByText('当前项目还没有可展示的评审结果。')).toBeInTheDocument();
+    expect(screen.getByText('尚未运行评审')).toBeInTheDocument();
+    expect(screen.queryByText(/共识别 18 项可提升点/)).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+  });
+
+  it('does not show completed-review conclusions while a provider is running', () => {
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={{
+          ...run,
+          id: 'running-review',
+          status: 'running',
+          findings: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('（评审执行中）')).toBeInTheDocument();
+    expect(
+      screen.getByText('Provider 正在处理冻结快照，旧评审结果已从当前视图移除。'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('提升效果正在计算')).toBeInTheDocument();
+    expect(screen.queryByText(/共识别 18 项可提升点/)).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+  });
+
+  it('does not fabricate scores when a completed provider returns no findings', () => {
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={{
+          ...run,
+          id: 'empty-review',
+          findings: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('（暂无可用结论）')).toBeInTheDocument();
+    expect(
+      screen.getByText('评审已完成，但 Provider 未返回可展示的评审结论。'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('暂无可用提升效果')).toBeInTheDocument();
+    expect(screen.queryByText(/共识别 18 项可提升点/)).not.toBeInTheDocument();
+    expect(screen.queryByText('76.0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('执行建议后预估 91.6 分')).not.toBeInTheDocument();
+    expect(screen.queryByText('+15.6 分')).not.toBeInTheDocument();
+  });
+
+  it('edits and saves the displayed suggestion through one accessible entry point', async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    const editButton = screen.getByRole('button', {
+      name: '编辑建议：资质有效期不足',
+    });
+    expect(editButton).toHaveTextContent('编辑建议');
+    expect(screen.queryByText('手动修改')).not.toBeInTheDocument();
+    expect(screen.queryByText('AI建议修改')).not.toBeInTheDocument();
+    await user.click(editButton);
+
+    const editor = screen.getByRole('textbox', {
+      name: '编辑“资质有效期不足”的建议内容',
+    });
+    expect(editor).toHaveValue('请确认资质证书在投标截止日仍然有效。');
+    await user.clear(editor);
+    await user.type(editor, '请补充续期证明，并由项目负责人复核。');
+    await user.click(screen.getByRole('button', { name: '保存建议：资质有效期不足' }));
+
+    expect(screen.getByText('请补充续期证明，并由项目负责人复核。')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /资质有效期不足/ })).not.toBeInTheDocument();
+  });
+
+  it('cancels suggestion editing without changing the displayed content', async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '编辑建议：资质有效期不足' }));
+    const editor = screen.getByRole('textbox', {
+      name: '编辑“资质有效期不足”的建议内容',
+    });
+    await user.clear(editor);
+    await user.type(editor, '这段内容不应保存');
+    await user.click(screen.getByRole('button', { name: '取消编辑：资质有效期不足' }));
+
+    expect(screen.getByText('请确认资质证书在投标截止日仍然有效。')).toBeInTheDocument();
+    expect(screen.queryByText('这段内容不应保存')).not.toBeInTheDocument();
+  });
+
+  it('marks an empty suggestion invalid, explains the error and prevents saving', async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '编辑建议：资质有效期不足' }));
+    const editor = screen.getByRole('textbox', {
+      name: '编辑“资质有效期不足”的建议内容',
+    });
+    await user.clear(editor);
+
+    const error = screen.getByRole('alert');
+    const saveButton = screen.getByRole('button', { name: '保存建议：资质有效期不足' });
+    expect(error).toHaveTextContent('建议内容不能为空');
+    expect(editor).toHaveAttribute('aria-invalid', 'true');
+    expect(editor).toHaveAttribute('aria-describedby', error.id);
+    expect(saveButton).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: '取消编辑：资质有效期不足' }));
+    expect(screen.getByText('请确认资质证书在投标截止日仍然有效。')).toBeInTheDocument();
+  });
+
+  it('uploads supplements into the current project and requires a new snapshot before review', async () => {
+    const user = userEvent.setup();
+    const onAddFiles = vi.fn();
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={onAddFiles}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    const input = screen.getByLabelText('上传当前项目补充资料') as HTMLInputElement;
+    const inputClick = vi.spyOn(input, 'click');
+    await user.click(screen.getByRole('button', { name: '上传项目补充资料' }));
+    expect(inputClick).toHaveBeenCalledTimes(1);
+
+    const file = new File(['supplement'], '资质补充材料.pdf', { type: 'application/pdf' });
+    await user.upload(input, file);
+
+    expect(onAddFiles).toHaveBeenCalledWith([file]);
+    expect(
+      screen.getByText('补充资料已加入当前项目；请冻结新快照后重新运行评审。'),
+    ).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: '请先冻结新快照' })).toBeDisabled();
+  });
+
+  it('does not mark the snapshot stale when supplement upload fails', async () => {
+    const user = userEvent.setup();
+    const onAddFiles = vi.fn(() => Promise.reject(new Error('补充资料上传失败')));
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={onAddFiles}
+        onRun={() => undefined}
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText('上传当前项目补充资料'),
+      new File(['supplement'], '失败补充.pdf', { type: 'application/pdf' }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('补充资料上传失败');
+    expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeEnabled();
+    expect(screen.queryByText(/请冻结新快照后重新运行评审/)).not.toBeInTheDocument();
   });
 });

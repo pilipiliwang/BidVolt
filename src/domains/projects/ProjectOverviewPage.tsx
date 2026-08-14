@@ -1,92 +1,122 @@
 import {
-  Activity,
-  ArrowRight,
-  CalendarClock,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  CircleDashed,
+  CheckCircle2,
+  Clock3,
+  Download,
+  Eye,
   FileCheck2,
-  FilePenLine,
-  FileSearch,
-  FileStack,
-  ListChecks,
-  ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
 
-import { AppLink } from '../../app/router';
-import { getProjectSummary } from './project-view-model';
+import { AppLink, deliverableEditorPath } from '../../app/router';
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
+import type { ProjectSummary } from './project-view-model';
+import {
+  ProjectOutcomeReviewPanel,
+  type ProjectOutcomeReviewViewModel,
+  type ProjectOutcomeScore,
+} from './ProjectOutcomeReviewPanel';
+import {
+  ProjectWorkbench,
+  ResultCover,
+  type WorkspaceMaterial,
+} from './ProjectWorkbench';
+import { ProjectWorkspaceTabs } from './ProjectWorkspaceTabs';
+import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
+  deliverables?: ProjectDeliverableView[];
+  deliverablesRequest?: DeliverablesRequestView;
+  enterpriseCategories?: EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
+  enterpriseMaterials: WorkspaceMaterial[];
+  materials: WorkspaceMaterial[];
+  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantSend?: (value: string) => void | Promise<void>;
+  onOpenImprovementSuggestions?: () => void;
   onOpenTasks: () => void;
+  onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
+  overview?: ProjectOverviewView;
+  project?: ProjectSummary;
   projectId: string;
+  outcomeReview?: ProjectOutcomeReviewViewModel;
   taskSummary?: {
     message: string;
-    percent: number;
+    percent: number | null;
+    status?: ProjectTaskStatus;
     title: string;
   };
+  versionOptions?: ProjectOverviewVersionOption[];
+  downloadHrefFor?: (deliverable: ProjectDeliverableView) => string;
+  onDownloadDeliverable?: (deliverable: ProjectDeliverableView) => void | Promise<void>;
 };
 
-const workflowSteps = [
-  {
-    title: '项目材料',
-    detail: '材料绑定当前项目事件',
-    status: 'complete',
-    icon: FileStack,
-  },
-  {
-    title: '需求清单',
-    detail: '需求保留原文定位',
-    status: 'complete',
-    icon: ListChecks,
-  },
-  {
-    title: '成果编制',
-    detail: '成果读取冻结快照',
-    status: 'active',
-    icon: FilePenLine,
-  },
-  {
-    title: '模拟评审',
-    detail: '等待成果版本确认',
-    status: 'waiting',
-    icon: FileSearch,
-  },
-  {
-    title: '终检交付',
-    detail: '等待冻结项目快照',
-    status: 'waiting',
-    icon: FileCheck2,
-  },
-] as const;
+export type DeliverablesRequestView = {
+  endpoint: string;
+  errorMessage?: string;
+  method?: string;
+  status: 'idle' | 'loading' | 'success' | 'error';
+};
 
-const demoAttentionItems = [
-  {
-    level: 'high',
-    title: '技术参数存在 2 处待确认项',
-    detail: '配电柜防护等级与招标正文、附件表述不一致。',
-    action: '查看需求',
-    target: 'materials',
-  },
-  {
-    level: 'medium',
-    title: '3 条业绩要求尚未匹配企业资料',
-    detail: '需要选择可复用的企业业绩记录，项目材料不会自动沉淀。',
-    action: '处理匹配',
-    target: 'enterprise',
-  },
-  {
-    level: 'low',
-    title: '报价样本口径等待确认',
-    detail: '历史价格只读查询已完成，需确认税率和运输范围。',
-    action: '查看报价',
-    target: 'pricing',
-  },
-] as const;
+export type ProjectTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'retrying'
+  | 'waiting_user'
+  | 'succeeded'
+  | 'failed';
 
-export function ProjectOverviewPage({ onOpenTasks, projectId, taskSummary }: ProjectOverviewPageProps) {
-  const project = getProjectSummary(projectId);
+export type ProjectDeliverableView = {
+  id: 'business' | 'technical' | 'quote';
+  lift: string;
+  missing?: number;
+  pages?: number;
+  score: string;
+  title: string;
+  tone: 'business' | 'technical' | 'quote';
+  versionId?: string;
+  words: string;
+};
+
+export type ProjectOverviewVersionOption = {
+  deliverableId: ProjectDeliverableView['id'];
+  isCurrent?: boolean;
+  title: string;
+  versionId: string;
+};
+
+export type ProjectOverviewView = {
+  deliverables: ProjectDeliverableView[];
+  score: ProjectOutcomeScore;
+};
+
+export function ProjectOverviewPage({
+  deliverables,
+  deliverablesRequest,
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
+  enterpriseMaterials,
+  materials,
+  onAddEnterpriseFiles,
+  onAddFiles,
+  onAssistantAddFiles,
+  onAssistantSend,
+  onOpenImprovementSuggestions,
+  onOpenTasks,
+  onSelectVersion,
+  overview,
+  project: projectOverride,
+  projectId,
+  outcomeReview,
+  taskSummary,
+  versionOptions,
+  downloadHrefFor,
+  onDownloadDeliverable,
+}: ProjectOverviewPageProps) {
+  const project = projectOverride;
+  const visibleDeliverables = deliverables ?? overview?.deliverables;
+  const taskPercent = taskSummary ? normalizeTaskPercent(taskSummary.percent) : null;
+  const taskProgressLabel = taskPercent === null ? '进度待更新' : `${taskPercent}%`;
 
   if (!project) {
     return (
@@ -101,205 +131,305 @@ export function ProjectOverviewPage({ onOpenTasks, projectId, taskSummary }: Pro
     );
   }
 
-  const attentionItems =
-    project.id === 'BV-2026-018'
-      ? demoAttentionItems
-      : [
-          {
-            level: project.riskCount > 0 ? ('medium' as const) : ('low' as const),
-            title:
-              project.riskCount > 0
-                ? `当前项目有 ${project.riskCount} 项待处理风险`
-                : '当前项目暂无待处理风险',
-            detail: '进入当前项目材料查看本项目的 Requirement、证据和处理状态。',
-            action: '查看材料',
-            target: 'materials' as const,
-          },
-        ];
+  return (
+    <ProjectWorkbench
+      enterpriseCategories={enterpriseCategories}
+      enterpriseLibraryKey={enterpriseLibraryKey}
+      enterpriseMaterials={enterpriseMaterials}
+      heightMode="content"
+      footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
+      materials={materials}
+      onAddEnterpriseFiles={onAddEnterpriseFiles}
+      onAddFiles={onAddFiles}
+      onAssistantAddFiles={onAssistantAddFiles}
+      onAssistantSend={onAssistantSend}
+      workspaceNavigation={<ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />}
+      rightRail={(
+        <ProjectOutcomeReviewPanel
+          onOpenImprovementSuggestions={onOpenImprovementSuggestions}
+          onOpenTasks={onOpenTasks}
+          viewModel={outcomeReview}
+        />
+      )}
+    >
+      <section className="bv-deliverables" aria-labelledby="deliverables-title">
+        <h2 className="bv-visually-hidden">{project.title}</h2>
+        <header className="bv-deliverables__header">
+          <div>
+            <span className="bv-deliverables__title-icon"><FileCheck2 aria-hidden="true" size={24} /></span>
+            <div>
+              <h1 id="deliverables-title">标书成果预览</h1>
+              <p><span>从项目材料到最终交付</span> · 所有成果读取当前项目冻结快照</p>
+            </div>
+          </div>
+          <div className="bv-version-filters">
+            <DeliverableVersionSelect
+              onSelectVersion={onSelectVersion}
+              options={versionOptions}
+            />
+            {taskSummary && visibleDeliverables && visibleDeliverables.length > 0 ? (
+              <button
+                aria-label={`查看任务进度，当前${taskProgressLabel === '进度待更新' ? '' : ' '}${taskProgressLabel}`}
+                className="bv-overview-header-action"
+                type="button"
+                onClick={onOpenTasks}
+              >
+                <Clock3 aria-hidden="true" size={17} />
+                查看任务进度
+                <span>{taskProgressLabel}</span>
+              </button>
+            ) : null}
+          </div>
+        </header>
+
+        {visibleDeliverables && visibleDeliverables.length > 0 ? (
+          <div className="bv-deliverable-grid">
+          {visibleDeliverables.map((item) => (
+            <article className="bv-deliverable-card" key={item.id}>
+              <span className="bv-deliverable-card__status">{item.versionId ? `V${item.versionId}` : '尚无版本'}</span>
+              <ResultCover title={item.title} tone={item.tone} />
+              <h2>{item.title}</h2>
+              <dl>
+                <div><dt>总页数</dt><dd>{item.pages === undefined ? '—' : `${item.pages} 页`}</dd></div>
+                <div><dt>总字数</dt><dd>{item.words}字</dd></div>
+                <div><dt>总评分</dt><dd>{item.score}</dd></div>
+                <div><dt>可提升分数</dt><dd>{item.lift}</dd></div>
+                <div className={item.missing !== undefined && item.missing > 0 ? 'is-warning' : ''}><dt>缺资料份数</dt><dd>{item.missing === undefined ? '—' : `${item.missing} 份`}</dd></div>
+              </dl>
+              <div className="bv-deliverable-card__actions">
+                {item.versionId ? (
+                  <AppLink
+                    aria-label={`预览${item.title}`}
+                    to={deliverableEditorPath(projectId, item.id, item.versionId)}
+                  >
+                    预览文件 <Eye aria-hidden="true" size={17} />
+                  </AppLink>
+                ) : (
+                  <button aria-label={`${item.title}尚无可预览版本`} disabled type="button">
+                    尚无版本 <Eye aria-hidden="true" size={17} />
+                  </button>
+                )}
+                {!item.versionId ? (
+                  <button aria-label={`${item.title}尚无可下载版本`} disabled type="button">
+                    <Download aria-hidden="true" size={18} />
+                  </button>
+                ) : onDownloadDeliverable ? (
+                  <button
+                    aria-label={`下载${item.title}`}
+                    type="button"
+                    onClick={() => void onDownloadDeliverable(item)}
+                  >
+                    <Download aria-hidden="true" size={18} />
+                  </button>
+                ) : downloadHrefFor ? (
+                  <a aria-label={`下载${item.title}`} download href={downloadHrefFor(item)}>
+                    <Download aria-hidden="true" size={18} />
+                  </a>
+                ) : (
+                  <button aria-label={`下载${item.title}`} disabled type="button">
+                    <Download aria-hidden="true" size={18} />
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+          </div>
+        ) : (
+          <DeliverablesEmptyState
+            onOpenTasks={onOpenTasks}
+            request={deliverablesRequest}
+            taskSummary={taskSummary}
+          />
+        )}
+      </section>
+    </ProjectWorkbench>
+  );
+}
+
+type DeliverablesEmptyStateProps = {
+  onOpenTasks: () => void;
+  request?: DeliverablesRequestView;
+  taskSummary?: ProjectOverviewPageProps['taskSummary'];
+};
+
+function DeliverablesEmptyState({
+  onOpenTasks,
+  request,
+  taskSummary,
+}: DeliverablesEmptyStateProps) {
+  const requestStatus = request?.status ?? 'idle';
+  const taskContent = taskSummary?.status
+    ? taskEmptyStateContent[taskSummary.status]
+    : taskSummary
+      ? genericTaskEmptyStateContent
+      : undefined;
+  const content = taskContent ?? requestEmptyStateContent[requestStatus];
+  const taskPercent = taskSummary ? normalizeTaskPercent(taskSummary.percent) : null;
+  const StateIcon = taskSummary?.status === 'succeeded'
+    ? CheckCircle2
+    : taskSummary
+      ? Clock3
+      : FileCheck2;
 
   return (
-    <div className="page-stack page-stack--overview">
-      <nav className="breadcrumbs" aria-label="面包屑">
-        <AppLink to="/projects">投标项目</AppLink>
-        <ChevronRight aria-hidden="true" size={14} />
-        <span aria-current="page">{project.code}</span>
-      </nav>
+    <div
+      aria-label={content.title}
+      className={`bv-overview-empty bv-overview-empty--user bv-overview-empty--${taskSummary ? 'task' : requestStatus}`}
+      data-request-status={requestStatus}
+      data-task-status={taskSummary?.status}
+      role="status"
+    >
+      <StateIcon aria-hidden="true" size={38} />
+      <strong>{content.title}</strong>
+      <p>{content.description}</p>
 
-      <section className="workbench-hero">
-        <div className="workbench-hero__main">
-          <div className="workbench-hero__meta">
-            <span className="stage-pill">{project.stage}</span>
-            <span>{project.code}</span>
-          </div>
-          <h2>{project.title}</h2>
-          <p>{project.buyer}</p>
-          <div className="workbench-hero__facts">
+      {taskSummary ? (
+        <div className={`bv-overview-empty__task bv-overview-empty__task--${taskSummary.status ?? 'unknown'}`}>
+          <div className="bv-overview-empty__task-heading">
             <span>
-              <CalendarClock aria-hidden="true" size={16} />
-              截止时间 {project.deadline}
+              <small>{taskSummary.title}</small>
+              <strong>{taskContent?.statusLabel ?? '任务状态更新中'}</strong>
             </span>
-            <span>
-              <ShieldCheck aria-hidden="true" size={16} />
-              当前项目快照已启用
-            </span>
+            <strong>{taskPercent === null ? '进度待更新' : `${taskPercent}%`}</strong>
           </div>
-          <div className="workbench-hero__actions" aria-label="项目快捷入口">
-            <AppLink className="button button--primary" to={`/projects/${projectId}/materials`}>
-              打开项目材料
-              <ArrowRight aria-hidden="true" size={16} />
-            </AppLink>
-            <AppLink className="button button--light" to={`/projects/${projectId}/review`}>
-              启动模拟评审
-            </AppLink>
-            <AppLink className="button button--light" to={`/projects/${projectId}/pricing`}>
-              查看报价测算
-            </AppLink>
-          </div>
-        </div>
-        <div className="workbench-score">
-          <span>工作台完成度</span>
-          <strong>{project.progress}%</strong>
-          <div
-            className="progress-track progress-track--large"
-            role="progressbar"
-            aria-label="工作台完成度"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={project.progress}
-          >
-            <span style={{ width: `${project.progress}%` }} />
-          </div>
-          <small>当前阶段：{project.stage}</small>
-        </div>
-      </section>
-
-      <section className="workflow-panel" aria-labelledby="workflow-title">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">投标流程</span>
-            <h2 id="workflow-title">从项目材料到最终交付</h2>
-          </div>
-          <span className="snapshot-chip">
-            <ShieldCheck aria-hidden="true" size={15} />
-            版本与证据可追溯
-          </span>
-        </div>
-        <ol className="workflow-grid">
-          {workflowSteps.map((step, index) => {
-            const Icon = step.icon;
-            return (
-              <li className={`workflow-step workflow-step--${step.status}`} key={step.title}>
-                <div className="workflow-step__topline">
-                  <span className="workflow-step__icon" aria-hidden="true">
-                    <Icon size={19} />
-                  </span>
-                  <span className="workflow-step__number">0{index + 1}</span>
-                </div>
-                <h3>{step.title}</h3>
-                <p>
-                  {step.title === '项目材料'
-                    ? `${project.materialCount} 份材料绑定当前项目事件`
-                    : step.title === '成果编制'
-                      ? `当前阶段：${project.stage}`
-                      : step.detail}
-                </p>
-                <span className="workflow-step__state">
-                  {step.status === 'complete' ? <Check aria-hidden="true" size={14} /> : null}
-                  {step.status === 'active' ? <Activity aria-hidden="true" size={14} /> : null}
-                  {step.status === 'waiting' ? <CircleDashed aria-hidden="true" size={14} /> : null}
-                  {step.status === 'complete'
-                    ? '已完成'
-                    : step.status === 'active'
-                      ? '进行中'
-                      : '待开始'}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-
-      <div className="overview-grid">
-        <section className="attention-panel" aria-labelledby="attention-title">
-          <div className="section-heading section-heading--compact">
-            <div>
-              <span className="eyebrow">需要处理</span>
-              <h2 id="attention-title">风险与待办</h2>
+          {taskPercent === null ? null : (
+            <div
+              aria-label="成果生成任务进度"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={taskPercent}
+              aria-valuetext={`${taskPercent}% · ${taskContent?.statusLabel ?? '任务状态更新中'}`}
+              className="bv-overview-empty__progress"
+              role="progressbar"
+            >
+              <span style={{ width: `${taskPercent}%` }} />
             </div>
-            <span className="count-chip">{attentionItems.length} 项</span>
-          </div>
-          <div className="attention-list">
-            {attentionItems.map((item) => {
-              const projectPath = `/projects/${encodeURIComponent(projectId)}`;
-              const actionHref =
-                item.target === 'enterprise'
-                  ? '/enterprise-assets'
-                  : `${projectPath}/${item.target}`;
-
-              return (
-                <article className="attention-item" key={item.title}>
-                  <span className={`risk-dot risk-dot--${item.level}`} aria-hidden="true" />
-                  <div>
-                    <h3>{item.title}</h3>
-                    <p>{item.detail}</p>
-                  </div>
-                  <AppLink className="text-button" to={actionHref}>
-                    {item.action}
-                    <ArrowRight aria-hidden="true" size={15} />
-                  </AppLink>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
-        <aside className="task-card" aria-labelledby="task-card-title">
-          <div className="task-card__visual" aria-hidden="true">
-            <span className="task-card__orbit" />
-            <Sparkles size={25} />
-          </div>
-          <span className="eyebrow">智能任务</span>
-          <h2 id="task-card-title">{taskSummary?.title ?? '暂无运行中的智能任务'}</h2>
-          <p>{taskSummary?.message ?? '当前项目没有可展示的公开任务进度。'}</p>
-          {taskSummary ? (
-            <div className="task-card__progress">
-              <div>
-                <span>完成进度</span>
-                <strong>{taskSummary.percent}%</strong>
-              </div>
-              <div
-                className="progress-track progress-track--large"
-                role="progressbar"
-                aria-label={`${taskSummary.title}进度`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={taskSummary.percent}
-              >
-                <span style={{ width: `${taskSummary.percent}%` }} />
-              </div>
-            </div>
-          ) : null}
-          <button
-            className="button button--light button--full"
-            type="button"
-            disabled={!taskSummary}
-            onClick={onOpenTasks}
-          >
-            {taskSummary ? '查看公开任务进度' : '当前无公开任务'}
-            <ArrowRight aria-hidden="true" size={16} />
-          </button>
-        </aside>
-      </div>
-
-      <section className="snapshot-banner" aria-label="项目数据边界说明">
-        <span className="snapshot-banner__icon" aria-hidden="true">
-          <CircleAlert size={19} />
-        </span>
-        <div>
-          <strong>本工作台仅使用当前项目的冻结快照</strong>
-          <p>本次招标材料、需求与成果版本绑定在项目事件中，不会写入企业资料库。</p>
+          )}
+          <p className="bv-overview-empty__task-message">
+            {taskContent?.message ?? taskSummary.message}
+          </p>
+          <button onClick={onOpenTasks} type="button">查看任务进度</button>
         </div>
-      </section>
+      ) : null}
     </div>
   );
+}
+
+function DeliverableVersionSelect({
+  onSelectVersion,
+  options = [],
+}: {
+  onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
+  options?: ProjectOverviewVersionOption[];
+}) {
+  const currentOption = options.find((option) => option.isCurrent) ?? options[0];
+  const currentKey = currentOption ? versionOptionKey(currentOption) : '';
+  const resetKey = `${currentKey}:${options.map(versionOptionKey).join('|')}`;
+
+  return (
+    <label className="bv-version-select">
+      <span>成果版本</span>
+      <select
+        defaultValue={currentKey}
+        disabled={options.length === 0}
+        key={resetKey}
+        onChange={(event) => {
+          const option = options.find((candidate) => versionOptionKey(candidate) === event.target.value);
+          if (option) onSelectVersion?.(option);
+        }}
+      >
+        {options.length === 0 ? <option value="">暂无成果版本</option> : null}
+        {options.map((option) => (
+          <option key={versionOptionKey(option)} value={versionOptionKey(option)}>
+            {option.title} · {formatVersionNumber(option.versionId)}{option.isCurrent ? ' · 当前' : ''}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function versionOptionKey(option: ProjectOverviewVersionOption) {
+  return `${option.deliverableId}:${option.versionId}`;
+}
+
+function formatVersionNumber(versionId: string) {
+  const normalized = versionId.trim();
+  const suffixMatch = normalized.match(/(?:^|[-_])v(\d+(?:\.\d+)*)$/i);
+  if (suffixMatch) return `V${suffixMatch[1]}`;
+  if (/^v/i.test(normalized)) return `V${normalized.slice(1)}`;
+  return `V${normalized}`;
+}
+
+type EmptyStateContent = {
+  description: string;
+  message?: string;
+  statusLabel?: string;
+  title: string;
+};
+
+const requestEmptyStateContent: Record<DeliverablesRequestView['status'], EmptyStateContent> = {
+  idle: {
+    title: '当前暂无标书成果',
+    description: '尚未发现成果生成任务，请完成材料准备后发起成果生成。',
+  },
+  loading: {
+    title: '正在加载标书成果',
+    description: '正在获取当前项目的成果状态，请稍候。',
+  },
+  success: {
+    title: '当前暂无标书成果',
+    description: '尚未发现成果生成任务，请完成材料准备后发起成果生成。',
+  },
+  error: {
+    title: '暂时无法加载标书成果',
+    description: '成果状态暂时不可用，请稍后重试。',
+  },
+};
+
+const genericTaskEmptyStateContent: EmptyStateContent = {
+  title: '成果生成任务处理中',
+  description: '任务状态正在更新，请通过任务进度查看最新动态。',
+  statusLabel: '任务状态更新中',
+};
+
+const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
+  queued: {
+    title: '成果生成正在执行',
+    description: '系统正在根据当前项目材料生成成果，请留意任务进度。',
+    message: '任务已提交，系统正在处理，请留意任务进度。',
+    statusLabel: '执行中',
+  },
+  running: {
+    title: '成果生成正在执行',
+    description: '系统正在根据当前项目材料生成成果，请留意任务进度。',
+    message: '任务已提交，系统正在处理，请留意任务进度。',
+    statusLabel: '执行中',
+  },
+  retrying: {
+    title: '成果生成任务正在重试',
+    description: '上次执行尚未完成，系统正在等待下一次重试。',
+    statusLabel: '等待重试',
+  },
+  waiting_user: {
+    title: '成果生成等待您的处理',
+    description: '请查看任务详情并完成所需操作，任务随后才能继续。',
+    statusLabel: '等待用户处理',
+  },
+  succeeded: {
+    title: '成果生成任务已完成',
+    description: '任务已完成，成果列表正在更新；如长时间未显示，请查看任务详情。',
+    statusLabel: '任务已完成',
+  },
+  failed: {
+    title: '成果生成失败',
+    description: '本次生成任务未成功，请查看任务详情了解可公开的失败信息。',
+    statusLabel: '生成失败',
+  },
+};
+
+function normalizeTaskPercent(percent: number | null) {
+  if (percent === null) return null;
+  if (!Number.isFinite(percent)) return null;
+  return Math.max(0, Math.min(100, Math.round(percent)));
 }

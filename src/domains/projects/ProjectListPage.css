@@ -1,0 +1,65 @@
+.ui0802-deadline-control {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  color: #263630;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.ui0802-deadline-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.ui0802-project-modal .ui0802-deadline-picker {
+  display: inline-flex;
+  min-width: 82px;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid #b9d7c8;
+  border-radius: 9px;
+  color: #087747;
+  background: #f2fbf6;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ui0802-project-modal .ui0802-deadline-picker:hover {
+  border-color: #75b393;
+  background: #e9f8f0;
+}
+
+.ui0802-deadline-help {
+  color: #74827c;
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.ui0802-row-action-error {
+  max-width: 180px;
+  color: #bf242c;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+@media (max-width: 560px) {
+  .ui0802-deadline-control {
+    grid-column: 1 / -1;
+  }
+
+  .ui0802-deadline-field {
+    grid-template-columns: 1fr;
+  }
+
+  .ui0802-project-modal .ui0802-deadline-picker {
+    width: 100%;
+  }
+}
