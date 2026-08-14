@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   CheckCircle2,
+  ChevronDown,
   FileCheck2,
   FileLock2,
   FileText,
@@ -12,7 +13,7 @@ import {
   ShieldAlert,
   Sparkles,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
@@ -121,6 +122,63 @@ function ProjectMaterialRows({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function CollapsibleMaterialGroup({
+  children,
+  count,
+  description,
+  expanded,
+  icon,
+  onToggle,
+  panelId,
+  title,
+  titleId,
+}: {
+  children: ReactNode;
+  count: number;
+  description: string;
+  expanded: boolean;
+  icon: ReactNode;
+  onToggle: () => void;
+  panelId: string;
+  title: string;
+  titleId: string;
+}) {
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="project-material-group"
+      data-expanded={expanded}
+    >
+      <header className="project-section-heading">
+        <div>
+          <h2 id={titleId}>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <div className="project-section-heading__actions">
+          <span className="project-project-only-badge">
+            {icon}
+            {count} 项
+          </span>
+          <button
+            aria-controls={panelId}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? '收起' : '展开'}${title}，${count}项`}
+            className="project-section-heading__toggle"
+            onClick={onToggle}
+            type="button"
+          >
+            <ChevronDown aria-hidden="true" size={19} />
+          </button>
+        </div>
+      </header>
+
+      <div className="project-material-group__panel" hidden={!expanded} id={panelId}>
+        {expanded ? children : null}
+      </div>
+    </section>
   );
 }
 
@@ -266,12 +324,14 @@ export function ProjectMaterialsPage({
   onAddEnterpriseFiles,
   onAssistantAddFiles,
   onAssistantSend,
+  onCompletedBidUpload,
   onImportTenderNoticeUrl,
   projectId,
   projectName,
   materials,
   requirements,
   snapshots,
+  completedBidMaterialIds = [],
   supplementalMaterialIds = [],
   onUpload,
   onConfirmRequirement,
@@ -280,7 +340,13 @@ export function ProjectMaterialsPage({
   taskStatus,
 }: ProjectMaterialsPageProps) {
   const [activeTab, setActiveTab] = useState<ProjectMaterialsTab>('materials');
-  const [completedBidNames, setCompletedBidNames] = useState<string[]>([]);
+  const [isSupplementalExpanded, setSupplementalExpanded] = useState(false);
+  const [isCurrentTenderExpanded, setCurrentTenderExpanded] = useState(true);
+  const [isCompletedBidExpanded, setCompletedBidExpanded] = useState(false);
+  const materialGroupId = useId();
+  const supplementalPanelId = `${materialGroupId}-supplemental-materials`;
+  const currentTenderPanelId = `${materialGroupId}-current-tender-materials`;
+  const completedBidPanelId = `${materialGroupId}-completed-bid-materials`;
   const [selectedTaskMode, setSelectedTaskMode] = useState<'generate' | 'validate' | null>(null);
   const [taskState, setTaskState] = useState<{
     message: string;
@@ -290,13 +356,27 @@ export function ProjectMaterialsPage({
     () => new Set(supplementalMaterialIds.map(String)),
     [supplementalMaterialIds],
   );
+  const completedBidMaterialIdSet = useMemo(
+    () => new Set(completedBidMaterialIds.map(String)),
+    [completedBidMaterialIds],
+  );
   const supplementalMaterials = useMemo(
-    () => materials.filter((material) => supplementalMaterialIdSet.has(material.id)),
-    [materials, supplementalMaterialIdSet],
+    () => materials.filter(
+      (material) => supplementalMaterialIdSet.has(material.id)
+        && !completedBidMaterialIdSet.has(material.id),
+    ),
+    [completedBidMaterialIdSet, materials, supplementalMaterialIdSet],
+  );
+  const completedBidMaterials = useMemo(
+    () => materials.filter((material) => completedBidMaterialIdSet.has(material.id)),
+    [completedBidMaterialIdSet, materials],
   );
   const currentTenderMaterials = useMemo(
-    () => materials.filter((material) => !supplementalMaterialIdSet.has(material.id)),
-    [materials, supplementalMaterialIdSet],
+    () => materials.filter(
+      (material) => !supplementalMaterialIdSet.has(material.id)
+        && !completedBidMaterialIdSet.has(material.id),
+    ),
+    [completedBidMaterialIdSet, materials, supplementalMaterialIdSet],
   );
   const workspaceMaterials = useMemo(
     () =>
@@ -310,13 +390,6 @@ export function ProjectMaterialsPage({
   );
 
   const uploadProjectFiles = async (files: File[]) => onUpload?.(projectId, files);
-  const uploadCompletedBidFiles = async (files: File[]) => {
-    await onUpload?.(projectId, files);
-    setCompletedBidNames((current) => [
-      ...current,
-      ...files.map((file) => file.name).filter((name) => !current.includes(name)),
-    ]);
-  };
   const startTask = async () => {
     if (!selectedTaskMode) return;
     const mode = selectedTaskMode;
@@ -358,158 +431,175 @@ export function ProjectMaterialsPage({
       <section className="project-material-page">
         <div className="project-material-content">
           <div className="project-material-flow">
-              <section className="project-material-group" aria-labelledby="project-supplemental-material-list-title">
-                <header className="project-section-heading">
-                  <div>
-                    <h2 id="project-supplemental-material-list-title">补充资料</h2>
-                    <p>仅展示当前登录会话内，通过页面底部“添加文件”成功上传的文件；刷新后分组可能无法恢复。</p>
-                  </div>
-                  <span className="project-project-only-badge">
-                    <FolderCheck aria-hidden="true" size={14} />
-                    {supplementalMaterials.length} 项
-                  </span>
-                </header>
+            <CollapsibleMaterialGroup
+              count={supplementalMaterials.length}
+              description="仅展示当前登录会话内，通过页面底部“添加文件”成功上传的文件；刷新后分组可能无法恢复。"
+              expanded={isSupplementalExpanded}
+              icon={<FolderCheck aria-hidden="true" size={14} />}
+              onToggle={() => setSupplementalExpanded((current) => !current)}
+              panelId={supplementalPanelId}
+              title="补充资料"
+              titleId="project-supplemental-material-list-title"
+            >
+              <ProjectMaterialRows
+                emptyDescription="请使用页面底部项目助手的“添加文件”上传本项目补充资料。"
+                emptyTitle="暂无补充资料"
+                materials={supplementalMaterials}
+              />
+            </CollapsibleMaterialGroup>
 
-                <ProjectMaterialRows
-                  emptyDescription="请使用页面底部项目助手的“添加文件”上传本项目补充资料。"
-                  emptyTitle="暂无补充资料"
-                  materials={supplementalMaterials}
-                />
-              </section>
+            <CollapsibleMaterialGroup
+              count={currentTenderMaterials.length}
+              description="主上传区和招标公告网址导入的文件保留在本区，解析状态来自后端。"
+              expanded={isCurrentTenderExpanded}
+              icon={<FileLock2 aria-hidden="true" size={14} />}
+              onToggle={() => setCurrentTenderExpanded((current) => !current)}
+              panelId={currentTenderPanelId}
+              title="当前招标材料"
+              titleId="project-current-material-list-title"
+            >
+              <nav className="project-material-subviews" aria-label="当前招标材料内容">
+                <button
+                  aria-current={activeTab === 'materials' ? 'page' : undefined}
+                  type="button"
+                  onClick={() => setActiveTab('materials')}
+                >
+                  <FileText aria-hidden="true" size={16} />
+                  材料清单
+                  <span>{currentTenderMaterials.length}</span>
+                </button>
+                <button
+                  aria-current={activeTab === 'requirements' ? 'page' : undefined}
+                  type="button"
+                  onClick={() => setActiveTab('requirements')}
+                >
+                  <CheckCircle2 aria-hidden="true" size={16} />
+                  Requirement
+                  <span>{requirements.length}</span>
+                </button>
+                <button
+                  aria-current={activeTab === 'snapshots' ? 'page' : undefined}
+                  type="button"
+                  onClick={() => setActiveTab('snapshots')}
+                >
+                  <Layers3 aria-hidden="true" size={16} />
+                  项目快照
+                  <span>{snapshots.length}</span>
+                </button>
+              </nav>
 
-              <section className="project-material-group" aria-labelledby="project-current-material-list-title">
-                <header className="project-section-heading">
-                  <div>
-                    <h2 id="project-current-material-list-title">当前招标材料</h2>
-                    <p>主上传区和招标公告网址导入的文件保留在本区，解析状态来自后端。</p>
-                  </div>
-                  <span className="project-project-only-badge">
-                    <FileLock2 aria-hidden="true" size={14} />
-                    {currentTenderMaterials.length} 项
-                  </span>
-                </header>
-
-                <nav className="project-material-subviews" aria-label="当前招标材料内容">
-                  <button
-                    aria-current={activeTab === 'materials' ? 'page' : undefined}
-                    type="button"
-                    onClick={() => setActiveTab('materials')}
-                  >
-                    <FileText aria-hidden="true" size={16} />
-                    材料清单
-                    <span>{currentTenderMaterials.length}</span>
-                  </button>
-                  <button
-                    aria-current={activeTab === 'requirements' ? 'page' : undefined}
-                    type="button"
-                    onClick={() => setActiveTab('requirements')}
-                  >
-                    <CheckCircle2 aria-hidden="true" size={16} />
-                    Requirement
-                    <span>{requirements.length}</span>
-                  </button>
-                  <button
-                    aria-current={activeTab === 'snapshots' ? 'page' : undefined}
-                    type="button"
-                    onClick={() => setActiveTab('snapshots')}
-                  >
-                    <Layers3 aria-hidden="true" size={16} />
-                    项目快照
-                    <span>{snapshots.length}</span>
-                  </button>
-                </nav>
-
-                {activeTab === 'materials' ? (
-                  <div className="project-material-group__body">
-                    {!taskBlocksActions ? (
-                      <ProjectMaterialUpload
-                        projectId={projectId}
-                        projectName={projectName}
-                        existingBidFileNames={completedBidNames}
-                        onExistingBidUpload={uploadCompletedBidFiles}
-                        onImportTenderNoticeUrl={onImportTenderNoticeUrl}
-                        onUpload={onUpload}
-                      />
-                    ) : null}
-
-                    <ProjectMaterialRows
-                      emptyDescription="当前招标材料是启动解析、生成或校核任务的必传输入。"
-                      emptyTitle="请先上传当前招标材料"
-                      materials={currentTenderMaterials}
+              {activeTab === 'materials' ? (
+                <div className="project-material-group__body">
+                  {!taskBlocksActions ? (
+                    <ProjectMaterialUpload
+                      projectId={projectId}
+                      projectName={projectName}
+                      existingBidFileNames={completedBidMaterials.map((material) => material.name)}
+                      onExistingBidUpload={onCompletedBidUpload
+                        ? (files) => onCompletedBidUpload(projectId, files)
+                        : undefined}
+                      onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+                      onUpload={onUpload}
                     />
+                  ) : null}
 
-                    {currentTenderMaterials.length > 0 && !taskBlocksActions ? (
-                      <div className="project-start-task-wrap">
-                        <fieldset className="project-task-mode">
-                          <legend>选择本次任务</legend>
-                          <label>
-                            <input
-                              checked={selectedTaskMode === 'generate'}
-                              disabled={taskState.status === 'loading'}
-                              name="project-task-mode"
-                              type="radio"
-                              value="generate"
-                              onChange={() => setSelectedTaskMode('generate')}
-                            />
-                            生成标书
-                          </label>
-                          <label>
-                            <input
-                              checked={selectedTaskMode === 'validate'}
-                              disabled={taskState.status === 'loading'}
-                              name="project-task-mode"
-                              type="radio"
-                              value="validate"
-                              onChange={() => setSelectedTaskMode('validate')}
-                            />
-                            校核已完成标书
-                          </label>
-                        </fieldset>
-                        <button
-                          className="project-start-task"
-                          disabled={!selectedTaskMode || taskState.status === 'loading'}
-                          onClick={() => void startTask()}
-                          type="button"
-                        >
-                          <Sparkles aria-hidden="true" size={18} />
-                          {taskState.status === 'loading'
-                            ? '正在创建任务…'
-                            : selectedTaskMode === null
-                              ? '请选择任务类型'
+                  <ProjectMaterialRows
+                    emptyDescription="当前招标材料是启动解析、生成或校核任务的必传输入。"
+                    emptyTitle="请先上传当前招标材料"
+                    materials={currentTenderMaterials}
+                  />
+
+                  {currentTenderMaterials.length > 0 && !taskBlocksActions ? (
+                    <div className="project-start-task-wrap">
+                      <fieldset className="project-task-mode">
+                        <legend>选择本次任务</legend>
+                        <label>
+                          <input
+                            checked={selectedTaskMode === 'generate'}
+                            disabled={taskState.status === 'loading'}
+                            name="project-task-mode"
+                            type="radio"
+                            value="generate"
+                            onChange={() => setSelectedTaskMode('generate')}
+                          />
+                          生成标书
+                        </label>
+                        <label>
+                          <input
+                            checked={selectedTaskMode === 'validate'}
+                            disabled={taskState.status === 'loading'}
+                            name="project-task-mode"
+                            type="radio"
+                            value="validate"
+                            onChange={() => setSelectedTaskMode('validate')}
+                          />
+                          校核已完成标书
+                        </label>
+                      </fieldset>
+                      <button
+                        className="project-start-task"
+                        disabled={!selectedTaskMode || taskState.status === 'loading'}
+                        onClick={() => void startTask()}
+                        type="button"
+                      >
+                        <Sparkles aria-hidden="true" size={18} />
+                        {taskState.status === 'loading'
+                          ? '正在创建任务…'
+                          : selectedTaskMode === null
+                            ? '请选择任务类型'
                             : selectedTaskMode === 'validate'
                               ? '开始校核'
                               : '开始生成'}
-                        </button>
-                        {taskState.status !== 'idle' ? (
-                          <p
-                            className={`project-start-task-status project-start-task-status--${taskState.status}`}
-                            role={taskState.status === 'error' ? 'alert' : 'status'}
-                          >
-                            {taskState.message}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                      </button>
+                      {taskState.status !== 'idle' ? (
+                        <p
+                          className={`project-start-task-status project-start-task-status--${taskState.status}`}
+                          role={taskState.status === 'error' ? 'alert' : 'status'}
+                        >
+                          {taskState.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
-                {activeTab === 'requirements' ? (
-                  <RequirementsPanel
-                    projectId={projectId}
-                    requirements={requirements}
-                    onConfirmRequirement={onConfirmRequirement}
-                  />
-                ) : null}
+              {activeTab === 'requirements' ? (
+                <RequirementsPanel
+                  projectId={projectId}
+                  requirements={requirements}
+                  onConfirmRequirement={onConfirmRequirement}
+                />
+              ) : null}
 
-                {activeTab === 'snapshots' ? (
-                  <SnapshotsPanel
-                    projectId={projectId}
-                    snapshots={snapshots}
-                    onOpenSnapshot={onOpenSnapshot}
-                  />
-                ) : null}
-              </section>
-            </div>
+              {activeTab === 'snapshots' ? (
+                <SnapshotsPanel
+                  projectId={projectId}
+                  snapshots={snapshots}
+                  onOpenSnapshot={onOpenSnapshot}
+                />
+              ) : null}
+            </CollapsibleMaterialGroup>
+
+            {completedBidMaterials.length > 0 ? (
+              <CollapsibleMaterialGroup
+                count={completedBidMaterials.length}
+                description="仅展示已由后端返回文件 ID 并归入本项目已完成标书分组的材料。"
+                expanded={isCompletedBidExpanded}
+                icon={<FileCheck2 aria-hidden="true" size={14} />}
+                onToggle={() => setCompletedBidExpanded((current) => !current)}
+                panelId={completedBidPanelId}
+                title="已完成标书材料"
+                titleId="project-completed-bid-material-list-title"
+              >
+                <ProjectMaterialRows
+                  emptyDescription="后端尚未返回可显示的已完成标书材料。"
+                  emptyTitle="暂无已完成标书材料"
+                  materials={completedBidMaterials}
+                />
+              </CollapsibleMaterialGroup>
+            ) : null}
+          </div>
         </div>
       </section>
     </ProjectWorkbench>

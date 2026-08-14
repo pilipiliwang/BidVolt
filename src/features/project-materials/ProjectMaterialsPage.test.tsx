@@ -75,6 +75,7 @@ const snapshots: ProjectSnapshot[] = [
 describe('ProjectMaterialsPage', () => {
   it('keeps uploads in the current project and shows parsing revisions', async () => {
     const user = userEvent.setup();
+    const onCompletedBidUpload = vi.fn();
     const onUpload = vi.fn();
     const onStartTask = vi.fn();
 
@@ -85,6 +86,7 @@ describe('ProjectMaterialsPage', () => {
         materials={materials}
         requirements={requirements}
         snapshots={snapshots}
+        onCompletedBidUpload={onCompletedBidUpload}
         onStartTask={onStartTask}
         onUpload={onUpload}
       />,
@@ -106,6 +108,9 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText('项目域 · BV-2026-0088')).not.toBeInTheDocument();
     expect(screen.queryByText(/不会跨项目复用/)).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: '补充资料' }))
+      .not.toHaveTextContent('暂无补充资料');
+    await user.click(screen.getByRole('button', { name: '展开补充资料，0项' }));
+    expect(screen.getByRole('region', { name: '补充资料' }))
       .toHaveTextContent('暂无补充资料');
     expect(screen.getByText('替代版本 2')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: '补遗文件一.pdf解析进度' })).toHaveAttribute(
@@ -125,13 +130,14 @@ describe('ProjectMaterialsPage', () => {
     });
     await user.upload(screen.getByLabelText(/已制作完成的标书/), completedBid);
 
-    expect(onUpload).toHaveBeenCalledWith('BV-2026-0088', [completedBid]);
+    expect(onCompletedBidUpload).toHaveBeenCalledWith('BV-2026-0088', [completedBid]);
+    expect(onUpload).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole('radio', { name: '校核已完成标书' }));
     await user.click(screen.getByRole('button', { name: '开始校核' }));
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'validate');
     expect(await screen.findByRole('button', { name: '开始校核' })).toBeEnabled();
     expect(screen.queryByText(/校核任务已创建/)).not.toBeInTheDocument();
-    expect(screen.getByText('技术标.docx')).toBeInTheDocument();
+    expect(screen.queryByText('技术标.docx')).not.toBeInTheDocument();
   });
 
   it('starts document generation when no completed bid has been uploaded', async () => {
@@ -156,6 +162,100 @@ describe('ProjectMaterialsPage', () => {
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'generate');
     expect(await screen.findByRole('button', { name: '开始生成' })).toBeEnabled();
     expect(screen.queryByText(/生成任务已创建/)).not.toBeInTheDocument();
+  });
+
+  it('keeps material groups independent and preserves the current-material subview while folded', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={materials}
+        requirements={requirements}
+        snapshots={snapshots}
+        onStartTask={vi.fn()}
+        onUpload={vi.fn()}
+        supplementalMaterialIds={['material-2']}
+      />,
+    );
+
+    const supplementalToggle = screen.getByRole('button', { name: '展开补充资料，1项' });
+    const currentTenderToggle = screen.getByRole('button', { name: '收起当前招标材料，1项' });
+    const supplementalPanel = document.getElementById(
+      supplementalToggle.getAttribute('aria-controls') ?? '',
+    );
+    const currentTenderPanel = document.getElementById(
+      currentTenderToggle.getAttribute('aria-controls') ?? '',
+    );
+
+    expect(supplementalToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(supplementalPanel).toHaveAttribute('hidden');
+    expect(screen.queryByText('补遗文件一.pdf')).not.toBeInTheDocument();
+    expect(currentTenderToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(currentTenderPanel).not.toHaveAttribute('hidden');
+    expect(screen.getByText('海上升压站招标文件.pdf')).toBeInTheDocument();
+    expect(screen.getByLabelText(/选择或拖拽招标材料/)).toBeInTheDocument();
+
+    supplementalToggle.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: '收起补充资料，1项' }))
+      .toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('补遗文件一.pdf')).toBeInTheDocument();
+
+    await user.click(currentTenderToggle);
+    expect(screen.getByRole('button', { name: '展开当前招标材料，1项' }))
+      .toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
+    expect(screen.getByText('补遗文件一.pdf')).toBeInTheDocument();
+
+    currentTenderToggle.focus();
+    await user.keyboard(' ');
+    await user.click(screen.getByRole('button', { name: /Requirement/ }));
+    expect(screen.getByText('置信度 64%')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '收起当前招标材料，1项' }));
+    await user.click(screen.getByRole('button', { name: '展开当前招标材料，1项' }));
+    expect(screen.getByText('置信度 64%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收起补充资料，1项' }))
+      .toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('shows a completed-bid group only for real matching ids and never duplicates those files', async () => {
+    const user = userEvent.setup();
+    const baseProps = {
+      projectId: 'BV-2026-0088',
+      projectName: '海上升压站设备采购项目',
+      materials,
+      requirements,
+      snapshots,
+      onStartTask: vi.fn(),
+      supplementalMaterialIds: ['material-2'],
+    } as const;
+    const { rerender } = render(
+      <ProjectMaterialsPage {...baseProps} completedBidMaterialIds={['missing-file-id']} />,
+    );
+
+    expect(screen.queryByRole('heading', { name: '已完成标书材料' })).not.toBeInTheDocument();
+
+    rerender(<ProjectMaterialsPage {...baseProps} completedBidMaterialIds={['material-2']} />);
+
+    expect(screen.getByRole('heading', { name: '已完成标书材料' })).toBeInTheDocument();
+    const collapsedCompletedBidRegion = screen.getByRole('region', { name: '已完成标书材料' });
+    expect(screen.getByRole('button', { name: '展开已完成标书材料，1项' }))
+      .toHaveAttribute('aria-expanded', 'false');
+    expect(within(collapsedCompletedBidRegion).queryByText('补遗文件一.pdf')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '展开补充资料，0项' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收起当前招标材料，1项' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '展开已完成标书材料，1项' }));
+    const completedBidRegion = screen.getByRole('region', { name: '已完成标书材料' });
+    expect(within(completedBidRegion).getByText('补遗文件一.pdf')).toBeInTheDocument();
+    const currentTenderList = screen.getByRole('region', { name: '当前招标材料' })
+      .querySelector('.project-material-list');
+    expect(currentTenderList).not.toBeNull();
+    expect(within(currentTenderList as HTMLElement).queryByText('补遗文件一.pdf'))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText('暂无已完成标书材料')).not.toBeInTheDocument();
   });
 
   it.each(['queued', 'running', 'retrying', 'waiting_user', 'succeeded'] as const)(
@@ -188,7 +288,8 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.getByRole('region', { name: '当前招标材料' })).toBeInTheDocument();
   });
 
-  it('groups materials only by the supplied real file ids and keeps supplemental files above tender files', () => {
+  it('groups materials only by the supplied real file ids and keeps supplemental files above tender files', async () => {
+    const user = userEvent.setup();
     render(
       <ProjectMaterialsPage
         projectId="BV-2026-0088"
@@ -205,6 +306,8 @@ describe('ProjectMaterialsPage', () => {
     const tenderRegion = screen.getByRole('region', { name: '当前招标材料' });
     expect(supplementalRegion.compareDocumentPosition(tenderRegion) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy();
+    expect(within(supplementalRegion).queryByText('补遗文件一.pdf')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '展开补充资料，1项' }));
     expect(within(supplementalRegion).getByText('补遗文件一.pdf')).toBeInTheDocument();
     expect(within(supplementalRegion).queryByText('海上升压站招标文件.pdf')).not.toBeInTheDocument();
     expect(within(tenderRegion).getByText('海上升压站招标文件.pdf')).toBeInTheDocument();
@@ -387,7 +490,8 @@ describe('ProjectMaterialsPage', () => {
 
   it('does not add a completed bid name when its upload rejects', async () => {
     const user = userEvent.setup();
-    const onUpload = vi.fn().mockRejectedValue(new Error('技术标.docx：文件内容无法读取'));
+    const onCompletedBidUpload = vi.fn()
+      .mockRejectedValue(new Error('技术标.docx：文件内容无法读取'));
     const onStartTask = vi.fn();
 
     render(
@@ -397,8 +501,8 @@ describe('ProjectMaterialsPage', () => {
         materials={materials}
         requirements={requirements}
         snapshots={snapshots}
+        onCompletedBidUpload={onCompletedBidUpload}
         onStartTask={onStartTask}
-        onUpload={onUpload}
       />,
     );
 
@@ -407,6 +511,7 @@ describe('ProjectMaterialsPage', () => {
     });
     await user.upload(screen.getByLabelText(/已制作完成的标书/), completedBid);
 
+    expect(onCompletedBidUpload).toHaveBeenCalledWith('BV-2026-0088', [completedBid]);
     expect(await screen.findByRole('alert')).toHaveTextContent('技术标.docx：文件内容无法读取');
     expect(screen.queryByText('技术标.docx')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '请选择任务类型' })).toBeDisabled();
