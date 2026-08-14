@@ -45,20 +45,23 @@ describe('ProjectOverviewPage', () => {
     );
   });
 
-  it('shows a visible project-material entry for regular users', () => {
+  it('removes the old header shortcuts and disables version selection without real versions', () => {
     render(
       <ProjectOverviewPage enterpriseMaterials={[]} materials={[]} project={project} projectId="BV-2026-018" onOpenTasks={vi.fn()} />,
     );
 
-    const materialsLink = screen.getByRole('link', { name: '打开项目材料' });
-    expect(materialsLink).toHaveAttribute('href', '/projects/BV-2026-018/materials');
-    expect(materialsLink).not.toHaveClass('bv-visually-hidden');
-    expect(screen.getByRole('tab', { name: '项目资料' })).toHaveAttribute(
+    expect(screen.queryByRole('link', { name: '打开项目材料' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '报价分析' })).not.toBeInTheDocument();
+    const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
+    expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' })).toHaveAttribute(
       'href', '/projects/BV-2026-018/materials',
     );
-    expect(screen.getByRole('tab', { name: '标书成果预览' })).toHaveAttribute(
-      'aria-selected', 'true',
-    );
+    expect(within(workspaceNavigation).getByRole('link', { name: '标书成果预览' }))
+      .toHaveAttribute('aria-current', 'page');
+    const versionSelect = screen.getByRole('combobox', { name: '成果版本' });
+    expect(versionSelect).toBeDisabled();
+    expect(versionSelect).toHaveValue('');
+    expect(screen.getByRole('option', { name: '暂无成果版本' })).toBeInTheDocument();
   });
 
   it('shows a project-scoped pending state when no overview data exists', () => {
@@ -69,6 +72,9 @@ describe('ProjectOverviewPage', () => {
     expect(screen.getByText('项目成果尚未生成')).toBeInTheDocument();
     expect(screen.getByText('暂无模拟得分')).toBeInTheDocument();
     expect(screen.queryByLabelText('综合得分 91.4 分')).not.toBeInTheDocument();
+    const emptyState = screen.getByText('项目成果尚未生成').closest<HTMLElement>('.bv-overview-empty');
+    expect(emptyState).not.toBeNull();
+    expect(within(emptyState!).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
   });
 
   it('reports a successful empty deliverables response and a queued generation task without mock cards', async () => {
@@ -105,6 +111,7 @@ describe('ProjectOverviewPage', () => {
     expect(screen.getByText('调用成功 · 0 项成果')).toBeInTheDocument();
     expect(screen.getByText('生成任务：queued · 等待执行器')).toBeInTheDocument();
     expect(within(emptyState).getByText('任务已经入队，尚未被 worker 领取。')).toBeInTheDocument();
+    expect(within(emptyState).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '查看任务进度' }));
@@ -150,15 +157,24 @@ describe('ProjectOverviewPage', () => {
     expect(screen.getByText('成果版本加载超时')).toBeInTheDocument();
   });
 
-  it('routes each preview to its own versioned editor and keeps pricing separate', () => {
+  it('routes each preview to its own versioned editor and selects only real versions', async () => {
+    const user = userEvent.setup();
+    const onSelectVersion = vi.fn();
+    const versionOptions = [
+      { deliverableId: 'business' as const, title: '商务标文件', versionId: 'business-v8', isCurrent: true },
+      { deliverableId: 'technical' as const, title: '技术标文件', versionId: 'technical-v6' },
+      { deliverableId: 'quote' as const, title: '报价单', versionId: 'quote-v4' },
+    ];
     render(
       <ProjectOverviewPage
         enterpriseMaterials={[]}
         materials={[]}
         onOpenTasks={vi.fn()}
+        onSelectVersion={onSelectVersion}
         overview={overview}
         project={project}
         projectId="BV-2026-018"
+        versionOptions={versionOptions}
       />,
     );
 
@@ -175,12 +191,39 @@ describe('ProjectOverviewPage', () => {
       'href',
       '/projects/BV-2026-018/deliverables/quote/versions/quote-v4',
     );
-    expect(screen.getByRole('link', { name: '报价分析' })).toHaveAttribute(
-      'href',
-      '/projects/BV-2026-018/pricing',
+    expect(screen.queryByRole('link', { name: '报价分析' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '打开项目材料' })).not.toBeInTheDocument();
+    const versionSelect = screen.getByRole('combobox', { name: '成果版本' });
+    expect(versionSelect).toBeEnabled();
+    expect(versionSelect).toHaveValue('business:business-v8');
+    expect(screen.getByRole('option', { name: '商务标文件 · V8 · 当前' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '技术标文件 · V6' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '报价单 · V4' })).toBeInTheDocument();
+
+    await user.selectOptions(versionSelect, 'technical:technical-v6');
+    expect(onSelectVersion).toHaveBeenCalledWith(versionOptions[1]);
+  });
+
+  it('does not show a project-material shortcut when the deliverables request fails', () => {
+    render(
+      <ProjectOverviewPage
+        deliverables={[]}
+        deliverablesRequest={{
+          endpoint: '/api/v1/deliverables?project_id=1',
+          errorMessage: '服务不可用',
+          status: 'error',
+        }}
+        enterpriseMaterials={[]}
+        materials={[]}
+        onOpenTasks={vi.fn()}
+        project={project}
+        projectId="1"
+      />,
     );
-    expect(screen.getByText('版本号：各成果当前版本')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: '成果版本' })).not.toBeInTheDocument();
+
+    const emptyState = screen.getByRole('status', { name: '成果接口调用失败' });
+    expect(within(emptyState).getByText('服务不可用')).toBeInTheDocument();
+    expect(within(emptyState).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
   });
 
   it('shows unavailable backend metrics as dashes and disables download without a version', () => {

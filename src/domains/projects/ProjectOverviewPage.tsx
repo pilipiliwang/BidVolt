@@ -5,7 +5,6 @@ import {
   Download,
   Eye,
   FileCheck2,
-  FolderOpen,
   Gauge,
   Lightbulb,
   ShieldCheck,
@@ -32,6 +31,7 @@ type ProjectOverviewPageProps = {
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   onOpenTasks: () => void;
+  onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
   projectId: string;
@@ -41,6 +41,7 @@ type ProjectOverviewPageProps = {
     status?: ProjectTaskStatus;
     title: string;
   };
+  versionOptions?: ProjectOverviewVersionOption[];
   downloadHrefFor?: (deliverable: ProjectDeliverableView) => string;
   onDownloadDeliverable?: (deliverable: ProjectDeliverableView) => void | Promise<void>;
 };
@@ -72,6 +73,13 @@ export type ProjectDeliverableView = {
   words: string;
 };
 
+export type ProjectOverviewVersionOption = {
+  deliverableId: ProjectDeliverableView['id'];
+  isCurrent?: boolean;
+  title: string;
+  versionId: string;
+};
+
 export type ProjectOverviewView = {
   deliverables: ProjectDeliverableView[];
   score: {
@@ -94,10 +102,12 @@ export function ProjectOverviewPage({
   onAddFiles,
   onAssistantSend,
   onOpenTasks,
+  onSelectVersion,
   overview,
   project: projectOverride,
   projectId,
   taskSummary,
+  versionOptions,
   downloadHrefFor,
   onDownloadDeliverable,
 }: ProjectOverviewPageProps) {
@@ -157,7 +167,6 @@ export function ProjectOverviewPage({
               <Gauge aria-hidden="true" size={34} />
               <strong>暂无模拟得分</strong>
               <p>完成当前项目的材料解析并生成成果后，才会展示项目评分。</p>
-              <AppLink to={`/projects/${projectId}/materials`}>前往项目材料</AppLink>
             </div>
           )}
           {taskSummary ? (
@@ -181,16 +190,10 @@ export function ProjectOverviewPage({
             </div>
           </div>
           <div className="bv-version-filters">
-            <AppLink className="bv-materials-entry" to={`/projects/${projectId}/materials`}>
-              <FolderOpen aria-hidden="true" size={18} />
-              打开项目材料
-            </AppLink>
-            <AppLink className="bv-materials-entry" to={`/projects/${projectId}/pricing`}>
-              <TrendingUp aria-hidden="true" size={18} />
-              报价分析
-            </AppLink>
-            <span className="bv-version-filters__status">版本号：各成果当前版本</span>
-            <span className="bv-version-filters__status"><ShieldCheck aria-hidden="true" size={18} />最新受控版本</span>
+            <DeliverableVersionSelect
+              onSelectVersion={onSelectVersion}
+              options={versionOptions}
+            />
           </div>
         </header>
 
@@ -249,7 +252,6 @@ export function ProjectOverviewPage({
         ) : (
           <DeliverablesEmptyState
             onOpenTasks={onOpenTasks}
-            projectId={projectId}
             request={deliverablesRequest}
             taskSummary={taskSummary}
           />
@@ -267,14 +269,12 @@ export function ProjectOverviewPage({
 
 type DeliverablesEmptyStateProps = {
   onOpenTasks: () => void;
-  projectId: string;
   request?: DeliverablesRequestView;
   taskSummary?: ProjectOverviewPageProps['taskSummary'];
 };
 
 function DeliverablesEmptyState({
   onOpenTasks,
-  projectId,
   request,
   taskSummary,
 }: DeliverablesEmptyStateProps) {
@@ -284,7 +284,6 @@ function DeliverablesEmptyState({
         <FileCheck2 aria-hidden="true" size={38} />
         <strong>项目成果尚未生成</strong>
         <p>当前项目没有可展示的成果版本。请先上传本次招标材料并完成解析。</p>
-        <AppLink to={`/projects/${projectId}/materials`}>前往项目材料</AppLink>
       </div>
     );
   }
@@ -337,9 +336,54 @@ function DeliverablesEmptyState({
         </div>
       ) : null}
 
-      <AppLink to={`/projects/${projectId}/materials`}>前往项目材料</AppLink>
     </div>
   );
+}
+
+function DeliverableVersionSelect({
+  onSelectVersion,
+  options = [],
+}: {
+  onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
+  options?: ProjectOverviewVersionOption[];
+}) {
+  const currentOption = options.find((option) => option.isCurrent) ?? options[0];
+  const currentKey = currentOption ? versionOptionKey(currentOption) : '';
+  const resetKey = `${currentKey}:${options.map(versionOptionKey).join('|')}`;
+
+  return (
+    <label className="bv-version-select">
+      <span>成果版本</span>
+      <select
+        defaultValue={currentKey}
+        disabled={options.length === 0}
+        key={resetKey}
+        onChange={(event) => {
+          const option = options.find((candidate) => versionOptionKey(candidate) === event.target.value);
+          if (option) onSelectVersion?.(option);
+        }}
+      >
+        {options.length === 0 ? <option value="">暂无成果版本</option> : null}
+        {options.map((option) => (
+          <option key={versionOptionKey(option)} value={versionOptionKey(option)}>
+            {option.title} · {formatVersionNumber(option.versionId)}{option.isCurrent ? ' · 当前' : ''}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function versionOptionKey(option: ProjectOverviewVersionOption) {
+  return `${option.deliverableId}:${option.versionId}`;
+}
+
+function formatVersionNumber(versionId: string) {
+  const normalized = versionId.trim();
+  const suffixMatch = normalized.match(/(?:^|[-_])v(\d+(?:\.\d+)*)$/i);
+  if (suffixMatch) return `V${suffixMatch[1]}`;
+  if (/^v/i.test(normalized)) return `V${normalized.slice(1)}`;
+  return `V${normalized}`;
 }
 
 const taskStatusContent: Record<ProjectTaskStatus, string> = {
