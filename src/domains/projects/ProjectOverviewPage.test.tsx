@@ -43,6 +43,9 @@ describe('ProjectOverviewPage', () => {
     expect(screen.getByRole('main').closest('.bv-project-workspace')).toHaveClass(
       'bv-project-workspace--content',
     );
+    expect(screen.queryByText('当前任务数据已隔离')).not.toBeInTheDocument();
+    expect(screen.queryByText(/本次招标材料、需求及成果只保存在项目事件中/))
+      .not.toBeInTheDocument();
   });
 
   it('removes the old header shortcuts and disables version selection without real versions', () => {
@@ -53,10 +56,10 @@ describe('ProjectOverviewPage', () => {
     expect(screen.queryByRole('link', { name: '打开项目材料' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '报价分析' })).not.toBeInTheDocument();
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
-    expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' })).toHaveAttribute(
+    expect(within(workspaceNavigation).getByRole('tab', { name: '项目资料' })).toHaveAttribute(
       'href', '/projects/BV-2026-018/materials',
     );
-    expect(within(workspaceNavigation).getByRole('link', { name: '标书成果预览' }))
+    expect(within(workspaceNavigation).getByRole('tab', { name: '标书成果预览' }))
       .toHaveAttribute('aria-current', 'page');
     const versionSelect = screen.getByRole('combobox', { name: '成果版本' });
     expect(versionSelect).toBeDisabled();

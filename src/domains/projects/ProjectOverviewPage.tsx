@@ -7,8 +7,6 @@ import {
   FileCheck2,
   Gauge,
   Lightbulb,
-  ShieldCheck,
-  TrendingUp,
 } from 'lucide-react';
 
 import { AppLink, deliverableEditorPath } from '../../app/router';
@@ -256,12 +254,6 @@ export function ProjectOverviewPage({
             taskSummary={taskSummary}
           />
         )}
-
-        <div className="bv-deliverables__boundary" role="note">
-          <ShieldCheck aria-hidden="true" size={18} />
-          <span><strong>当前任务数据已隔离</strong> 本次招标材料、需求及成果只保存在项目事件中，不写入企业资料库。</span>
-          <TrendingUp aria-hidden="true" size={18} />
-        </div>
       </section>
     </ProjectWorkbench>
   );

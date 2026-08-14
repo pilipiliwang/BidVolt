@@ -106,22 +106,6 @@
   text-decoration: none;
 }
 
-.bv-deliverables__boundary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 11px 13px;
-  border-radius: 9px;
-  color: #3c5b4b;
-  background: #f2fbf6;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.bv-deliverables__boundary svg { flex: 0 0 auto; color: #009a55; }
-.bv-deliverables__boundary span { flex: 1; }
-.bv-deliverables__boundary strong { margin-right: 7px; color: #047b45; }
-
 .bv-overview-empty,
 .bv-review-summary__empty {
   display: grid;
