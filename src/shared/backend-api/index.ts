@@ -26,6 +26,17 @@ import { createTenderNoticesApi } from './tender-notices';
 
 export { BackendApiError, createBackendApiClient } from './client';
 export type { BackendApiClient, BackendRequestOptions, TokenProvider } from './client';
+export {
+  normalizeBackendRequestPath,
+  normalizeBackendRequestPathname,
+  subscribeToBackendApiRequests,
+} from './request-monitor';
+export type {
+  BackendApiRequestEvent,
+  BackendApiRequestEventListener,
+  BackendApiRequestEventStatus,
+  BackendApiRequestMethod,
+} from './request-monitor';
 export type * from './types';
 export type { QuoteCalculationBody } from './quotes';
 export type { EditorSession } from './editor';

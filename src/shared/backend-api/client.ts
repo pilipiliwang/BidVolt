@@ -1,3 +1,5 @@
+import { startBackendApiRequestLifecycle } from './request-monitor';
+
 export type TokenProvider = () => string | null | undefined;
 export type BackendRequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown | FormData;
@@ -147,27 +149,49 @@ export const createBackendApiClient = ({
     return recovered ?? first;
   };
 
+  const monitored = async <T>(
+    path: string,
+    options: BackendRequestOptions,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const lifecycle = startBackendApiRequestLifecycle(options.method ?? 'GET', path);
+    try {
+      const result = await operation();
+      lifecycle.succeeded();
+      return result;
+    } catch (error) {
+      lifecycle.failed();
+      throw error;
+    }
+  };
+
   return {
     async request<T>(path: string, options: BackendRequestOptions = {}): Promise<T> {
-      const result = await execute(path, options); const { response } = result;
-      if (!response.ok) throw await errorFromResponse(response, result.accessToken);
-      const text = await response.text(); if (!text) return undefined as T;
-      const payload = parseTextAsJson(text);
-      if (payload === undefined) {
-        throw new BackendApiError(502, '后端返回了无法解析的 JSON', undefined, {
-          accessToken: result.accessToken,
-        });
-      }
-      return payload as T;
+      return monitored(path, options, async () => {
+        const result = await execute(path, options); const { response } = result;
+        if (!response.ok) throw await errorFromResponse(response, result.accessToken);
+        const text = await response.text(); if (!text) return undefined as T;
+        const payload = parseTextAsJson(text);
+        if (payload === undefined) {
+          throw new BackendApiError(502, '后端返回了无法解析的 JSON', undefined, {
+            accessToken: result.accessToken,
+          });
+        }
+        return payload as T;
+      });
     },
     async requestVoid(path: string, options: BackendRequestOptions = {}): Promise<void> {
-      const result = await execute(path, options); const { response } = result;
-      if (!response.ok) throw await errorFromResponse(response, result.accessToken);
+      return monitored(path, options, async () => {
+        const result = await execute(path, options); const { response } = result;
+        if (!response.ok) throw await errorFromResponse(response, result.accessToken);
+      });
     },
     async requestBlob(path: string, options: BackendRequestOptions = {}): Promise<Blob> {
-      const result = await execute(path, options); const { response } = result;
-      if (!response.ok) throw await errorFromResponse(response, result.accessToken);
-      return response.blob();
+      return monitored(path, options, async () => {
+        const result = await execute(path, options); const { response } = result;
+        if (!response.ok) throw await errorFromResponse(response, result.accessToken);
+        return response.blob();
+      });
     },
   };
 };
