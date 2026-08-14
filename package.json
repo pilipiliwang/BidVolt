@@ -10,6 +10,7 @@
     "build": "tsc --noEmit -p tsconfig.app.json --incremental false && tsc --noEmit -p tsconfig.node.json --incremental false && vite build --configLoader runner",
     "build:backend": "tsc --noEmit -p tsconfig.app.json --incremental false && tsc --noEmit -p tsconfig.node.json --incremental false && vite build --mode backend --configLoader runner",
     "lint": "eslint .",
+    "api:check": "vitest run --configLoader runner src/shared/backend-api",
     "test": "vitest run --configLoader runner",
     "test:watch": "vitest --configLoader runner",
     "preview": "vite preview",
