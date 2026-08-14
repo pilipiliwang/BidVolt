@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -51,6 +51,15 @@ describe('BackendApiStatusBar', () => {
             status: 'unavailable',
             trigger: '点击“确认需求”',
           },
+          {
+            callCount: 0,
+            feature: '报价保存',
+            id: 'pricing-save',
+            method: 'PUT',
+            path: '/api/v1/projects/{projectId}/pricing',
+            status: 'not-integrated',
+            trigger: '点击“保存报价”',
+          },
         ]}
         endpointLabel="GET /api/v1/projects"
         latencyMs={87.4}
@@ -64,27 +73,32 @@ describe('BackendApiStatusBar', () => {
     expect(screen.getByText('API 调用成功')).toBeInTheDocument();
     expect(screen.getByText('真实 API')).toBeInTheDocument();
     expect(screen.getByText('测试请求已由真实后端成功响应，当前页面将读取真实后端数据。')).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'API 接口调用明细' })).toBeInTheDocument();
+    const detailTable = screen.getByRole('table', { name: 'API 接口调用明细' });
+    expect(detailTable).toBeInTheDocument();
     expect(screen.getByLabelText('接口调用状态汇总')).toBeInTheDocument();
     expect(screen.getByText('页面接口监控')).toBeInTheDocument();
     expect(screen.getByText('成功 1')).toBeInTheDocument();
     expect(screen.getByText('失败 1')).toBeInTheDocument();
     expect(screen.getByText('调用中 0')).toBeInTheDocument();
     expect(screen.getByText('未触发 1')).toBeInTheDocument();
+    expect(screen.getByText('前端未接入 1')).toBeInTheDocument();
     expect(screen.getByText('后端未提供 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '成功 1' })).toBeInTheDocument();
     expect(screen.getAllByText('/api/v1/projects')).toHaveLength(2);
     expect(screen.getByText('/api/v1/reviews')).toBeInTheDocument();
     expect(screen.getByText('调用成功')).toBeInTheDocument();
     expect(screen.getByText('调用失败')).toBeInTheDocument();
-    expect(screen.getByText('未触发')).toBeInTheDocument();
+    expect(within(detailTable).getByText('未触发')).toBeInTheDocument();
     expect(screen.getByText('项目列表')).toBeInTheDocument();
     expect(screen.getByText('进入投标工作台')).toBeInTheDocument();
     expect(screen.getByText('3 次')).toBeInTheDocument();
     expect(screen.getByText('1 次')).toBeInTheDocument();
-    expect(screen.getAllByText('0 次')).toHaveLength(2);
+    expect(screen.getAllByText('0 次')).toHaveLength(3);
     expect(screen.getByText('未调用')).toBeInTheDocument();
-    expect(screen.getByText('后端未提供')).toBeInTheDocument();
+    expect(within(detailTable).getByText('后端未提供')).toBeInTheDocument();
     expect(screen.getByText('无可用接口')).toBeInTheDocument();
+    expect(within(detailTable).getByText('前端未接入')).toBeInTheDocument();
+    expect(screen.getByText('尚未接入')).toBeInTheDocument();
     expect(screen.getByText('42 ms')).toBeInTheDocument();
     expect(screen.getByText('121 ms')).toBeInTheDocument();
     expect(screen.getByText('服务返回 503')).toBeInTheDocument();
@@ -157,5 +171,81 @@ describe('BackendApiStatusBar', () => {
     expect(screen.getByText('未记录')).toBeInTheDocument();
     expect(screen.getByText('/api/v1/legacy?tenant=tenant-1')).toBeInTheDocument();
     expect(screen.getByText('模板：/api/v1/legacy')).toBeInTheDocument();
+  });
+
+  it('filters large monitoring lists by status, keyword, and task interfaces', async () => {
+    const user = userEvent.setup();
+    const routineChecks = Array.from({ length: 32 }, (_, index) => ({
+      feature: `常规接口 ${index + 1}`,
+      id: `routine-${index + 1}`,
+      method: 'GET',
+      path: `/api/v1/routine/${index + 1}`,
+      status: 'success' as const,
+    }));
+    render(
+      <BackendApiStatusBar
+        checks={[
+          ...routineChecks,
+          {
+            feature: '任务进度',
+            id: 'task-progress',
+            method: 'GET',
+            path: '/api/v1/tasks/{taskId}',
+            status: 'success',
+            trigger: '打开任务抽屉',
+          },
+          {
+            feature: '项目列表',
+            id: 'projects',
+            method: 'GET',
+            path: '/api/v1/projects',
+            status: 'not-run',
+          },
+          {
+            feature: '需求确认',
+            id: 'requirements-confirm',
+            method: 'POST',
+            path: '/api/v1/requirements/confirm',
+            status: 'unavailable',
+          },
+          {
+            feature: '报价提交',
+            id: 'pricing-submit',
+            method: 'POST',
+            path: '/api/v1/pricing/submit',
+            status: 'not-integrated',
+          },
+        ]}
+        status="connected"
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '全部 36' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('显示 36 / 36 个接口')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '任务接口 1' }));
+    expect(screen.getByText('任务进度')).toBeInTheDocument();
+    expect(screen.queryByText('项目列表')).not.toBeInTheDocument();
+    expect(screen.getByText('显示 1 / 36 个接口')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '未触发 1' }));
+    expect(screen.getByText('项目列表')).toBeInTheDocument();
+    expect(screen.queryByText('需求确认')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '后端未提供 1' }));
+    expect(screen.getByText('需求确认')).toBeInTheDocument();
+
+    const search = screen.getByRole('searchbox', { name: '按功能、方法或接口路径搜索' });
+    await user.type(search, 'get');
+    expect(screen.getByText('未找到符合当前筛选条件的接口')).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'confirm');
+    expect(screen.getByText('/api/v1/requirements/confirm')).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.click(screen.getByRole('button', { name: '前端未接入 1' }));
+    expect(screen.getByText('报价提交')).toBeInTheDocument();
+    expect(screen.queryByText('需求确认')).not.toBeInTheDocument();
   });
 });

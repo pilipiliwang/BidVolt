@@ -5,7 +5,9 @@ import {
   FlaskConical,
   LoaderCircle,
   RotateCw,
+  Search,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 import './BackendApiStatusBar.css';
 
@@ -21,6 +23,7 @@ export type BackendApiCheckStatus =
   | 'failed'
   | 'checking'
   | 'not-run'
+  | 'not-integrated'
   | 'unavailable';
 
 export type BackendApiCheck = {
@@ -30,12 +33,15 @@ export type BackendApiCheck = {
   method: string;
   path: string;
   actualPath?: string;
+  isTask?: boolean;
   status: BackendApiCheckStatus;
   callCount?: number;
   lastCalledAt?: Date | string | null;
   latencyMs?: number | null;
   detail?: string;
 };
+
+type CheckFilter = 'all' | BackendApiCheckStatus | 'tasks';
 
 export type BackendApiStatusBarProps = {
   status: BackendApiStatus;
@@ -117,6 +123,7 @@ const checkStatusContent = {
   failed: { label: '调用失败', Icon: CircleX },
   checking: { label: '调用中', Icon: LoaderCircle },
   'not-run': { label: '未触发', Icon: FlaskConical },
+  'not-integrated': { label: '前端未接入', Icon: CircleX },
   unavailable: { label: '后端未提供', Icon: AlertTriangle },
 } satisfies Record<BackendApiCheckStatus, {
   label: string;
@@ -130,6 +137,10 @@ function formatLatency(value: number | null | undefined) {
 }
 
 function formatCallCount(check: BackendApiCheck) {
+  if (check.status === 'not-integrated' || check.status === 'unavailable') {
+    return 0;
+  }
+
   if (
     typeof check.callCount === 'number'
     && Number.isFinite(check.callCount)
@@ -138,7 +149,32 @@ function formatCallCount(check: BackendApiCheck) {
     return Math.floor(check.callCount);
   }
 
-  return check.status === 'not-run' || check.status === 'unavailable' ? 0 : 1;
+  return check.status === 'not-run' ? 0 : 1;
+}
+
+function formatLastCalledAt(check: BackendApiCheck) {
+  if (check.status === 'not-integrated') return '尚未接入';
+  if (check.status === 'unavailable') return '无可用接口';
+  return formatDateTime(
+    check.lastCalledAt,
+    check.status === 'not-run' ? '未调用' : '未记录',
+  );
+}
+
+function isTaskCheck(check: BackendApiCheck) {
+  if (check.isTask !== undefined) return check.isTask;
+
+  const searchable = [
+    check.feature,
+    check.trigger,
+    check.path,
+    check.actualPath,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return searchable.includes('任务')
+    || /(^|[/_.-])tasks?([/_.?{-]|$)/i.test(searchable);
 }
 
 export function BackendApiStatusBar({
@@ -152,6 +188,8 @@ export function BackendApiStatusBar({
   endpointLabel,
   className,
 }: BackendApiStatusBarProps) {
+  const [activeFilter, setActiveFilter] = useState<CheckFilter>('all');
+  const [keyword, setKeyword] = useState('');
   const content = statusContent[status];
   const Icon = content.Icon;
   const isChecking = status === 'checking' || isRetesting;
@@ -172,9 +210,42 @@ export function BackendApiStatusBar({
       failed: 0,
       checking: 0,
       'not-run': 0,
+      'not-integrated': 0,
       unavailable: 0,
     } satisfies Record<BackendApiCheckStatus, number>,
   );
+  const taskCheckCount = checks.filter(isTaskCheck).length;
+  const filteredChecks = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLocaleLowerCase();
+
+    return checks.filter((check) => {
+      const matchesFilter = activeFilter === 'all'
+        || (activeFilter === 'tasks' ? isTaskCheck(check) : check.status === activeFilter);
+      if (!matchesFilter) return false;
+      if (!normalizedKeyword) return true;
+
+      return [
+        check.feature,
+        check.trigger,
+        check.method,
+        check.path,
+        check.actualPath,
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLocaleLowerCase().includes(normalizedKeyword));
+    });
+  }, [activeFilter, checks, keyword]);
+
+  const filters: Array<{ id: CheckFilter; label: string; count: number }> = [
+    { id: 'all', label: '全部', count: checks.length },
+    { id: 'success', label: '成功', count: checkSummary.success },
+    { id: 'failed', label: '失败', count: checkSummary.failed },
+    { id: 'checking', label: '调用中', count: checkSummary.checking },
+    { id: 'not-run', label: '未触发', count: checkSummary['not-run'] },
+    { id: 'not-integrated', label: '前端未接入', count: checkSummary['not-integrated'] },
+    { id: 'unavailable', label: '后端未提供', count: checkSummary.unavailable },
+    { id: 'tasks', label: '任务接口', count: taskCheckCount },
+  ];
 
   return (
     <section
@@ -249,8 +320,39 @@ export function BackendApiStatusBar({
             <span className="backend-api-status__summary-chip backend-api-status__summary-chip--not-run">
               未触发 {checkSummary['not-run']}
             </span>
+            <span className="backend-api-status__summary-chip backend-api-status__summary-chip--not-integrated">
+              前端未接入 {checkSummary['not-integrated']}
+            </span>
             <span className="backend-api-status__summary-chip backend-api-status__summary-chip--unavailable">
               后端未提供 {checkSummary.unavailable}
+            </span>
+          </div>
+          <div className="backend-api-status__filters">
+            <div className="backend-api-status__filter-tabs" aria-label="按状态筛选接口" role="group">
+              {filters.map((filter) => (
+                <button
+                  aria-pressed={activeFilter === filter.id}
+                  className="backend-api-status__filter-button"
+                  key={filter.id}
+                  onClick={() => setActiveFilter(filter.id)}
+                  type="button"
+                >
+                  {filter.label} <span>{filter.count}</span>
+                </button>
+              ))}
+            </div>
+            <label className="backend-api-status__search">
+              <span className="backend-api-status__sr-only">按功能、方法或接口路径搜索</span>
+              <Search aria-hidden="true" size={14} />
+              <input
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="搜索功能、方法或路径"
+                type="search"
+                value={keyword}
+              />
+            </label>
+            <span className="backend-api-status__filter-result" aria-live="polite">
+              显示 {filteredChecks.length} / {checks.length} 个接口
             </span>
           </div>
           <div className="backend-api-status__checks" aria-label="API 接口调用明细" role="table">
@@ -263,7 +365,7 @@ export function BackendApiStatusBar({
               <span role="columnheader">最近调用时间</span>
               <span role="columnheader">最近耗时</span>
             </div>
-            {checks.map((check) => {
+            {filteredChecks.map((check) => {
               const checkContent = checkStatusContent[check.status];
               const CheckIcon = checkContent.Icon;
 
@@ -303,21 +405,23 @@ export function BackendApiStatusBar({
                     dateTime={toDateTimeAttribute(check.lastCalledAt)}
                     role="cell"
                   >
-                    {formatDateTime(
-                      check.lastCalledAt,
-                      check.status === 'not-run'
-                        ? '未调用'
-                        : check.status === 'unavailable'
-                          ? '无可用接口'
-                          : '未记录',
-                    )}
+                    {formatLastCalledAt(check)}
                   </time>
                   <span className="backend-api-status__check-latency" data-label="最近耗时" role="cell">
-                    {formatLatency(check.latencyMs)}
+                    {formatLatency(
+                      check.status === 'not-integrated' || check.status === 'unavailable'
+                        ? null
+                        : check.latencyMs,
+                    )}
                   </span>
                 </div>
               );
             })}
+            {filteredChecks.length === 0 ? (
+              <div className="backend-api-status__empty-row" role="row">
+                <span role="cell">未找到符合当前筛选条件的接口</span>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
