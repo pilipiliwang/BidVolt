@@ -20,8 +20,8 @@
   gap: 8px;
   padding: 0 2px;
   color: #52647a;
-  font-size: 14px;
-  font-weight: 750;
+  font-size: 15px;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -60,5 +60,5 @@
 @media (max-width: 760px) {
   .project-workspace-tabs { padding-inline: 16px; }
   .project-workspace-tabs__list { gap: 20px; min-height: 50px; }
-  .project-workspace-tabs__link { font-size: 13px; }
+  .project-workspace-tabs__link { font-size: 15px; }
 }

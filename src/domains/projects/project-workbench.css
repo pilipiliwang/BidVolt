@@ -54,7 +54,7 @@
   color: #1f3556;
   background: transparent;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
   cursor: pointer;
 }
@@ -220,7 +220,7 @@
   align-content: start;
 }
 
-.bv-project-workspace--content .bv-source-rail__tabs button { font-size: 16px; }
+.bv-project-workspace--content .bv-source-rail__tabs button { font-size: 15px; }
 .bv-project-workspace--content .bv-source-rail__heading { font-size: 14px; }
 .bv-project-workspace--content .bv-source-rail__files li,
 .bv-project-workspace--content .bv-source-rail__files small { font-size: 14px; }
