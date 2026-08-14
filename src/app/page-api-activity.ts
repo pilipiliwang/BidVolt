@@ -26,33 +26,36 @@ function checkFromEvents(
   definition: PageApiOperation,
   events: readonly BackendApiRequestEvent[],
 ): BackendApiCheck {
-  if (definition.notIntegratedReason) {
+  const matching = events.filter((event) => pageApiOperationMatches(definition, event));
+
+  if (matching.length === 0 && definition.notIntegratedReason) {
     return {
       id: definition.id,
       feature: definition.feature,
       trigger: definition.trigger,
       method: definition.method,
       path: definition.path,
+      isTask: definition.isTask,
       status: 'not-integrated',
       callCount: 0,
       detail: definition.notIntegratedReason,
     };
   }
 
-  if (definition.unavailableReason) {
+  if (matching.length === 0 && definition.unavailableReason) {
     return {
       id: definition.id,
       feature: definition.feature,
       trigger: definition.trigger,
       method: definition.method,
       path: definition.path,
+      isTask: definition.isTask,
       status: 'unavailable',
       callCount: 0,
       detail: definition.unavailableReason,
     };
   }
 
-  const matching = events.filter((event) => pageApiOperationMatches(definition, event));
   const latest = latestEvent(matching);
   const hasActiveRequest = matching.some((event) => event.status === 'started');
   const status = hasActiveRequest
@@ -69,6 +72,7 @@ function checkFromEvents(
     trigger: definition.trigger,
     method: definition.method,
     path: definition.path,
+    isTask: definition.isTask,
     actualPath: latest && latest.path !== definition.path ? latest.path : undefined,
     status,
     callCount: matching.length,

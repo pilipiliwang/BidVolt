@@ -10,6 +10,7 @@ export type PageApiOperation = {
   path: string;
   matchPathname: string | RegExp;
   matchQuery?: Record<string, string>;
+  isTask: boolean;
   notIntegratedReason?: string;
   unavailableReason?: string;
 };
@@ -31,6 +32,7 @@ const operation = (
   options: {
     matchPathname?: string | RegExp;
     matchQuery?: Record<string, string>;
+    isTask?: boolean;
     notIntegratedReason?: string;
     unavailableReason?: string;
   } = {},
@@ -42,6 +44,7 @@ const operation = (
   path,
   matchPathname: options.matchPathname ?? path.split('?', 1)[0],
   matchQuery: options.matchQuery,
+  isTask: options.isTask ?? false,
   notIntegratedReason: options.notIntegratedReason,
   unavailableReason: options.unavailableReason,
 });
@@ -104,16 +107,18 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
       { matchPathname: '/requirements', matchQuery: { project_id: projectId } },
     ),
     operation('project-snapshots', '加载项目快照', '自动：进入项目；任务完成后刷新', 'GET', `${projectPath}/snapshots`),
-    operation('project-tasks', '加载及轮询任务进度', '自动：进入项目；有运行中任务时每 2.5 秒', 'GET', `${projectPath}/tasks`),
+    operation('project-tasks', '加载及轮询任务进度', '自动：进入项目；有运行中任务时每 2.5 秒', 'GET', `${projectPath}/tasks`, {
+      isTask: true,
+    }),
     operation(
       'task-status',
       '查询单任务状态与结果',
-      '计划接入：精确轮询活动任务',
+      '自动：发现待执行或执行中任务时，每 2.5 秒查询最近 8 个活动任务',
       'GET',
       '/tasks/{taskId}',
       {
+        isTask: true,
         matchPathname: /^\/tasks\/[^/]+$/,
-        notIntegratedReason: '后端已提供单任务状态接口；前端当前仍使用项目任务列表轮询，后续将按 task_id 接入。',
       },
     ),
     operation(
@@ -123,6 +128,7 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
       'GET',
       '/tasks/{taskId}/stream',
       {
+        isTask: true,
         matchPathname: /^\/tasks\/[^/]+\/stream$/,
         notIntegratedReason: '后端已提供 SSE；前端尚未完成 Bearer 鉴权流式请求与事件 DTO 的安全接入。',
       },
@@ -257,7 +263,9 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       operation('snapshot-detail', '查看冻结快照详情', '操作：点击快照记录', 'GET', `${projectPath}/snapshots/{snapshotId}`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/snapshots/[^/]+$`),
       }),
-      operation('task-create', '提交任务（仅入队）', '操作：点击开始生成或开始校核', 'POST', `${projectPath}/tasks`),
+      operation('task-create', '提交任务（仅入队）', '操作：点击开始生成或开始校核', 'POST', `${projectPath}/tasks`, {
+        isTask: true,
+      }),
       operation('requirement-confirm', '确认招标要求原文', '操作：点击确认原文', 'POST', `${projectPath}/requirements/{requirementId}/confirm`, {
         unavailableReason: '当前后端尚未提供 Requirement 确认接口。',
       }),
@@ -320,7 +328,6 @@ export function pageApiOperationMatches(
   operationDefinition: PageApiOperation,
   request: PageApiRequestLike,
 ) {
-  if (operationDefinition.unavailableReason || operationDefinition.notIntegratedReason) return false;
   if (request.method.toUpperCase() !== operationDefinition.method) return false;
 
   const url = requestUrl(request.path);

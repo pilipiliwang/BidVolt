@@ -360,11 +360,21 @@ export function adaptBackendTaskEvent(
   { projectId, sequence = 0, occurredAt }: TaskEventAdapterOptions,
 ): PublicTaskEvent {
   const status = taskStatus(task);
+  const fallbackMessage: Record<PublicTaskEvent['status'], string> = {
+    queued: '任务已提交，等待后端执行器领取',
+    running: '任务正在由后端执行器处理',
+    retrying: '任务正在重试',
+    waiting_user: '任务等待用户补充信息',
+    cancel_requested: '已请求中断任务',
+    cancelled: '任务已取消',
+    succeeded: '任务已完成',
+    failed: '任务执行失败',
+  };
   const message =
     asString(task.progress.current_work) ??
     asString(task.progress.summary) ??
     asString(task.progress.hint) ??
-    (status === 'succeeded' ? '任务已完成' : status === 'failed' ? '任务执行失败' : '任务已提交');
+    fallbackMessage[status];
   const percent = asNumber(task.progress.percent);
   return {
     schema_version: '1',

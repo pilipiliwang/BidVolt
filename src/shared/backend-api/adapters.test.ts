@@ -246,6 +246,19 @@ describe('backend DTO adapters', () => {
     });
   });
 
+  it('distinguishes a queued task from a task that is already executing', () => {
+    expect(adaptBackendTaskEvent({
+      task_id: 22,
+      task_type: 'bid_review',
+      status: 1,
+      retry_count: 0,
+      progress: {},
+    }, { projectId: '18' })).toMatchObject({
+      status: 'queued',
+      public_message: '任务已提交，等待后端执行器领取',
+    });
+  });
+
   it('does not call the first backend snapshot current without an explicit marker', () => {
     expect(adaptBackendSnapshots([
       {

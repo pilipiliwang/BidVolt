@@ -49,9 +49,11 @@ import {
   adaptBackendSnapshots,
   adaptBackendTaskEvent,
   backendApi,
+  isBackendTaskTerminal,
   scoreSummaryForOverview,
   subscribeToBackendApiRequests,
   type BackendApiRequestEvent,
+  type BackendTask,
   type Deliverable,
   type DeliverableContent,
   type EditorSession,
@@ -130,6 +132,19 @@ type ProjectRouteFailure = {
   projectId: string;
 };
 
+async function loadBackendTaskSnapshots(projectId: string) {
+  const response = await backendApi.tasks.list(projectId);
+  const snapshots = [...response.items];
+  const activeTaskIndexes = response.items.flatMap((task, index) =>
+    isBackendTaskTerminal(task) ? [] : [index]).slice(0, 8);
+  const detailResults = await Promise.allSettled(activeTaskIndexes.map((index) =>
+    backendApi.tasks.get(response.items[index].task_id)));
+  detailResults.forEach((result, detailIndex) => {
+    if (result.status === 'fulfilled') snapshots[activeTaskIndexes[detailIndex]] = result.value;
+  });
+  return snapshots;
+}
+
 const backendApiBaseLabel = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 const projectResourceLabels: Record<ProjectResourceKey, string> = {
@@ -193,6 +208,8 @@ export function App() {
   const projectLoadGenerationRef = useRef(0);
   const projectResourceGenerationRef = useRef<Record<string, number>>({});
   const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
+  const taskLoadGenerationRef = useRef<Record<string, number>>({});
+  const taskSnapshotRequestRef = useRef(new Map<string, Promise<BackendTask[]>>());
   const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
   const localPreviewLoadRef = useRef(false);
   const apiRouteStartedAtRef = useRef(Date.now());
@@ -227,6 +244,8 @@ export function App() {
     editorLoadKeyRef.current = '';
     projectResourceGenerationRef.current = {};
     taskEventsRef.current = {};
+    taskLoadGenerationRef.current = {};
+    taskSnapshotRequestRef.current.clear();
   }, []);
 
   const becomeAnonymous = useCallback((options: { clearStoredSession?: boolean } = {}) => {
@@ -375,17 +394,34 @@ export function App() {
       });
   }, [authState, loadEnterprise, loadHistory, loadProjects, localPreviewActive, setError]);
 
+  const requestTaskSnapshots = useCallback((projectId: string) => {
+    const existing = taskSnapshotRequestRef.current.get(projectId);
+    if (existing) return existing;
+
+    const request = loadBackendTaskSnapshots(projectId);
+    taskSnapshotRequestRef.current.set(projectId, request);
+    const clearRequest = () => {
+      if (taskSnapshotRequestRef.current.get(projectId) === request) {
+        taskSnapshotRequestRef.current.delete(projectId);
+      }
+    };
+    request.then(clearRequest, clearRequest);
+    return request;
+  }, []);
+
   const loadProject = useCallback(async (projectId: string) => {
     const tenantGeneration = tenantGuardRef.current.capture();
     const resourceGeneration = (projectResourceGenerationRef.current[projectId] ?? 0) + 1;
+    const taskLoadGeneration = (taskLoadGenerationRef.current[projectId] ?? 0) + 1;
     projectResourceGenerationRef.current[projectId] = resourceGeneration;
+    taskLoadGenerationRef.current[projectId] = taskLoadGeneration;
     tenantGuardRef.current.commit(tenantGeneration, () => setLoadingProjectId(projectId));
     try {
       const results = await Promise.allSettled([
         backendApi.files.list({ target: 'project', project_id: projectId, page: 1, size: 100 }),
         backendApi.requirements.list(projectId),
         backendApi.snapshots.list(projectId),
-        backendApi.tasks.list(projectId),
+        requestTaskSnapshots(projectId),
         backendApi.deliverables.list(projectId),
         (async () => {
           const [reviewRuns, score] = await Promise.all([
@@ -421,11 +457,12 @@ export function App() {
         || projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
 
       const [filesResult, requirementsResult, snapshotsResult, tasksResult, deliverablesResult, reviewResult, quoteResult] = results;
+      const taskResultIsCurrent = taskLoadGenerationRef.current[projectId] === taskLoadGeneration;
       const resourceResults: Array<[ProjectResourceKey, PromiseSettledResult<unknown>]> = [
         ['materials', filesResult],
         ['requirements', requirementsResult],
         ['snapshots', snapshotsResult],
-        ['tasks', tasksResult],
+        ['tasks', taskResultIsCurrent ? tasksResult : { status: 'fulfilled', value: undefined }],
         ['deliverables', deliverablesResult],
         ['review', reviewResult],
         ['quote', quoteResult],
@@ -456,10 +493,10 @@ export function App() {
           next.requirements = adaptBackendRequirements(requirementsResult.value, { fileNamesById });
         }
         if (snapshotsResult.status === 'fulfilled') next.snapshots = adaptBackendSnapshots(snapshotsResult.value.items);
-        if (tasksResult.status === 'fulfilled') {
-          next.tasks = tasksResult.value.items.map((task, index) => adaptBackendTaskEvent(task, {
+        if (tasksResult.status === 'fulfilled' && taskResultIsCurrent) {
+          next.tasks = tasksResult.value.map((task, index, tasks) => adaptBackendTaskEvent(task, {
             projectId,
-            sequence: index + 1,
+            sequence: tasks.length - index,
           }));
           taskEventsRef.current[projectId] = next.tasks;
         }
@@ -487,15 +524,18 @@ export function App() {
         });
       }
     }
-  }, []);
+  }, [requestTaskSnapshots]);
 
   const refreshTaskEvents = useCallback(async (projectId: string) => {
     const generation = tenantGuardRef.current.capture();
-    const response = await backendApi.tasks.list(projectId);
-    if (!tenantGuardRef.current.isCurrent(generation)) return false;
-    const nextTasks = response.items.map((task, index) => adaptBackendTaskEvent(task, {
+    const taskLoadGeneration = (taskLoadGenerationRef.current[projectId] ?? 0) + 1;
+    taskLoadGenerationRef.current[projectId] = taskLoadGeneration;
+    const tasks = await requestTaskSnapshots(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)
+      || taskLoadGenerationRef.current[projectId] !== taskLoadGeneration) return false;
+    const nextTasks = tasks.map((task, index) => adaptBackendTaskEvent(task, {
       projectId,
-      sequence: index + 1,
+      sequence: tasks.length - index,
     }));
     const enteredTerminalState = hasTaskEnteredTerminalState(taskEventsRef.current[projectId] ?? [], nextTasks);
     taskEventsRef.current[projectId] = nextTasks;
@@ -511,7 +551,7 @@ export function App() {
       };
     });
     return enteredTerminalState;
-  }, []);
+  }, [requestTaskSnapshots]);
 
   useEffect(() => {
     if (authState !== 'authenticated' || !routeProjectId || localPreviewActive) return;
@@ -886,6 +926,7 @@ export function App() {
         payload: {},
       });
       if (!tenantGuardRef.current.isCurrent(generation)) return;
+      taskSnapshotRequestRef.current.delete(projectId);
       await loadProject(projectId);
       tenantGuardRef.current.commit(generation, () => setTaskDrawerProjectId(projectId));
     } catch (error) {
@@ -1196,7 +1237,7 @@ export function App() {
   const workspaceMaterials = toWorkspaceMaterials(activeMaterials);
   const workspaceEnterprise = toWorkspaceEnterpriseMaterials(enterpriseAssets);
   const taskEvents = activeData?.tasks ?? [];
-  const activeTaskCount = taskEvents.some((event) => ['queued', 'running', 'retrying', 'waiting_user'].includes(event.status)) ? 1 : 0;
+  const activeTaskCount = taskEvents.filter((event) => isActiveTaskStatus(event.status)).length;
   const latestTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) =>
     !latest || event.sequence > latest.sequence ? event : latest, undefined);
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;

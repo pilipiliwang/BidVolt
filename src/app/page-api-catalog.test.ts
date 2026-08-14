@@ -56,23 +56,29 @@ describe('page API catalog', () => {
     expect(catalog.find((item) => item.id === 'completed-bid-purpose')?.unavailableReason)
       .toContain('刷新后无法恢复');
     expect(catalog.find((item) => item.id === 'task-status')?.notIntegratedReason)
-      .toContain('task_id');
+      .toBeUndefined();
     expect(catalog.find((item) => item.id === 'task-stream')?.notIntegratedReason)
       .toContain('Bearer');
     expect(catalog.find((item) => item.id === 'task-create')?.feature)
       .toBe('提交任务（仅入队）');
+    expect(catalog.filter((item) => item.isTask).map((item) => item.id)).toEqual([
+      'project-tasks',
+      'task-status',
+      'task-stream',
+      'task-create',
+    ]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('documents individual task status and SSE as existing but not yet integrated', () => {
+  it('documents integrated task status polling and the deferred SSE stream', () => {
     const catalog = pageApiCatalog({ name: 'project-overview', projectId: '7' });
     const status = catalog.find((item) => item.id === 'task-status')!;
     const stream = catalog.find((item) => item.id === 'task-stream')!;
 
     expect(status).toMatchObject({ method: 'GET', path: '/tasks/{taskId}' });
     expect(stream).toMatchObject({ method: 'GET', path: '/tasks/{taskId}/stream' });
-    expect(pageApiOperationMatches(status, { method: 'GET', path: '/tasks/31' })).toBe(false);
-    expect(pageApiOperationMatches(stream, { method: 'GET', path: '/tasks/31/stream' })).toBe(false);
+    expect(pageApiOperationMatches(status, { method: 'GET', path: '/tasks/31' })).toBe(true);
+    expect(pageApiOperationMatches(stream, { method: 'GET', path: '/tasks/31/stream' })).toBe(true);
   });
 
   it('distinguishes project query parameters and dynamic child resources', () => {

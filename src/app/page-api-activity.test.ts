@@ -77,14 +77,23 @@ describe('page API activity', () => {
       .toMatchObject({ status: 'unavailable', callCount: 0 });
   });
 
-  it('reports backend task endpoints that the frontend has not integrated yet', () => {
+  it('separates integrated task polling from the task stream that is not yet integrated', () => {
     const definitions = pageApiCatalog({ name: 'project-overview', projectId: '7' });
-    const result = buildPageApiActivity(definitions, [requestEvent()]);
+    const result = buildPageApiActivity(definitions, [
+      requestEvent(),
+      requestEvent({
+        requestId: 'request-task',
+        sequence: 2,
+        path: '/tasks/31',
+        pathname: '/tasks/31',
+      }),
+    ]);
 
     expect(result.status).toBe('degraded');
     expect(result.checks.find((check) => check.id === 'task-status')).toMatchObject({
-      status: 'not-integrated',
-      callCount: 0,
+      status: 'success',
+      callCount: 1,
+      isTask: true,
       method: 'GET',
       path: '/tasks/{taskId}',
     });
@@ -94,7 +103,7 @@ describe('page API activity', () => {
       method: 'GET',
       path: '/tasks/{taskId}/stream',
     });
-    expect(result.message).toContain('前端未接入 2 项');
+    expect(result.message).toContain('前端未接入 1 项');
   });
 
   it('shows unexpected runtime requests instead of silently dropping them', () => {
@@ -126,7 +135,9 @@ describe('page API activity', () => {
     });
     expect(result.checks.find((check) => check.id === 'requirement-confirm')?.status)
       .toBe('unavailable');
-    expect(result.checks.find((check) => check.id === 'task-status')?.status)
+    expect(result.checks.find((check) => check.id === 'task-stream')?.status)
       .toBe('not-integrated');
+    expect(result.checks.find((check) => check.id === 'task-status')?.status)
+      .toBe('not-run');
   });
 });

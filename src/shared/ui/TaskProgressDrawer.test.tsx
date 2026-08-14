@@ -54,6 +54,9 @@ describe('TaskProgressDrawer', () => {
 
     expect(screen.getByText('海上平台电气设备采购项目')).toBeInTheDocument();
     expect(screen.getByText('正在核验技术方案中的引用位置')).toBeInTheDocument();
+    expect(screen.getByText('checking')).toBeInTheDocument();
+    expect(screen.getByText('任务当前状态')).toBeInTheDocument();
+    expect(screen.getByText(/每一行代表一个独立任务/)).toBeInTheDocument();
     expect(screen.getByText('72%')).toBeInTheDocument();
     expect(
       screen.getByText((_, element) => element?.tagName === 'SMALL' && element.textContent?.includes('72%') === true),
