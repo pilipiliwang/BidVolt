@@ -1,5 +1,7 @@
 import {
+  CheckCircle2,
   ChevronDown,
+  Clock3,
   Download,
   Eye,
   FileCheck2,
@@ -22,6 +24,7 @@ import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
   deliverables?: ProjectDeliverableView[];
+  deliverablesRequest?: DeliverablesRequestView;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
@@ -34,11 +37,27 @@ type ProjectOverviewPageProps = {
   taskSummary?: {
     message: string;
     percent: number;
+    status?: ProjectTaskStatus;
     title: string;
   };
   downloadHrefFor?: (deliverable: ProjectDeliverableView) => string;
   onDownloadDeliverable?: (deliverable: ProjectDeliverableView) => void | Promise<void>;
 };
+
+export type DeliverablesRequestView = {
+  endpoint: string;
+  errorMessage?: string;
+  method?: string;
+  status: 'idle' | 'loading' | 'success' | 'error';
+};
+
+export type ProjectTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'retrying'
+  | 'waiting_user'
+  | 'succeeded'
+  | 'failed';
 
 export type ProjectDeliverableView = {
   id: 'business' | 'technical' | 'quote';
@@ -67,6 +86,7 @@ export type ProjectOverviewView = {
 
 export function ProjectOverviewPage({
   deliverables,
+  deliverablesRequest,
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
@@ -172,7 +192,7 @@ export function ProjectOverviewPage({
           </div>
         </header>
 
-        {visibleDeliverables ? (
+        {visibleDeliverables && visibleDeliverables.length > 0 ? (
           <div className="bv-deliverable-grid">
           {visibleDeliverables.map((item) => (
             <article className="bv-deliverable-card" key={item.id}>
@@ -225,12 +245,12 @@ export function ProjectOverviewPage({
           ))}
           </div>
         ) : (
-          <div className="bv-overview-empty" role="status">
-            <FileCheck2 aria-hidden="true" size={38} />
-            <strong>项目成果尚未生成</strong>
-            <p>当前项目没有可展示的成果版本。请先上传本次招标材料并完成解析。</p>
-            <AppLink to={`/projects/${projectId}/materials`}>前往项目材料</AppLink>
-          </div>
+          <DeliverablesEmptyState
+            onOpenTasks={onOpenTasks}
+            projectId={projectId}
+            request={deliverablesRequest}
+            taskSummary={taskSummary}
+          />
         )}
 
         <div className="bv-deliverables__boundary" role="note">
@@ -242,3 +262,89 @@ export function ProjectOverviewPage({
     </ProjectWorkbench>
   );
 }
+
+type DeliverablesEmptyStateProps = {
+  onOpenTasks: () => void;
+  projectId: string;
+  request?: DeliverablesRequestView;
+  taskSummary?: ProjectOverviewPageProps['taskSummary'];
+};
+
+function DeliverablesEmptyState({
+  onOpenTasks,
+  projectId,
+  request,
+  taskSummary,
+}: DeliverablesEmptyStateProps) {
+  if (!request || request.status === 'idle') {
+    return (
+      <div className="bv-overview-empty" role="status">
+        <FileCheck2 aria-hidden="true" size={38} />
+        <strong>项目成果尚未生成</strong>
+        <p>当前项目没有可展示的成果版本。请先上传本次招标材料并完成解析。</p>
+        <AppLink to={`/projects/${projectId}/materials`}>前往项目材料</AppLink>
+      </div>
+    );
+  }
+
+  const isSuccess = request.status === 'success';
+  const title = isSuccess
+    ? '成果接口调用成功，返回 0 项'
+    : request.status === 'loading'
+      ? '正在调用成果接口'
+      : '成果接口调用失败';
+  const description = isSuccess
+    ? '后端已成功返回空列表，因此页面不会生成虚拟成果卡片。'
+    : request.status === 'loading'
+      ? '请求尚未完成，页面会等待后端返回后再展示真实成果。'
+      : request.errorMessage ?? '后端未能返回成果列表，请重新测试接口或稍后重试。';
+  const taskState = taskSummary?.status ? taskStatusContent[taskSummary.status] : undefined;
+
+  return (
+    <div
+      aria-label={title}
+      className={`bv-overview-empty bv-overview-empty--api bv-overview-empty--${request.status}`}
+      data-request-status={request.status}
+      role="status"
+    >
+      {isSuccess
+        ? <CheckCircle2 aria-hidden="true" size={38} />
+        : <FileCheck2 aria-hidden="true" size={38} />}
+      <strong>{title}</strong>
+      <p>{description}</p>
+
+      <dl className="bv-overview-empty__request">
+        <div>
+          <dt>成果接口</dt>
+          <dd><code>{(request.method ?? 'GET').toUpperCase()} {request.endpoint}</code></dd>
+        </div>
+        <div>
+          <dt>真实返回</dt>
+          <dd>{isSuccess ? '调用成功 · 0 项成果' : request.status === 'loading' ? '请求进行中' : '调用失败'}</dd>
+        </div>
+      </dl>
+
+      {taskState && taskSummary ? (
+        <div className={`bv-overview-empty__task bv-overview-empty__task--${taskSummary.status}`} role="note">
+          <Clock3 aria-hidden="true" size={19} />
+          <span>
+            <strong>生成任务：{taskSummary.status} · {taskState}</strong>
+            <small>{taskSummary.message}</small>
+          </span>
+          <button onClick={onOpenTasks} type="button">查看任务进度</button>
+        </div>
+      ) : null}
+
+      <AppLink to={`/projects/${projectId}/materials`}>前往项目材料</AppLink>
+    </div>
+  );
+}
+
+const taskStatusContent: Record<ProjectTaskStatus, string> = {
+  queued: '等待执行器',
+  running: '执行中',
+  retrying: '等待重试',
+  waiting_user: '等待用户操作',
+  succeeded: '已完成但暂无成果',
+  failed: '执行失败',
+};

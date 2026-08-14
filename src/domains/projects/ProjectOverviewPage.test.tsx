@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProjectOverviewPage, type ProjectOverviewView } from './ProjectOverviewPage';
@@ -62,6 +63,46 @@ describe('ProjectOverviewPage', () => {
     expect(screen.getByText('项目成果尚未生成')).toBeInTheDocument();
     expect(screen.getByText('暂无模拟得分')).toBeInTheDocument();
     expect(screen.queryByLabelText('综合得分 91.4 分')).not.toBeInTheDocument();
+  });
+
+  it('reports a successful empty deliverables response and a queued generation task without mock cards', async () => {
+    const user = userEvent.setup();
+    const onOpenTasks = vi.fn();
+    render(
+      <ProjectOverviewPage
+        deliverables={[]}
+        deliverablesRequest={{
+          endpoint: '/api/v1/deliverables?project_id=1',
+          method: 'GET',
+          status: 'success',
+        }}
+        enterpriseMaterials={[]}
+        materials={[]}
+        onOpenTasks={onOpenTasks}
+        project={project}
+        projectId="1"
+        taskSummary={{
+          message: '任务已经入队，尚未被 worker 领取。',
+          percent: 0,
+          status: 'queued',
+          title: '成果编制',
+        }}
+      />,
+    );
+
+    const emptyState = screen.getByRole('status', {
+      name: /成果接口调用成功，返回 0 项/,
+    });
+    expect(emptyState).toHaveAttribute('data-request-status', 'success');
+    expect(screen.getByText('后端已成功返回空列表，因此页面不会生成虚拟成果卡片。')).toBeInTheDocument();
+    expect(screen.getByText('GET /api/v1/deliverables?project_id=1')).toBeInTheDocument();
+    expect(screen.getByText('调用成功 · 0 项成果')).toBeInTheDocument();
+    expect(screen.getByText('生成任务：queued · 等待执行器')).toBeInTheDocument();
+    expect(within(emptyState).getByText('任务已经入队，尚未被 worker 领取。')).toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看任务进度' }));
+    expect(onOpenTasks).toHaveBeenCalledOnce();
   });
 
   it('routes each preview to its own versioned editor and keeps pricing separate', () => {
