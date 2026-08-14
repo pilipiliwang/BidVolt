@@ -141,6 +141,14 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
       `/deliverables?project_id=${encoded}`,
       { matchPathname: '/deliverables', matchQuery: { project_id: projectId } },
     ),
+    operation(
+      'project-deliverable-versions',
+      '加载每项成果的真实版本列表',
+      '条件自动：成果列表返回后，并发读取各成果版本',
+      'GET',
+      '/deliverables/{deliverableId}/versions',
+      { matchPathname: /^\/deliverables\/[^/]+\/versions$/ },
+    ),
     operation('project-review-runs', '加载评审记录', '自动：进入项目；评审后刷新', 'GET', `${projectPath}/reviews`),
     operation('project-latest-score', '加载最新评分', '自动：进入项目；评审后刷新', 'GET', `${projectPath}/scores`),
     operation(

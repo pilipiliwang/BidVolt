@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ComponentType,
+} from 'react';
 
 import { LoginPage, type LoginCredentials, type RegisterCredentials } from '../domains/auth/LoginPage';
 import {
@@ -92,6 +100,12 @@ import { createEditorSaveGate } from './editor-save-gate';
 import { buildPageApiActivity } from './page-api-activity';
 import { pageApiCatalog } from './page-api-catalog';
 import {
+  buildProjectOverviewVersionOptions,
+  loadDeliverableVersionLists,
+  type DeliverableVersionOption,
+  type DeliverableVersionsById,
+} from './deliverable-versions';
+import {
   isLocalPreviewAvailable,
   localPreviewWriteError,
 } from './local-preview-gate';
@@ -104,6 +118,7 @@ const loadLocalPreviewPayload = import.meta.env.DEV
 
 type ProjectData = {
   deliverables: Deliverable[];
+  deliverableVersions: DeliverableVersionsById;
   historyRecords: HistoricalQuoteRecord[];
   materials: ProjectMaterial[];
   overview?: ProjectOverviewView;
@@ -115,6 +130,17 @@ type ProjectData = {
   snapshots: ProjectSnapshot[];
   tasks: PublicTaskEvent[];
 };
+
+type ProjectOverviewPageWithVersionsProps = ComponentProps<typeof ProjectOverviewPage> & {
+  versionOptions?: DeliverableVersionOption[];
+  onSelectVersion?: (option: DeliverableVersionOption) => void;
+};
+
+// ProjectOverviewPage's UI branch consumes these props. Keeping the adapter here
+// lets the data-integration commit remain independent until that UI commit lands.
+const ProjectOverviewPageWithVersions = ProjectOverviewPage as ComponentType<
+  ProjectOverviewPageWithVersionsProps
+>;
 
 type HistoryState = {
   records: HistoricalQuoteRecord[];
@@ -439,7 +465,14 @@ export function App() {
         backendApi.requirements.list(projectId),
         backendApi.snapshots.list(projectId),
         requestTaskSnapshots(projectId),
-        backendApi.deliverables.list(projectId),
+        (async () => {
+          const deliverables = await backendApi.deliverables.list(projectId);
+          const deliverableVersions = await loadDeliverableVersionLists(
+            deliverables,
+            (deliverableId) => backendApi.deliverables.listVersions(deliverableId),
+          );
+          return { deliverables, deliverableVersions };
+        })(),
         (async () => {
           const [reviewRuns, score] = await Promise.all([
             backendApi.review.listRuns(projectId),
@@ -492,6 +525,7 @@ export function App() {
       setProjectData((current) => {
         const previous = current[projectId] ?? {
           deliverables: [],
+          deliverableVersions: {},
           historyRecords: [],
           materials: [],
           quote: emptyQuote(projectId),
@@ -517,7 +551,10 @@ export function App() {
           }));
           taskEventsRef.current[projectId] = next.tasks;
         }
-        if (deliverablesResult.status === 'fulfilled') next.deliverables = deliverablesResult.value;
+        if (deliverablesResult.status === 'fulfilled') {
+          next.deliverables = deliverablesResult.value.deliverables;
+          next.deliverableVersions = deliverablesResult.value.deliverableVersions;
+        }
         if (reviewResult.status === 'fulfilled') {
           next.reviewRun = reviewResult.value.runDetail ? adaptBackendReviewRun(reviewResult.value.runDetail) : emptyReview();
           next.score = reviewResult.value.score;
@@ -727,6 +764,7 @@ export function App() {
     setProjectData({
       [preview.LOCAL_PREVIEW_PROJECT_ID]: {
         deliverables: preview.localPreviewDeliverables,
+        deliverableVersions: {},
         historyRecords: preview.localPreviewHistoryRecords,
         materials: preview.localPreviewMaterials,
         quote: preview.localPreviewQuote,
@@ -1258,6 +1296,12 @@ export function App() {
   const latestTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) =>
     !latest || event.sequence > latest.sequence ? event : latest, undefined);
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
+  const deliverableVersionOptions = activeData
+    ? buildProjectOverviewVersionOptions(
+        activeData.deliverables,
+        activeData.deliverableVersions,
+      )
+    : [];
   const deliverableVersionIds = Object.fromEntries((deliverableCards ?? [])
     .filter((item) => item.versionId)
     .map((item) => [item.id, item.versionId])) as Partial<Record<DeliverableRouteId, string>>;
@@ -1381,7 +1425,7 @@ export function App() {
         <HistoryPricesPage records={history.records} totalCount={history.total} />
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
-        <ProjectOverviewPage
+        <ProjectOverviewPageWithVersions
           deliverables={deliverableCards}
           deliverablesRequest={deliverablesRequest}
           enterpriseMaterials={workspaceEnterprise}
@@ -1397,6 +1441,11 @@ export function App() {
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id, item.versionId).catch((error) => setError(error, '成果下载失败'))}
           onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
+          onSelectVersion={(option) => navigate(deliverableEditorPath(
+            route.projectId,
+            option.deliverableId,
+            option.versionId,
+          ))}
           overview={activeData?.overview}
           project={activeProject}
           projectId={route.projectId}
@@ -1406,6 +1455,7 @@ export function App() {
             status: toProjectTaskStatus(latestTask.status),
             title: taskPhaseLabel(latestTask.phase),
           } : undefined}
+          versionOptions={deliverableVersionOptions}
         />
       ) : null}
       {route.name === 'project-materials' && activeProject ? (

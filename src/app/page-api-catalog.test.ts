@@ -81,6 +81,24 @@ describe('page API catalog', () => {
     expect(pageApiOperationMatches(stream, { method: 'GET', path: '/tasks/31/stream' })).toBe(true);
   });
 
+  it('documents and matches dynamic deliverable version-list requests on the overview', () => {
+    const catalog = pageApiCatalog({ name: 'project-overview', projectId: '7' });
+    const versions = catalog.find((item) => item.id === 'project-deliverable-versions')!;
+
+    expect(versions).toMatchObject({
+      method: 'GET',
+      path: '/deliverables/{deliverableId}/versions',
+    });
+    expect(pageApiOperationMatches(versions, {
+      method: 'GET',
+      path: '/deliverables/31/versions',
+    })).toBe(true);
+    expect(pageApiOperationMatches(versions, {
+      method: 'GET',
+      path: '/deliverables/31/versions/6',
+    })).toBe(false);
+  });
+
   it('distinguishes project query parameters and dynamic child resources', () => {
     const catalog = pageApiCatalog({ name: 'project-materials', projectId: '7' });
     const materials = catalog.find((item) => item.id === 'project-materials')!;
