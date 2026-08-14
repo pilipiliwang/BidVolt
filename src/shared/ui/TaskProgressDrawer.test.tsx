@@ -35,7 +35,6 @@ function DrawerHarness({ events = publicEvents }: { events?: PublicTaskEvent[] }
         events={events}
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
-        projectTitle="海上平台电气设备采购项目"
       />
     </>
   );
@@ -48,7 +47,6 @@ describe('TaskProgressDrawer', () => {
         events={publicEvents}
         isOpen
         onClose={() => undefined}
-        projectTitle="海上平台电气设备采购项目"
       />,
     );
 
@@ -77,7 +75,6 @@ describe('TaskProgressDrawer', () => {
         events={[]}
         isOpen
         onClose={() => undefined}
-        projectTitle="空任务项目"
       />,
     );
 

@@ -1524,7 +1524,6 @@ export function App() {
           events={taskEvents}
           isOpen={taskDrawerProjectId === routeProjectId}
           onClose={() => setTaskDrawerProjectId(null)}
-          projectTitle={activeProject.title}
         />
       ) : null}
       {snapshotDetail ? <SnapshotDialog detail={snapshotDetail} onClose={() => setSnapshotDetail(null)} /> : null}

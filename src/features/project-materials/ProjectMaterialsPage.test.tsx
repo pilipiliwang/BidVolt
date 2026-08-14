@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -91,8 +91,10 @@ describe('ProjectMaterialsPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: '当前招标材料' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '项目资料' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: '标书成果预览' })).toHaveAttribute(
+    const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
+    expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' }))
+      .toHaveAttribute('aria-current', 'page');
+    expect(within(workspaceNavigation).getByRole('link', { name: '标书成果预览' })).toHaveAttribute(
       'href', '/projects/BV-2026-0088/overview',
     );
     expect(screen.getByRole('note')).toHaveTextContent('项目域 · BV-2026-0088');

@@ -6,7 +6,6 @@ import type { PublicTaskEvent } from '../task-events';
 type TaskProgressDrawerProps = {
   isOpen: boolean;
   onClose: () => void;
-  projectTitle: string;
   events: PublicTaskEvent[];
 };
 

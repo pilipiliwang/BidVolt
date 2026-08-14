@@ -6,7 +6,7 @@
   background: #fff;
 }
 
-.project-workspace-tabs [role='tablist'] {
+.project-workspace-tabs__list {
   display: flex;
   align-items: stretch;
   gap: 28px;
@@ -48,17 +48,17 @@
 }
 
 .project-workspace-tabs__link--active,
-.project-workspace-tabs__link[aria-selected='true'] {
+.project-workspace-tabs__link[aria-current='page'] {
   color: #008f50;
 }
 
 .project-workspace-tabs__link--active::after,
-.project-workspace-tabs__link[aria-selected='true']::after {
+.project-workspace-tabs__link[aria-current='page']::after {
   background: #009a55;
 }
 
 @media (max-width: 760px) {
   .project-workspace-tabs { padding-inline: 16px; }
-  .project-workspace-tabs [role='tablist'] { gap: 20px; min-height: 50px; }
+  .project-workspace-tabs__list { gap: 20px; min-height: 50px; }
   .project-workspace-tabs__link { font-size: 13px; }
 }

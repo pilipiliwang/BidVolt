@@ -20,7 +20,7 @@ export function ProjectWorkspaceTabs({ activeTab, projectId }: ProjectWorkspaceT
 
   return (
     <nav aria-label="项目工作区页面" className="project-workspace-tabs">
-      <div aria-label="项目工作区页面" role="tablist">
+      <div className="project-workspace-tabs__list">
         {tabDefinitions.map(({ id, label, Icon }) => {
           const active = activeTab === id;
           const to = id === 'materials'
@@ -30,10 +30,8 @@ export function ProjectWorkspaceTabs({ activeTab, projectId }: ProjectWorkspaceT
           return (
             <AppLink
               aria-current={active ? 'page' : undefined}
-              aria-selected={active}
               className={`project-workspace-tabs__link${active ? ' project-workspace-tabs__link--active' : ''}`}
               key={id}
-              role="tab"
               to={to}
             >
               <Icon aria-hidden="true" size={17} />
