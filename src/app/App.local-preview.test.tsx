@@ -26,6 +26,10 @@ describe('App local read-only preview', () => {
 
     expect(await screen.findByText('接口联调界面预览项目（非真实数据）')).toBeInTheDocument();
     expect(screen.getByLabelText('本地只读预览状态')).toHaveTextContent('无真实后端');
+    const apiPanel = document.querySelector('[data-status="preview"]');
+    expect(apiPanel).toBeInTheDocument();
+    expect(apiPanel).toHaveTextContent('/auth/me');
+    expect(apiPanel).toHaveTextContent('/projects');
     expect(fetchSpy).not.toHaveBeenCalled();
 
     const previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });

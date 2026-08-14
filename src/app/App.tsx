@@ -61,6 +61,12 @@ import {
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
 import { AppShell } from './AppShell';
 import {
+  BackendApiStatusBar,
+  type BackendApiCheck,
+  type BackendApiStatus,
+} from './BackendApiStatusBar';
+import { runBackendApiProbe } from './backend-api-probe';
+import {
   BACKEND_SESSION_EXPIRED_EVENT,
   clearBackendSession,
   getBackendAccessToken,
@@ -125,6 +131,43 @@ type ProjectRouteFailure = {
   projectId: string;
 };
 
+type BackendProbeView = {
+  status: BackendApiStatus;
+  latencyMs: number | null;
+  checkedAt: string | null;
+  message: string;
+  checks: BackendApiCheck[];
+};
+
+const backendApiBaseLabel = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+
+const pendingBackendProbeChecks = (projectId?: string): BackendApiCheck[] => [
+  {
+    id: 'auth-me',
+    method: 'GET',
+    path: '/auth/me',
+    status: 'checking',
+    latencyMs: null,
+  },
+  {
+    id: projectId === undefined ? 'projects-list' : 'project-get',
+    method: 'GET',
+    path: projectId === undefined
+      ? '/projects?page=1&size=1'
+      : `/projects/${encodeURIComponent(projectId)}`,
+    status: 'not-run',
+    latencyMs: null,
+  },
+];
+
+const initialBackendProbeView = (): BackendProbeView => ({
+  status: 'checking',
+  latencyMs: null,
+  checkedAt: null,
+  message: '正在准备后端 API 调用测试。',
+  checks: [],
+});
+
 const projectResourceLabels: Record<ProjectResourceKey, string> = {
   materials: '项目材料',
   requirements: '招标要求',
@@ -178,6 +221,7 @@ export function App() {
   const [projectRouteFailure, setProjectRouteFailure] = useState<ProjectRouteFailure | null>(null);
   const [projectRetryNonce, setProjectRetryNonce] = useState(0);
   const [projectResourceErrors, setProjectResourceErrors] = useState<Record<string, ProjectResourceErrors>>({});
+  const [backendProbe, setBackendProbe] = useState<BackendProbeView>(initialBackendProbeView);
   const editorLoadKeyRef = useRef('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
   const editorSaveGateRef = useRef(createEditorSaveGate());
@@ -187,6 +231,7 @@ export function App() {
   const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
   const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
   const localPreviewLoadRef = useRef(false);
+  const backendProbeGenerationRef = useRef(0);
   const routeProjectIdRef = useRef(routeProjectId);
   routeProjectIdRef.current = routeProjectId;
   activeEditorRef.current = editor;
@@ -212,6 +257,8 @@ export function App() {
     setMissingProjectId(null);
     setProjectRouteFailure(null);
     setProjectResourceErrors({});
+    backendProbeGenerationRef.current += 1;
+    setBackendProbe(initialBackendProbeView());
     setStatusMessage(empty.statusMessage);
     editorLoadKeyRef.current = '';
     projectResourceGenerationRef.current = {};
@@ -237,6 +284,49 @@ export function App() {
     }
     setStatusMessage({ tone: 'error', text: readableError(error, fallback) });
   }, [becomeAnonymous]);
+
+  const testBackendApi = useCallback(async () => {
+    const requestGeneration = ++backendProbeGenerationRef.current;
+    if (localPreviewActive) {
+      setBackendProbe({
+        status: 'preview',
+        latencyMs: null,
+        checkedAt: null,
+        message: '当前是本地只读预览，未执行任何真实后端 API 调用。',
+        checks: pendingBackendProbeChecks(routeProjectId).map((check) => ({
+          ...check,
+          status: 'not-run',
+        })),
+      });
+      return;
+    }
+    if (authState !== 'authenticated' || !session) return;
+
+    const tenantGeneration = tenantGuardRef.current.capture();
+    setBackendProbe({
+      status: 'checking',
+      latencyMs: null,
+      checkedAt: null,
+      message: '正在调用身份接口和当前页面对应的项目接口。',
+      checks: pendingBackendProbeChecks(routeProjectId),
+    });
+    const result = await runBackendApiProbe(
+      { auth: backendApi.auth, projects: backendApi.projects },
+      { projectId: routeProjectId },
+    );
+    if (backendProbeGenerationRef.current !== requestGeneration) return;
+    tenantGuardRef.current.commit(tenantGeneration, () => {
+      setBackendProbe({
+        ...result,
+        checks: result.checks,
+      });
+    });
+  }, [authState, localPreviewActive, routeProjectId, session]);
+
+  useEffect(() => {
+    if (authState !== 'authenticated' || !session) return;
+    void testBackendApi();
+  }, [authState, session, testBackendApi]);
 
   const establishSession = useCallback(async (
     me?: MeResponse,
@@ -1155,6 +1245,12 @@ export function App() {
   const deliverableVersionIds = Object.fromEntries((deliverableCards ?? [])
     .filter((item) => item.versionId)
     .map((item) => [item.id, item.versionId])) as Partial<Record<DeliverableRouteId, string>>;
+  const currentResourceErrorCount = routeProjectId
+    ? Object.keys(projectResourceErrors[routeProjectId] ?? {}).length
+    : 0;
+  const backendProbeMessage = backendProbe.status === 'connected' && currentResourceErrorCount > 0
+    ? `${backendProbe.message} 当前页面另有 ${currentResourceErrorCount} 项业务数据请求失败，相关区域可能保留上次成功数据。`
+    : backendProbe.message;
 
   return (
     <AppShell
@@ -1169,6 +1265,19 @@ export function App() {
       taskCount={activeTaskCount}
       user={session.user}
     >
+      <BackendApiStatusBar
+        checkedAt={backendProbe.checkedAt}
+        checks={backendProbe.checks}
+        className="page-api-status"
+        endpointLabel={localPreviewActive
+          ? '未调用真实 API'
+          : `${backendApiBaseLabel} · 企业 #${session.enterpriseId} · ${session.user.displayName}`}
+        isRetesting={backendProbe.status === 'checking'}
+        latencyMs={backendProbe.latencyMs}
+        message={backendProbeMessage}
+        onRetest={localPreviewActive ? undefined : () => void testBackendApi()}
+        status={backendProbe.status}
+      />
       {localPreviewActive && localPreviewProjectId ? (
         <aside className="local-preview-banner" aria-label="本地只读预览状态">
           <div>

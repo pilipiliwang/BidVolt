@@ -17,6 +17,10 @@
   box-shadow: 0 3px 10px rgb(20 66 49 / 5%);
 }
 
+.page-api-status {
+  margin-bottom: 12px;
+}
+
 .backend-api-status--checking,
 .backend-api-status--preview {
   --api-status-accent: #27649a;
