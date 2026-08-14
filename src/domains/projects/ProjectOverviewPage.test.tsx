@@ -53,6 +53,12 @@ describe('ProjectOverviewPage', () => {
     const materialsLink = screen.getByRole('link', { name: '打开项目材料' });
     expect(materialsLink).toHaveAttribute('href', '/projects/BV-2026-018/materials');
     expect(materialsLink).not.toHaveClass('bv-visually-hidden');
+    expect(screen.getByRole('tab', { name: '项目资料' })).toHaveAttribute(
+      'href', '/projects/BV-2026-018/materials',
+    );
+    expect(screen.getByRole('tab', { name: '标书成果预览' })).toHaveAttribute(
+      'aria-selected', 'true',
+    );
   });
 
   it('shows a project-scoped pending state when no overview data exists', () => {

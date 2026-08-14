@@ -238,6 +238,7 @@ type ProjectWorkbenchProps = {
   onAssistantDraftChange?: (value: string) => void;
   onAssistantSend?: (value: string) => void | Promise<void>;
   rightRail: ReactNode;
+  workspaceNavigation?: ReactNode;
 };
 
 export function ProjectWorkbench({
@@ -253,6 +254,7 @@ export function ProjectWorkbench({
   onAssistantDraftChange,
   onAssistantSend,
   rightRail,
+  workspaceNavigation,
 }: ProjectWorkbenchProps) {
   return (
     <div className={`bv-project-workspace bv-project-workspace--${heightMode}`}>
@@ -262,7 +264,12 @@ export function ProjectWorkbench({
         onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAddFiles={onAddFiles}
       />
-      <main className="bv-project-workspace__main">{children}</main>
+      <main className={`bv-project-workspace__main${workspaceNavigation ? ' bv-project-workspace__main--with-navigation' : ''}`}>
+        {workspaceNavigation}
+        {workspaceNavigation ? (
+          <div className="bv-project-workspace__content">{children}</div>
+        ) : children}
+      </main>
       <aside className="bv-project-workspace__right">{rightRail}</aside>
       <ProjectChatBar
         focusRequest={assistantFocusRequest}

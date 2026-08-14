@@ -16,6 +16,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
+import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
 import { RequirementsPanel } from './components/RequirementsPanel';
 import { SnapshotsPanel } from './components/SnapshotsPanel';
@@ -246,6 +247,7 @@ export function ProjectMaterialsPage({
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onUpload ? uploadProjectFiles : undefined}
       onAssistantSend={onAssistantSend}
+      workspaceNavigation={<ProjectWorkspaceTabs activeTab="materials" projectId={projectId} />}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       rightRail={
         <SimulatedReviewPanel

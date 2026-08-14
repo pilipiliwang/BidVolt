@@ -91,6 +91,10 @@ describe('ProjectMaterialsPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: '当前招标材料' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '项目资料' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: '标书成果预览' })).toHaveAttribute(
+      'href', '/projects/BV-2026-0088/overview',
+    );
     expect(screen.getByRole('note')).toHaveTextContent('项目域 · BV-2026-0088');
     expect(screen.getByRole('note')).toHaveTextContent('不会跨项目复用');
     expect(screen.getByText('替代版本 2')).toBeInTheDocument();

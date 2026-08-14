@@ -20,6 +20,7 @@ import {
   ScoreRing,
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
+import { ProjectWorkspaceTabs } from './ProjectWorkspaceTabs';
 import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
@@ -125,6 +126,7 @@ export function ProjectOverviewPage({
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
       onAssistantSend={onAssistantSend}
+      workspaceNavigation={<ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />}
       rightRail={
         <section className="bv-review-summary" aria-labelledby="overview-score-title">
           <header>
