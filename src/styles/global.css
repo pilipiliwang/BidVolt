@@ -34,6 +34,10 @@
   --font-size-xs: clamp(12px, calc(11px + 0.08vw), 13px);
   --font-size-sm: clamp(13px, calc(12px + 0.1vw), 14px);
   --font-size-md: clamp(14px, calc(13px + 0.12vw), 16px);
+  /* App stacking scale: local layers stay isolated; drawers cover page content. */
+  --z-layer-content: 0;
+  --z-layer-local-sticky: 1;
+  --z-layer-drawer: 100;
 }
 
 * {
@@ -1491,8 +1495,14 @@ a {
 .mobile-nav-layer,
 .drawer-layer {
   position: fixed;
-  z-index: 80;
   inset: 0;
+}
+
+.mobile-nav-layer { z-index: 80; }
+
+.drawer-layer {
+  isolation: isolate;
+  z-index: var(--z-layer-drawer);
 }
 
 .mobile-nav-backdrop,
@@ -1507,6 +1517,8 @@ a {
   backdrop-filter: blur(3px);
   cursor: default;
 }
+
+.drawer-backdrop { z-index: var(--z-layer-content); }
 
 .mobile-nav {
   position: absolute;
@@ -1538,6 +1550,7 @@ a {
 
 .task-drawer {
   position: absolute;
+  z-index: var(--z-layer-local-sticky);
   top: 0;
   right: 0;
   display: flex;

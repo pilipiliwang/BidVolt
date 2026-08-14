@@ -255,6 +255,7 @@
 
 .backend-api-status__checks {
   display: grid;
+  isolation: isolate;
   overflow-x: hidden;
   overflow-y: auto;
   max-height: 320px;
@@ -301,7 +302,7 @@
 
 .backend-api-status__check-row--heading {
   position: sticky;
-  z-index: 2;
+  z-index: var(--z-layer-local-sticky);
   top: 0;
   padding-block: 5px;
   color: #71817b;
