@@ -1320,6 +1320,12 @@ export function App() {
   const supplementalMaterialIds = routeProjectId && session
     ? getSupplementalMaterialIds(supplementalMaterialIdsByScope, session.enterpriseId, routeProjectId)
     : [];
+  const projectMaterialsDeliverables = (activeData?.deliverables ?? []).flatMap((deliverable) => {
+    const kind = routeIdForDeliverable(deliverable);
+    return kind ? [{ currentVersionNo: deliverable.current_version_no, kind }] : [];
+  });
+  const generationInProgress = taskEvents.some((event) =>
+    (event.task_type ?? event.phase) === 'bid_generate' && isActiveTaskStatus(event.status));
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
   const deliverableVersionOptions = activeData
     ? buildProjectOverviewVersionOptions(
@@ -1493,7 +1499,9 @@ export function App() {
       ) : null}
       {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
+          deliverables={projectMaterialsDeliverables}
           enterpriseMaterials={workspaceEnterprise}
+          generationInProgress={generationInProgress}
           materials={activeMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
             setError(error, '企业资料上传失败');

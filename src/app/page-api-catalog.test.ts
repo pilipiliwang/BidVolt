@@ -50,11 +50,25 @@ describe('page API catalog', () => {
       'task-create',
       'requirement-confirm',
       'completed-bid-purpose',
+      'completed-bid-summary',
+      'pending-check-summary',
     ]));
     expect(catalog.find((item) => item.id === 'requirement-confirm')?.unavailableReason)
       .toContain('尚未提供');
     expect(catalog.find((item) => item.id === 'completed-bid-purpose')?.unavailableReason)
       .toContain('刷新后无法恢复');
+    expect(catalog.find((item) => item.id === 'completed-bid-summary')).toMatchObject({
+      method: 'GET',
+      path: '/projects/project%2F7/completed-bids/summary',
+    });
+    expect(catalog.find((item) => item.id === 'completed-bid-summary')?.unavailableReason)
+      .toContain('document_role');
+    expect(catalog.find((item) => item.id === 'pending-check-summary')).toMatchObject({
+      method: 'GET',
+      path: '/projects/project%2F7/check/latest',
+    });
+    expect(catalog.find((item) => item.id === 'pending-check-summary')?.unavailableReason)
+      .toContain('不会为读取数量触发 POST check');
     expect(catalog.find((item) => item.id === 'task-status')?.notIntegratedReason)
       .toBeUndefined();
     expect(catalog.find((item) => item.id === 'task-stream')?.notIntegratedReason)

@@ -72,8 +72,16 @@ export interface ProjectMaterialUploadProps {
   onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
 }
 
+export type ProjectMaterialsDeliverableKind = 'business' | 'technical' | 'quote';
+
+export interface ProjectMaterialsDeliverableSummary {
+  currentVersionNo?: number;
+  kind: ProjectMaterialsDeliverableKind;
+}
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
+  deliverables?: readonly ProjectMaterialsDeliverableSummary[];
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
+  generationInProgress?: boolean;
   materials: ProjectMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;

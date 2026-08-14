@@ -265,47 +265,81 @@ describe('ProjectMaterialsPage', () => {
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'generate');
   });
 
-  it('keeps the narrow review scoreboard readable without changing its real values', () => {
+  it('shows the six review metrics from real requirement and deliverable data', () => {
     render(
       <ProjectMaterialsPage
+        deliverables={[
+          { currentVersionNo: 2, kind: 'business' },
+          { currentVersionNo: 0, kind: 'technical' },
+        ]}
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
         materials={materials}
         onStartTask={vi.fn()}
-        requirements={requirements}
+        requirements={[
+          ...requirements,
+          {
+            ...requirements[0],
+            id: 'score-rule-1',
+            title: '技术评分标准',
+            type: 'score_rule',
+          },
+        ]}
         snapshots={snapshots}
       />,
     );
 
-    const coreMetrics = screen.getByRole('list', { name: '材料识别核心指标' });
-    const coreItems = within(coreMetrics).getAllByRole('listitem');
-    expect(coreItems).toHaveLength(4);
-    expect(within(coreMetrics).getByText('已识别评分项').closest('[role="listitem"]'))
-      .toHaveTextContent('0项');
-    expect(within(coreMetrics).getByText('已识别否决条款').closest('[role="listitem"]'))
-      .toHaveTextContent('0项');
-    expect(within(coreMetrics).getByText('需要交材料').closest('[role="listitem"]'))
-      .toHaveTextContent('0项');
-    expect(within(coreMetrics).getByText('已识别 Requirement').closest('[role="listitem"]'))
-      .toHaveTextContent('2项');
+    const metrics = screen.getByRole('list', { name: '模拟评标六项指标' });
+    const metricItems = within(metrics).getAllByRole('listitem');
+    expect(metricItems).toHaveLength(6);
+    expect(metricItems.map((item) => item.querySelector('small')?.textContent)).toEqual([
+      '已识别评分项',
+      '已上传标书数量',
+      '商务标状态',
+      '技术标状态',
+      '报价单状态',
+      '待校核内容数量',
+    ]);
 
-    const parseSummary = screen.getByRole('list', { name: '材料解析状态' });
-    const summaryItems = within(parseSummary).getAllByRole('listitem');
-    expect(summaryItems).toHaveLength(3);
-    expect(within(parseSummary).getByText('材料解析完成').closest('[role="listitem"]'))
-      .toHaveTextContent('1 / 2 项');
-    expect(within(parseSummary).getByText('待人工确认').closest('[role="listitem"]'))
-      .toHaveTextContent('1 项');
-    expect(within(parseSummary).getByText('解析完成率').closest('[role="listitem"]'))
-      .toHaveClass('project-review-summary__rate');
-    expect(within(parseSummary).getByText('解析完成率').closest('[role="listitem"]'))
-      .toHaveTextContent('50%');
+    const scoreRule = within(metrics).getByText('已识别评分项').closest('[role="listitem"]');
+    expect(scoreRule).toHaveTextContent('1项');
+    expect(scoreRule).toHaveAttribute('data-metric-state', 'available');
+
+    const completedBid = within(metrics).getByText('已上传标书数量').closest('[role="listitem"]');
+    expect(completedBid).toHaveTextContent('—');
+    expect(completedBid).toHaveTextContent('接口待提供');
+    expect(completedBid).toHaveAttribute('data-metric-state', 'unavailable');
+
+    const business = within(metrics).getByText('商务标状态').closest('[role="listitem"]');
+    expect(business).toHaveTextContent('已生成');
+    expect(business).toHaveTextContent('当前版本 V2');
+    expect(business).toHaveAttribute('data-metric-state', 'generated');
+
+    for (const label of ['技术标状态', '报价单状态']) {
+      const deliverable = within(metrics).getByText(label).closest('[role="listitem"]');
+      expect(deliverable).toHaveTextContent('未生成');
+      expect(deliverable).toHaveTextContent('暂无有效成果版本');
+      expect(deliverable).toHaveAttribute('data-metric-state', 'missing');
+    }
+
+    const pendingCheck = within(metrics).getByText('待校核内容数量').closest('[role="listitem"]');
+    expect(pendingCheck).toHaveTextContent('—');
+    expect(pendingCheck).toHaveTextContent('接口待提供');
+    expect(pendingCheck).toHaveAttribute('data-metric-state', 'unavailable');
+    expect(screen.queryByText('材料解析完成')).not.toBeInTheDocument();
+    expect(screen.queryByText('解析完成率')).not.toBeInTheDocument();
   });
 
-  it('derives recognition status from parsed materials and preserves zero percent', () => {
+  it('keeps existing versions generated while a real generation task is active', () => {
     const onStartTask = vi.fn();
     const { rerender } = render(
       <ProjectMaterialsPage
+        deliverables={[
+          { currentVersionNo: 2, kind: 'business' },
+          { currentVersionNo: 4, kind: 'business' },
+          { currentVersionNo: 0, kind: 'technical' },
+        ]}
+        generationInProgress
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
         materials={materials}
@@ -315,36 +349,40 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByText('部分完成')).toHaveAttribute('data-status', 'partial');
+    const metrics = screen.getByRole('list', { name: '模拟评标六项指标' });
+    const business = within(metrics).getByText('商务标状态').closest('[role="listitem"]');
+    expect(business).toHaveTextContent('已生成');
+    expect(business).toHaveTextContent('当前版本 V4');
+    expect(business).toHaveAttribute('data-metric-state', 'generated');
+
+    for (const label of ['技术标状态', '报价单状态']) {
+      const deliverable = within(metrics).getByText(label).closest('[role="listitem"]');
+      expect(deliverable).toHaveTextContent('执行中');
+      expect(deliverable).toHaveTextContent('后端生成任务处理中');
+      expect(deliverable).toHaveAttribute('data-metric-state', 'in-progress');
+    }
 
     rerender(
       <ProjectMaterialsPage
+        deliverables={[
+          { currentVersionNo: 4, kind: 'business' },
+          { currentVersionNo: 0, kind: 'technical' },
+        ]}
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
-        materials={[materials[1]]}
-        onStartTask={onStartTask}
-        requirements={[]}
-        snapshots={[]}
-      />,
-    );
-
-    expect(screen.getByText('识别进行中')).toHaveAttribute('data-status', 'in-progress');
-    const zeroRate = screen.getByText('解析完成率').closest('[role="listitem"]');
-    expect(zeroRate).toHaveTextContent('0%');
-
-    rerender(
-      <ProjectMaterialsPage
-        projectId="BV-2026-0088"
-        projectName="海上升压站设备采购项目"
-        materials={[materials[0]]}
+        materials={materials}
         onStartTask={onStartTask}
         requirements={requirements}
         snapshots={snapshots}
       />,
     );
 
-    expect(screen.getByText('识别完成')).toHaveAttribute('data-status', 'complete');
-    expect(screen.getByText('解析完成率').closest('[role="listitem"]')).toHaveTextContent('100%');
+    const updatedMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
+    for (const label of ['技术标状态', '报价单状态']) {
+      const deliverable = within(updatedMetrics).getByText(label).closest('[role="listitem"]');
+      expect(deliverable).toHaveTextContent('未生成');
+      expect(deliverable).toHaveAttribute('data-metric-state', 'missing');
+    }
   });
 
   it('does not add a completed bid name when its upload rejects', async () => {

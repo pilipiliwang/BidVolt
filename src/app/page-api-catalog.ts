@@ -280,6 +280,12 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       operation('completed-bid-purpose', '按“已完成标书”用途持久化上传文件', '操作：上传已制作完成的标书', 'POST', `${projectPath}/completed-bids/uploads`, {
         unavailableReason: '当前只能复用普通项目材料上传，后端没有已完成标书的用途或类型字段，刷新后无法恢复该分类。',
       }),
+      operation('completed-bid-summary', '读取已上传标书数量', '自动：进入材料页看板', 'GET', `${projectPath}/completed-bids/summary`, {
+        unavailableReason: '文件列表和上传响应没有持久化 document_role/purpose 字段，后端尚未提供可读取的已完成标书数量。',
+      }),
+      operation('pending-check-summary', '读取待校核内容数量', '自动：进入材料页看板', 'GET', `${projectPath}/check/latest`, {
+        unavailableReason: '后端只有创建 check 和按 checkId 读取，尚未提供项目 latest/list 汇总；前端不会为读取数量触发 POST check。',
+      }),
     ];
   }
 

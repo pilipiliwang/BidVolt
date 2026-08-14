@@ -14,6 +14,10 @@ vi.mock('./local-preview', async (importOriginal) => {
   const baseTask = original.localPreviewTasks[0];
   return {
     ...original,
+    localPreviewDeliverables: original.localPreviewDeliverables.map((deliverable) =>
+      deliverable.deliverable_type === 2
+        ? { ...deliverable, current_version_no: 0 }
+        : deliverable),
     localPreviewTasks: [
       {
         ...baseTask,
@@ -98,6 +102,20 @@ describe('App local read-only preview', () => {
     expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
     expect(screen.queryByText('已有成果编制任务正在排队')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
+
+    const reviewMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
+    expect(within(reviewMetrics).getAllByRole('listitem')).toHaveLength(6);
+    expect(within(reviewMetrics).getByText('已识别评分项').closest('[role="listitem"]'))
+      .toHaveTextContent('0项');
+    expect(within(reviewMetrics).getByText('商务标状态').closest('[role="listitem"]'))
+      .toHaveTextContent('已生成当前版本 V2');
+    expect(within(reviewMetrics).getByText('技术标状态').closest('[role="listitem"]'))
+      .toHaveTextContent('执行中后端生成任务处理中');
+    expect(within(reviewMetrics).getByText('技术标状态').closest('[role="listitem"]'))
+      .toHaveAttribute('data-metric-state', 'in-progress');
+    expect(within(reviewMetrics).getByText('报价单状态').closest('[role="listitem"]'))
+      .toHaveTextContent('已生成当前版本 V1');
+    expect(within(reviewMetrics).getAllByText('接口待提供')).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

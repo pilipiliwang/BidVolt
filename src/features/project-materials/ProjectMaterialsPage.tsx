@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   FileCheck2,
   FileLock2,
-  FileSearch,
   FileText,
   FolderCheck,
   Layers3,
@@ -24,6 +23,7 @@ import type {
   ProjectMaterial,
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
+  ProjectMaterialsDeliverableSummary,
   ProjectMaterialsPageProps,
 } from './types';
 import './project-materials.css';
@@ -133,127 +133,134 @@ const taskActionBlockingStatuses = new Set<NonNullable<ProjectMaterialsPageProps
   'succeeded',
 ]);
 
-function SimulatedReviewPanel({
-  materialCount,
-  parsedCount,
-  requirements,
-  snapshotCount,
-}: {
-  materialCount: number;
-  parsedCount: number;
-  requirements: ProjectMaterialsPageProps['requirements'];
-  snapshotCount: number;
-}) {
-  if (materialCount === 0) {
-    return (
-      <section className="project-review-preview project-review-preview--empty">
-        <h2>模拟评标</h2>
-        <div className="project-review-empty-visual" aria-hidden="true">
-          <FileSearch size={72} strokeWidth={1.3} />
-          <span />
-        </div>
-        <div className="project-review-empty-copy">
-          <h3>尚未开始分析</h3>
-          <p>上传当前招标材料后，系统将识别评分细则、否决条款和投标要求。</p>
-        </div>
-      </section>
-    );
-  }
+type ReviewMetricState = 'available' | 'generated' | 'in-progress' | 'missing' | 'unavailable';
 
+function ReviewMetricCard({
+  detail,
+  Icon,
+  label,
+  state,
+  unit,
+  value,
+}: {
+  detail: string;
+  Icon: typeof BadgeCheck;
+  label: string;
+  state: ReviewMetricState;
+  unit?: string;
+  value: number | string;
+}) {
+  return (
+    <article className="project-review-metric-card" data-metric-state={state} role="listitem">
+      <div className="project-review-metric-copy">
+        <small>{label}</small>
+        <strong>{value}{unit ? <span>{unit}</span> : null}</strong>
+        <p>{detail}</p>
+      </div>
+      <span className="project-review-metric-icon" aria-hidden="true">
+        <Icon size={22} />
+      </span>
+    </article>
+  );
+}
+
+function deliverableMetric(
+  deliverables: readonly ProjectMaterialsDeliverableSummary[],
+  kind: ProjectMaterialsDeliverableSummary['kind'],
+  generationInProgress: boolean,
+) {
+  const version = deliverables.reduce<number | undefined>((latest, deliverable) => {
+    const currentVersionNo = deliverable.currentVersionNo;
+    if (deliverable.kind !== kind
+      || !Number.isInteger(currentVersionNo)
+      || currentVersionNo === undefined
+      || currentVersionNo <= 0) return latest;
+    return Math.max(latest ?? 0, currentVersionNo);
+  }, undefined);
+
+  if (version !== undefined) {
+    return { detail: `当前版本 V${version}`, state: 'generated' as const, value: '已生成' };
+  }
+  if (generationInProgress) {
+    return { detail: '后端生成任务处理中', state: 'in-progress' as const, value: '执行中' };
+  }
+  return { detail: '暂无有效成果版本', state: 'missing' as const, value: '未生成' };
+}
+
+function SimulatedReviewPanel({
+  deliverables,
+  generationInProgress,
+  requirements,
+}: {
+  deliverables: readonly ProjectMaterialsDeliverableSummary[];
+  generationInProgress: boolean;
+  requirements: ProjectMaterialsPageProps['requirements'];
+}) {
   const scoreRuleCount = requirements.filter((item) => item.type === 'score_rule').length;
-  const rejectClauseCount = requirements.filter((item) => item.type === 'reject_clause').length;
-  const materialChecklistCount = requirements.filter((item) => item.type === 'material_checklist').length;
-  const pendingRequirementCount = requirements.filter(
-    (item) => item.confirmationStatus === 'needs_confirmation',
-  ).length;
-  const identifiedRequirementCount = requirements.length;
-  const parseRate = materialCount > 0 ? Math.round((parsedCount / materialCount) * 100) : 0;
-  const recognitionStatus = parsedCount === materialCount
-    ? { key: 'complete', label: '识别完成', Icon: CheckCircle2 }
-    : parsedCount === 0
-      ? { key: 'in-progress', label: '识别进行中', Icon: LoaderCircle }
-      : { key: 'partial', label: '部分完成', Icon: LoaderCircle };
-  const RecognitionStatusIcon = recognitionStatus.Icon;
+  const business = deliverableMetric(deliverables, 'business', generationInProgress);
+  const technical = deliverableMetric(deliverables, 'technical', generationInProgress);
+  const quote = deliverableMetric(deliverables, 'quote', generationInProgress);
 
   return (
-    <section className="project-review-preview">
+    <section className="project-review-preview" aria-labelledby="project-review-preview-title">
       <div className="project-review-preview__heading">
         <div>
-          <h2>模拟评标</h2>
-          <p>材料识别概览</p>
+          <h2 id="project-review-preview-title">模拟评标</h2>
+          <p>材料与成果真实状态</p>
         </div>
-        <span data-status={recognitionStatus.key}>
-          <RecognitionStatusIcon aria-hidden="true" size={15} />
-          {recognitionStatus.label}
-        </span>
       </div>
 
-      <div className="project-review-metrics" aria-label="材料识别核心指标" role="list">
-        <article role="listitem">
-          <span className="project-review-metric-icon">
-            <BadgeCheck aria-hidden="true" size={23} />
-          </span>
-          <div>
-            <small>已识别评分项</small>
-            <strong>{scoreRuleCount}<em>项</em></strong>
-          </div>
-        </article>
-        <article role="listitem">
-          <span className="project-review-metric-icon">
-            <ShieldAlert aria-hidden="true" size={23} />
-          </span>
-          <div>
-            <small>已识别否决条款</small>
-            <strong>{rejectClauseCount}<em>项</em></strong>
-          </div>
-        </article>
-        <article role="listitem">
-          <span className="project-review-metric-icon">
-            <FolderCheck aria-hidden="true" size={23} />
-          </span>
-          <div>
-            <small>需要交材料</small>
-            <strong>{materialChecklistCount}<em>项</em></strong>
-          </div>
-        </article>
-        <article role="listitem">
-          <span className="project-review-metric-icon">
-            <FileCheck2 aria-hidden="true" size={23} />
-          </span>
-          <div>
-            <small>已识别 Requirement</small>
-            <strong>{identifiedRequirementCount}<em>项</em></strong>
-          </div>
-        </article>
-      </div>
-
-      <div className="project-review-summary" aria-label="材料解析状态" role="list">
-        <article role="listitem">
-          <BadgeCheck aria-hidden="true" size={20} />
-          <span><small>材料解析完成</small><strong>{parsedCount} / {materialCount} 项</strong></span>
-        </article>
-        <article className="project-review-summary__pending" role="listitem">
-          <ShieldAlert aria-hidden="true" size={20} />
-          <span><small>待人工确认</small><strong>{pendingRequirementCount} 项</strong></span>
-        </article>
-        <article className="project-review-summary__rate" role="listitem">
-          <span className="project-match-ring" style={{ '--match': `${parseRate * 3.6}deg` } as React.CSSProperties}>
-            {parseRate}%
-          </span>
-          <span><small>解析完成率</small><strong>{parseRate}%</strong></span>
-        </article>
+      <div className="project-review-metrics" aria-label="模拟评标六项指标" role="list">
+        <ReviewMetricCard
+          detail="来自招标要求"
+          Icon={BadgeCheck}
+          label="已识别评分项"
+          state="available"
+          unit="项"
+          value={scoreRuleCount}
+        />
+        <ReviewMetricCard
+          detail="接口待提供"
+          Icon={FileText}
+          label="已上传标书数量"
+          state="unavailable"
+          value="—"
+        />
+        <ReviewMetricCard
+          {...business}
+          Icon={FileCheck2}
+          label="商务标状态"
+        />
+        <ReviewMetricCard
+          {...technical}
+          Icon={FolderCheck}
+          label="技术标状态"
+        />
+        <ReviewMetricCard
+          {...quote}
+          Icon={FileLock2}
+          label="报价单状态"
+        />
+        <ReviewMetricCard
+          detail="接口待提供"
+          Icon={ShieldAlert}
+          label="待校核内容数量"
+          state="unavailable"
+          value="—"
+        />
       </div>
 
       <p className="project-review-disclaimer">
-        模拟评标基于当前项目材料与只读匹配结果，仅供参考，不代表最终评审结论。
+        指标仅展示后端可复核数据；缺少读取接口的项目不会由前端推算。
       </p>
-      {snapshotCount > 0 && <span className="project-review-snapshot">已冻结 {snapshotCount} 个项目快照</span>}
     </section>
   );
 }
 
 export function ProjectMaterialsPage({
+  deliverables = [],
   enterpriseMaterials = [],
+  generationInProgress = false,
   onAddEnterpriseFiles,
   onAssistantAddFiles,
   onAssistantSend,
@@ -277,7 +284,6 @@ export function ProjectMaterialsPage({
     message: string;
     status: 'error' | 'idle' | 'loading';
   }>({ message: '', status: 'idle' });
-  const parsedCount = materials.filter((material) => material.parseStatus === 'parsed').length;
   const supplementalMaterialIdSet = useMemo(
     () => new Set(supplementalMaterialIds.map(String)),
     [supplementalMaterialIds],
@@ -339,10 +345,9 @@ export function ProjectMaterialsPage({
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       rightRail={
         <SimulatedReviewPanel
-          materialCount={materials.length}
-          parsedCount={parsedCount}
+          deliverables={deliverables}
+          generationInProgress={generationInProgress}
           requirements={requirements}
-          snapshotCount={snapshots.length}
         />
       }
     >
@@ -511,6 +516,8 @@ export type {
   ProjectMaterial,
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
+  ProjectMaterialsDeliverableKind,
+  ProjectMaterialsDeliverableSummary,
   ProjectMaterialsPageProps,
   ProjectMaterialUploadProps,
   ProjectRequirement,
