@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { AppLink } from '../../app/router';
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
@@ -24,6 +25,7 @@ import type {
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
   ProjectMaterialsPageProps,
+  ProjectMaterialsTaskSummary,
 } from './types';
 import './project-materials.css';
 
@@ -54,6 +56,125 @@ function ParseStatusIcon({ status }: { status: ProjectMaterialParseStatus }) {
     return <AlertTriangle aria-hidden="true" size={15} />;
   }
   return <LoaderCircle aria-hidden="true" size={15} />;
+}
+
+const taskStatusContent: Record<ProjectMaterialsTaskSummary['status'], {
+  headline: string;
+  hint: string;
+  tone: 'active' | 'failed' | 'succeeded';
+}> = {
+  queued: {
+    headline: '任务已提交',
+    hint: '任务已进入执行队列，请勿重复提交。',
+    tone: 'active',
+  },
+  running: {
+    headline: '任务正在执行',
+    hint: '系统正在处理本次任务，完成前无需再次发起。',
+    tone: 'active',
+  },
+  retrying: {
+    headline: '任务正在重试',
+    hint: '系统会继续处理本次任务，请留意任务进度。',
+    tone: 'active',
+  },
+  waiting_user: {
+    headline: '任务等待您的处理',
+    hint: '请打开任务进度并完成所需操作，任务随后才能继续。',
+    tone: 'active',
+  },
+  cancel_requested: {
+    headline: '正在停止任务',
+    hint: '停止请求正在处理中，完成前请勿重复提交。',
+    tone: 'active',
+  },
+  cancelled: {
+    headline: '任务已取消',
+    hint: '您可以调整材料或任务类型后重新发起。',
+    tone: 'failed',
+  },
+  succeeded: {
+    headline: '任务已完成',
+    hint: '本次成果已经生成，可前往标书成果预览继续查看。',
+    tone: 'succeeded',
+  },
+  failed: {
+    headline: '任务执行失败',
+    hint: '您可以调整材料或任务类型后重新发起。',
+    tone: 'failed',
+  },
+};
+
+const taskActionBlockingStatuses = new Set<ProjectMaterialsTaskSummary['status']>([
+  'queued',
+  'running',
+  'retrying',
+  'waiting_user',
+  'cancel_requested',
+  'succeeded',
+]);
+
+function ProjectTaskStatusCard({
+  onOpenTasks,
+  projectId,
+  task,
+}: {
+  onOpenTasks?: () => void;
+  projectId: string;
+  task: ProjectMaterialsTaskSummary;
+}) {
+  const content = taskStatusContent[task.status];
+  const percent = task.percent === null
+    ? null
+    : Math.min(100, Math.max(0, Math.round(task.percent)));
+  const StatusIcon = task.status === 'succeeded'
+    ? CheckCircle2
+    : task.status === 'failed' || task.status === 'cancelled'
+      ? AlertTriangle
+      : LoaderCircle;
+
+  return (
+    <section
+      aria-label={`本次任务状态：${content.headline}`}
+      className={`project-submitted-task project-submitted-task--${content.tone}`}
+      data-task-status={task.status}
+      role={task.status === 'failed' ? 'alert' : 'status'}
+    >
+      <span className="project-submitted-task__icon">
+        <StatusIcon aria-hidden="true" size={22} />
+      </span>
+      <div className="project-submitted-task__body">
+        <small>{task.title}</small>
+        <h2>{content.headline}</h2>
+        <p>{task.message}</p>
+        <span>{content.hint}</span>
+        {percent === null ? (
+          <em>进度待更新</em>
+        ) : (
+          <div
+            aria-label={`${task.title}进度`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={percent}
+            className="project-submitted-task__progress"
+            role="progressbar"
+          >
+            <span style={{ width: `${percent}%` }} />
+          </div>
+        )}
+      </div>
+      <div className="project-submitted-task__actions">
+        {onOpenTasks ? (
+          <button type="button" onClick={onOpenTasks}>查看任务进度</button>
+        ) : null}
+        {task.status === 'succeeded' ? (
+          <AppLink to={`/projects/${encodeURIComponent(projectId)}/overview`}>
+            前往标书成果预览
+          </AppLink>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 function SimulatedReviewPanel({
@@ -174,6 +295,7 @@ export function ProjectMaterialsPage({
   onAddEnterpriseFiles,
   onAssistantSend,
   onImportTenderNoticeUrl,
+  onOpenTasks,
   projectId,
   projectName,
   materials,
@@ -183,15 +305,15 @@ export function ProjectMaterialsPage({
   onConfirmRequirement,
   onOpenSnapshot,
   onStartTask,
+  task,
 }: ProjectMaterialsPageProps) {
   const [activeTab, setActiveTab] = useState<ProjectMaterialsTab>('materials');
   const [completedBidNames, setCompletedBidNames] = useState<string[]>([]);
   const [selectedTaskMode, setSelectedTaskMode] = useState<'generate' | 'validate' | null>(null);
   const [taskState, setTaskState] = useState<{
     message: string;
-    mode: 'generate' | 'validate' | null;
-    status: 'error' | 'idle' | 'loading' | 'success';
-  }>({ message: '', mode: null, status: 'idle' });
+    status: 'error' | 'idle' | 'loading';
+  }>({ message: '', status: 'idle' });
   const parsingCount = materials.filter((material) =>
     ['queued', 'parsing'].includes(material.parseStatus),
   ).length;
@@ -221,24 +343,20 @@ export function ProjectMaterialsPage({
   const startTask = async () => {
     if (!selectedTaskMode) return;
     const mode = selectedTaskMode;
-    setTaskState({ message: '正在创建任务…', mode, status: 'loading' });
+    setTaskState({ message: '正在创建任务…', status: 'loading' });
     try {
       await onStartTask(projectId, mode);
-      setTaskState({
-        message: `${mode === 'validate' ? '校核' : '生成'}任务已创建，可在任务进度中查看。`,
-        mode,
-        status: 'success',
-      });
+      setTaskState({ message: '', status: 'idle' });
     } catch (error) {
       setTaskState({
         message: error instanceof Error && error.message
           ? error.message
           : `${mode === 'validate' ? '校核' : '生成'}任务创建失败，请重试。`,
-        mode: null,
         status: 'error',
       });
     }
   };
+  const taskBlocksActions = task ? taskActionBlockingStatuses.has(task.status) : false;
 
   return (
     <ProjectWorkbench
@@ -266,13 +384,6 @@ export function ProjectMaterialsPage({
             <p className="project-material-page__lead">
               {projectName} · 上传、解析、Requirement 与任务快照均绑定本次工作台。
             </p>
-          </div>
-          <div className="project-domain-boundary" role="note">
-            <FileLock2 aria-hidden="true" size={17} />
-            <span>
-              <strong>项目域 · {projectId}</strong>
-              当前材料不会进入企业资料库，也不会跨项目复用。
-            </span>
           </div>
         </header>
 
@@ -316,14 +427,24 @@ export function ProjectMaterialsPage({
         <div className="project-material-content">
           {activeTab === 'materials' && (
             <div className="project-material-flow">
-              <ProjectMaterialUpload
-                projectId={projectId}
-                projectName={projectName}
-                existingBidFileNames={completedBidNames}
-                onExistingBidUpload={uploadCompletedBidFiles}
-                onImportTenderNoticeUrl={onImportTenderNoticeUrl}
-                onUpload={onUpload}
-              />
+              {task ? (
+                <ProjectTaskStatusCard
+                  onOpenTasks={onOpenTasks}
+                  projectId={projectId}
+                  task={task}
+                />
+              ) : null}
+
+              {!taskBlocksActions ? (
+                <ProjectMaterialUpload
+                  projectId={projectId}
+                  projectName={projectName}
+                  existingBidFileNames={completedBidNames}
+                  onExistingBidUpload={uploadCompletedBidFiles}
+                  onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+                  onUpload={onUpload}
+                />
+              ) : null}
 
               <section aria-labelledby="project-material-list-title">
                 <header className="project-section-heading">
@@ -394,14 +515,14 @@ export function ProjectMaterialsPage({
                 </div>
               </section>
 
-              {materials.length > 0 && (
+              {materials.length > 0 && !taskBlocksActions && (
                 <div className="project-start-task-wrap">
                   <fieldset className="project-task-mode">
                     <legend>选择本次任务</legend>
                     <label>
                       <input
                         checked={selectedTaskMode === 'generate'}
-                        disabled={taskState.status === 'loading' || taskState.status === 'success'}
+                        disabled={taskState.status === 'loading'}
                         name="project-task-mode"
                         type="radio"
                         value="generate"
@@ -412,7 +533,7 @@ export function ProjectMaterialsPage({
                     <label>
                       <input
                         checked={selectedTaskMode === 'validate'}
-                        disabled={taskState.status === 'loading' || taskState.status === 'success'}
+                        disabled={taskState.status === 'loading'}
                         name="project-task-mode"
                         type="radio"
                         value="validate"
@@ -423,15 +544,13 @@ export function ProjectMaterialsPage({
                   </fieldset>
                   <button
                     className="project-start-task"
-                    disabled={!selectedTaskMode || taskState.status === 'loading' || taskState.status === 'success'}
+                    disabled={!selectedTaskMode || taskState.status === 'loading'}
                     onClick={() => void startTask()}
                     type="button"
                   >
                     <Sparkles aria-hidden="true" size={18} />
                     {taskState.status === 'loading'
                       ? '正在创建任务…'
-                      : taskState.status === 'success'
-                        ? '任务已进入队列'
                       : selectedTaskMode === null
                         ? '请选择任务类型'
                       : selectedTaskMode === 'validate'

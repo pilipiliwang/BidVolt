@@ -339,6 +339,7 @@ const taskStatus = (task: BackendTask): PublicTaskEvent['status'] => {
   const progressStatus = asString(task.progress.status)?.toLocaleLowerCase();
   if (progressStatus === 'done' || progressStatus === 'succeeded') return 'succeeded';
   if (progressStatus === 'retrying') return 'retrying';
+  if (progressStatus === 'waiting_user') return 'waiting_user';
   if (progressStatus === 'cancel_requested') return 'cancel_requested';
   if (progressStatus === 'cancelled') return 'cancelled';
   if (progressStatus === 'failed') return 'failed';
@@ -381,6 +382,7 @@ export function adaptBackendTaskEvent(
     event_id: `${task.task_id}-${sequence}`,
     sequence,
     task_id: String(task.task_id),
+    task_type: task.task_type,
     project_id: projectId,
     phase: asString(task.progress.phase) ?? task.task_type,
     status,

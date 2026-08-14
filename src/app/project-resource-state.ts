@@ -26,8 +26,23 @@ const terminalTaskStatuses = new Set<PublicTaskEvent['status']>([
   'failed',
 ]);
 
+const projectSubmissionTaskTypes = new Set(['bid_generate', 'bid_review']);
+
 export function isActiveTaskStatus(status: PublicTaskEvent['status']) {
   return activeTaskStatuses.has(status);
+}
+
+export function findCurrentProjectSubmissionTask(events: readonly PublicTaskEvent[]) {
+  const submissionTasks = events.filter((event) => {
+    const taskType = event.task_type ?? event.phase;
+    return projectSubmissionTaskTypes.has(taskType);
+  });
+  const latestTask = submissionTasks.reduce<PublicTaskEvent | undefined>((latest, event) =>
+    !latest || event.sequence > latest.sequence ? event : latest, undefined);
+  return submissionTasks.reduce<PublicTaskEvent | undefined>((latest, event) => {
+    if (!activeTaskStatuses.has(event.status)) return latest;
+    return !latest || event.sequence > latest.sequence ? event : latest;
+  }, undefined) ?? latestTask;
 }
 
 export function hasTaskEnteredTerminalState(

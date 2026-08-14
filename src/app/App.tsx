@@ -86,6 +86,7 @@ import {
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
 import { mergeProjectPage, upsertProjectSummary } from './project-state';
 import {
+  findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
   isActiveTaskStatus,
   isProjectNotFound,
@@ -1287,6 +1288,7 @@ export function App() {
   const activeTaskCount = taskEvents.filter((event) => isActiveTaskStatus(event.status)).length;
   const latestTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) =>
     !latest || event.sequence > latest.sequence ? event : latest, undefined);
+  const latestSubmissionTask = findCurrentProjectSubmissionTask(taskEvents);
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
   const deliverableVersionOptions = activeData
     ? buildProjectOverviewVersionOptions(
@@ -1465,6 +1467,7 @@ export function App() {
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onConfirmRequirement={handleConfirmRequirement}
           onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
+          onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
           onOpenSnapshot={handleOpenSnapshot}
           onStartTask={handleStartTask}
           onUpload={(projectId, files) => handleProjectUpload(projectId, files).catch((error) => {
@@ -1475,6 +1478,12 @@ export function App() {
           projectName={activeProject.title}
           requirements={activeData?.requirements ?? []}
           snapshots={activeData?.snapshots ?? []}
+          task={latestSubmissionTask ? {
+            message: latestSubmissionTask.public_message,
+            percent: latestSubmissionTask.percent,
+            status: latestSubmissionTask.status,
+            title: taskPhaseLabel(latestSubmissionTask.task_type ?? latestSubmissionTask.phase),
+          } : undefined}
         />
       ) : null}
       {route.name === 'review-center' && activeProject ? (

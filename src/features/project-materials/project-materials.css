@@ -48,33 +48,6 @@
   line-height: 1.55;
 }
 
-.project-domain-boundary {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: min(335px, 48%);
-  padding: 10px 12px;
-  border: 1px solid #bee6d0;
-  border-radius: 9px;
-  color: #4b6257;
-  background: #f4fbf7;
-  font-size: var(--font-size-xs);
-  line-height: 1.5;
-}
-
-.project-domain-boundary svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: var(--project-accent);
-}
-
-.project-domain-boundary strong {
-  display: block;
-  margin-bottom: 1px;
-  color: #087c47;
-  font-size: var(--font-size-sm);
-}
-
 .project-material-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -155,8 +128,105 @@
 
 .project-material-flow { display: grid; gap: 16px; }
 
+.project-submitted-task {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 17px;
+  border: 1px solid #b9d9c8;
+  border-radius: 11px;
+  background: #f2fbf6;
+  box-shadow: 0 4px 15px rgb(22 60 44 / 4%);
+}
+
+.project-submitted-task--failed {
+  border-color: #efc2bd;
+  background: #fff7f6;
+}
+
+.project-submitted-task--succeeded {
+  border-color: #9ed8b8;
+  background: #effaf4;
+}
+
+.project-submitted-task__icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  color: #087b47;
+  background: #dff3e8;
+}
+
+.project-submitted-task--active .project-submitted-task__icon svg {
+  animation: project-material-spin 1.4s linear infinite;
+}
+
+.project-submitted-task--failed .project-submitted-task__icon {
+  color: #b42318;
+  background: #fee7e4;
+}
+
+.project-submitted-task__body { min-width: 0; }
+.project-submitted-task__body small,
+.project-submitted-task__body span,
+.project-submitted-task__body em { display: block; }
+.project-submitted-task__body small { color: #087b47; font-size: var(--font-size-xs); font-weight: 800; }
+.project-submitted-task__body h2 { margin: 3px 0 0; color: #17251e; font-size: 16px; }
+.project-submitted-task__body p { margin: 5px 0 0; color: #344b40; font-size: var(--font-size-sm); line-height: 1.5; }
+.project-submitted-task__body > span,
+.project-submitted-task__body em { margin-top: 4px; color: #637469; font-size: var(--font-size-xs); font-style: normal; }
+
+.project-submitted-task__progress {
+  width: min(360px, 100%);
+  height: 5px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #d8e9df;
+}
+
+.project-submitted-task__progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #07924f;
+}
+
+.project-submitted-task__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+}
+
+.project-submitted-task__actions button,
+.project-submitted-task__actions a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid #8ac9a7;
+  border-radius: 7px;
+  color: #087647;
+  background: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.project-submitted-task__actions a {
+  border-color: #087b47;
+  color: #fff;
+  background: #087b47;
+}
+
 .project-material-upload,
-.project-material-flow > section:not(.project-material-upload),
+.project-material-flow > section:not(.project-material-upload):not(.project-submitted-task),
 .project-requirements,
 .project-snapshots {
   padding: 17px;
@@ -716,7 +786,6 @@
 
 @media (max-width: 1180px) {
   .project-material-page__hero { flex-direction: column; }
-  .project-domain-boundary { width: 100%; }
   .project-material-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .project-review-metrics { grid-template-columns: 1fr; }
   .project-review-summary { grid-template-columns: 1fr; }
@@ -735,11 +804,14 @@
   .project-material-dropzone > em { grid-column: 2; justify-self: start; }
   .project-material-row,
   .project-requirement,
-  .project-snapshot { grid-template-columns: auto minmax(0, 1fr); }
+  .project-snapshot,
+  .project-submitted-task { grid-template-columns: auto minmax(0, 1fr); }
   .project-material-row > :last-child,
   .project-requirement > :last-child,
   .project-snapshot > :nth-child(3),
-  .project-snapshot > :last-child { grid-column: 2; justify-self: start; }
+  .project-snapshot > :last-child,
+  .project-submitted-task__actions { grid-column: 2; justify-self: start; }
+  .project-submitted-task__actions { flex-direction: row; flex-wrap: wrap; }
 }
 
 @media (max-width: 520px) {
@@ -753,6 +825,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .project-parse-state svg,
+  .project-submitted-task--active .project-submitted-task__icon svg,
   .project-tender-url-import__form button svg,
   .project-tender-url-import__message svg { animation: none; }
 }

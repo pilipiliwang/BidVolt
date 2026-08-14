@@ -3,6 +3,7 @@ export type PublicTaskEvent = {
   event_id: string;
   sequence: number;
   task_id: string;
+  task_type?: string;
   project_id: string;
   phase: string;
   status:

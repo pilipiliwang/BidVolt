@@ -236,6 +236,7 @@ describe('backend DTO adapters', () => {
       event_id: '21-4',
       sequence: 4,
       task_id: '21',
+      task_type: 'bid_generate',
       project_id: '18',
       phase: 'bid_generate',
       status: 'running',
@@ -269,6 +270,20 @@ describe('backend DTO adapters', () => {
     }, { projectId: '18' })).toMatchObject({
       status: 'queued',
       public_message: '任务已提交，等待后端执行器领取',
+    });
+  });
+
+  it('preserves a backend task that is waiting for user input', () => {
+    expect(adaptBackendTaskEvent({
+      task_id: 23,
+      task_type: 'bid_generate',
+      status: 2,
+      retry_count: 0,
+      progress: { status: 'waiting_user', current_work: '请确认缺失材料' },
+    }, { projectId: '18' })).toMatchObject({
+      status: 'waiting_user',
+      task_type: 'bid_generate',
+      public_message: '请确认缺失材料',
     });
   });
 

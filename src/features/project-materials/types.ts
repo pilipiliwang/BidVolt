@@ -1,3 +1,5 @@
+import type { PublicTaskEvent } from '../../shared/task-events';
+
 export type ProjectMaterialKind =
   | 'tender_notice'
   | 'tender_document'
@@ -70,6 +72,13 @@ export interface ProjectMaterialUploadProps {
   onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
 }
 
+export interface ProjectMaterialsTaskSummary {
+  message: string;
+  percent: number | null;
+  status: PublicTaskEvent['status'];
+  title: string;
+}
+
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
@@ -81,7 +90,9 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   ) => Promise<{ message?: string; status?: 'queued' | 'processing' | 'completed' } | void>;
   requirements: ProjectRequirement[];
   snapshots: ProjectSnapshot[];
+  task?: ProjectMaterialsTaskSummary;
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;
+  onOpenTasks?: () => void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
   onStartTask: (projectId: string, mode: 'generate' | 'validate') => Promise<void> | void;
 }

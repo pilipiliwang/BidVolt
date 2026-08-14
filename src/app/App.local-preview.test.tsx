@@ -9,6 +9,38 @@ vi.mock('./local-preview-gate', async (importOriginal) => {
   return { ...original, isLocalPreviewAvailable: () => true };
 });
 
+vi.mock('./local-preview', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./local-preview')>();
+  const baseTask = original.localPreviewTasks[0];
+  return {
+    ...original,
+    localPreviewTasks: [
+      {
+        ...baseTask,
+        event_id: 'preview-bid-task-event',
+        sequence: 2,
+        task_id: 'preview-bid-task',
+        task_type: 'bid_generate',
+        phase: 'generate_sections',
+        status: 'queued',
+        percent: 0,
+        public_message: '已有成果编制任务正在排队',
+      },
+      {
+        ...baseTask,
+        event_id: 'preview-parse-task-event',
+        sequence: 3,
+        task_id: 'preview-parse-task',
+        task_type: 'tender_parse',
+        phase: 'tender_parse',
+        status: 'failed',
+        percent: 100,
+        public_message: '较新的材料解析任务不应控制成果提交区',
+      },
+    ],
+  };
+});
+
 describe('App local read-only preview', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -43,6 +75,29 @@ describe('App local read-only preview', () => {
 
     const writeAlerts = await screen.findAllByRole('alert');
     expect(writeAlerts.some((alert) => alert.textContent?.includes('不会伪造成功结果'))).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('passes the latest generation task into the materials page and prevents duplicate submission', async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: '进入本地只读预览' }));
+
+    const previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
+    await user.click(within(previewNavigation).getByRole('link', { name: '招标材料' }));
+
+    const taskCard = await screen.findByRole('status', { name: '本次任务状态：任务已提交' });
+    expect(taskCard).toHaveAttribute('data-task-status', 'queued');
+    expect(taskCard).toHaveTextContent('已有成果编制任务正在排队');
+    expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('补充上传当前项目资料')).toBeInTheDocument();
+
+    await user.click(within(taskCard).getByRole('button', { name: '查看任务进度' }));
+    expect(screen.getByRole('dialog', { name: '任务进度' })).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
