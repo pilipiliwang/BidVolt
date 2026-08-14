@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { loadEnv } from 'vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', 'VITE_');
@@ -21,6 +21,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 4173,
       proxy,
+      watch: {
+        ignored: ['**/.worktrees/**'],
+      },
     },
     preview: {
       port: 4173,
@@ -30,6 +33,7 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       css: true,
+      exclude: [...configDefaults.exclude, '**/.worktrees/**'],
       coverage: {
         reporter: ['text', 'html'],
       },
