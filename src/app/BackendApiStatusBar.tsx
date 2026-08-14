@@ -16,8 +16,20 @@ export type BackendApiStatus =
   | 'disconnected'
   | 'preview';
 
+export type BackendApiCheckStatus = 'success' | 'failed' | 'checking' | 'not-run';
+
+export type BackendApiCheck = {
+  id: string;
+  method: string;
+  path: string;
+  status: BackendApiCheckStatus;
+  latencyMs?: number | null;
+  detail?: string;
+};
+
 export type BackendApiStatusBarProps = {
   status: BackendApiStatus;
+  checks?: readonly BackendApiCheck[];
   checkedAt?: Date | string | null;
   latencyMs?: number | null;
   message?: string;
@@ -29,27 +41,27 @@ export type BackendApiStatusBarProps = {
 
 const statusContent = {
   checking: {
-    label: '正在检测后端 API',
+    label: 'API 调用检测中',
     message: '正在向后端发送真实请求，请稍候。',
     Icon: LoaderCircle,
   },
   connected: {
-    label: '真实后端已连接',
-    message: '最近一次 API 测试成功，当前页面将读取真实后端数据。',
+    label: 'API 调用成功',
+    message: '测试请求已由真实后端成功响应，当前页面将读取真实后端数据。',
     Icon: CheckCircle2,
   },
   degraded: {
-    label: '后端部分可用',
+    label: '部分 API 调用异常',
     message: '基础 API 可以访问，但部分业务接口响应异常或缺少数据。',
     Icon: AlertTriangle,
   },
   disconnected: {
-    label: '后端未连接',
+    label: 'API 调用失败',
     message: '无法访问后端 API，当前页面可能无法加载业务数据。',
     Icon: CircleX,
   },
   preview: {
-    label: '本地只读预览',
+    label: 'API 未执行（本地预览）',
     message: '当前显示本地预览数据，不代表真实后端接口已经连通。',
     Icon: FlaskConical,
   },
@@ -77,8 +89,25 @@ function formatCheckedAt(value: Date | string | null | undefined) {
   return checkedAtFormatter.format(date);
 }
 
+const checkStatusContent = {
+  success: { label: '调用成功', Icon: CheckCircle2 },
+  failed: { label: '调用失败', Icon: CircleX },
+  checking: { label: '调用中', Icon: LoaderCircle },
+  'not-run': { label: '未执行', Icon: FlaskConical },
+} satisfies Record<BackendApiCheckStatus, {
+  label: string;
+  Icon: typeof CheckCircle2;
+}>;
+
+function formatLatency(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? `${Math.round(value)} ms`
+    : '—';
+}
+
 export function BackendApiStatusBar({
   status,
+  checks = [],
   checkedAt,
   latencyMs,
   message,
@@ -90,10 +119,6 @@ export function BackendApiStatusBar({
   const content = statusContent[status];
   const Icon = content.Icon;
   const isChecking = status === 'checking' || isRetesting;
-  const normalizedLatency =
-    typeof latencyMs === 'number' && Number.isFinite(latencyMs) && latencyMs >= 0
-      ? Math.round(latencyMs)
-      : null;
   const rootClassName = [
     'backend-api-status',
     `backend-api-status--${status}`,
@@ -117,6 +142,7 @@ export function BackendApiStatusBar({
 
       <div className="backend-api-status__content">
         <div className="backend-api-status__summary">
+          <span className="backend-api-status__panel-title">API 调用测试</span>
           <strong>{content.label}</strong>
           <span className="backend-api-status__truth-badge">
             {status === 'preview' ? '预览数据' : status === 'connected' ? '真实 API' : 'API 检测'}
@@ -138,7 +164,7 @@ export function BackendApiStatusBar({
         </div>
         <div>
           <dt>响应耗时</dt>
-          <dd>{normalizedLatency === null ? '—' : `${normalizedLatency} ms`}</dd>
+          <dd>{formatLatency(latencyMs)}</dd>
         </div>
       </dl>
 
@@ -156,6 +182,43 @@ export function BackendApiStatusBar({
           />
           {isChecking ? '检测中…' : '重新测试'}
         </button>
+      ) : null}
+
+      {checks.length > 0 ? (
+        <div className="backend-api-status__checks" aria-label="API 接口调用明细" role="table">
+          <div className="backend-api-status__check-row backend-api-status__check-row--heading" role="row">
+            <span role="columnheader">方法</span>
+            <span role="columnheader">接口路径</span>
+            <span role="columnheader">调用状态</span>
+            <span role="columnheader">耗时</span>
+          </div>
+          {checks.map((check) => {
+            const checkContent = checkStatusContent[check.status];
+            const CheckIcon = checkContent.Icon;
+
+            return (
+              <div
+                className={`backend-api-status__check-row backend-api-status__check-row--${check.status}`}
+                key={check.id}
+                role="row"
+                title={check.detail}
+              >
+                <span className="backend-api-status__method" role="cell">{check.method.toUpperCase()}</span>
+                <code role="cell">{check.path}</code>
+                <span className="backend-api-status__check-state" role="cell">
+                  <CheckIcon
+                    aria-hidden="true"
+                    className={check.status === 'checking' ? 'backend-api-status__icon-svg--spinning' : undefined}
+                    size={14}
+                  />
+                  {checkContent.label}
+                </span>
+                <span className="backend-api-status__check-latency" role="cell">{formatLatency(check.latencyMs)}</span>
+                {check.detail ? <small>{check.detail}</small> : null}
+              </div>
+            );
+          })}
+        </div>
       ) : null}
     </section>
   );

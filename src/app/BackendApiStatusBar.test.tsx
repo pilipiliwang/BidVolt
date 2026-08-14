@@ -9,6 +9,29 @@ describe('BackendApiStatusBar', () => {
     render(
       <BackendApiStatusBar
         checkedAt="2026-08-14T02:42:11.000Z"
+        checks={[
+          {
+            id: 'projects-list',
+            method: 'GET',
+            path: '/api/v1/projects',
+            status: 'success',
+            latencyMs: 42.2,
+          },
+          {
+            detail: '服务返回 503',
+            id: 'projects-create',
+            method: 'POST',
+            path: '/api/v1/projects',
+            status: 'failed',
+            latencyMs: 121,
+          },
+          {
+            id: 'reviews-list',
+            method: 'GET',
+            path: '/api/v1/reviews',
+            status: 'not-run',
+          },
+        ]}
         endpointLabel="GET /api/v1/projects"
         latencyMs={87.4}
         status="connected"
@@ -17,10 +40,19 @@ describe('BackendApiStatusBar', () => {
 
     const status = screen.getByRole('status', { name: '后端 API 调用测试状态' });
     expect(status).toHaveAttribute('data-status', 'connected');
-    expect(screen.getByText('真实后端已连接')).toBeInTheDocument();
+    expect(screen.getByText('API 调用测试')).toBeInTheDocument();
+    expect(screen.getByText('API 调用成功')).toBeInTheDocument();
     expect(screen.getByText('真实 API')).toBeInTheDocument();
-    expect(screen.getByText('最近一次 API 测试成功，当前页面将读取真实后端数据。')).toBeInTheDocument();
-    expect(screen.getByText('GET /api/v1/projects')).toBeInTheDocument();
+    expect(screen.getByText('测试请求已由真实后端成功响应，当前页面将读取真实后端数据。')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'API 接口调用明细' })).toBeInTheDocument();
+    expect(screen.getAllByText('/api/v1/projects')).toHaveLength(2);
+    expect(screen.getByText('/api/v1/reviews')).toBeInTheDocument();
+    expect(screen.getByText('调用成功')).toBeInTheDocument();
+    expect(screen.getByText('调用失败')).toBeInTheDocument();
+    expect(screen.getByText('未执行')).toBeInTheDocument();
+    expect(screen.getByText('42 ms')).toBeInTheDocument();
+    expect(screen.getByText('121 ms')).toBeInTheDocument();
+    expect(screen.getByText('服务返回 503')).toBeInTheDocument();
     expect(screen.getByText('87 ms')).toBeInTheDocument();
     expect(screen.getByText(/2026/)).toBeInTheDocument();
   });
@@ -28,7 +60,7 @@ describe('BackendApiStatusBar', () => {
   it('does not present preview fixtures as a successful backend connection', () => {
     render(<BackendApiStatusBar status="preview" />);
 
-    expect(screen.getByText('本地只读预览')).toBeInTheDocument();
+    expect(screen.getByText('API 未执行（本地预览）')).toBeInTheDocument();
     expect(screen.getByText('预览数据')).toBeInTheDocument();
     expect(screen.getByText('当前显示本地预览数据，不代表真实后端接口已经连通。')).toBeInTheDocument();
     expect(screen.getByText('尚未检测')).toBeInTheDocument();
