@@ -6,6 +6,7 @@ import {
   hasTaskEnteredTerminalState,
   isActiveTaskStatus,
   isProjectNotFound,
+  isReviewScoreUnavailable,
 } from './project-resource-state';
 
 const task = (taskId: string, status: PublicTaskEvent['status']): PublicTaskEvent => ({
@@ -27,6 +28,12 @@ describe('project resource state', () => {
     expect(isProjectNotFound(new BackendApiError(404, 'missing'))).toBe(true);
     expect(isProjectNotFound(new BackendApiError(500, 'failed'))).toBe(false);
     expect(isProjectNotFound(new TypeError('network failed'))).toBe(false);
+  });
+
+  it('treats the backend not-reviewed 404 as an empty review state', () => {
+    expect(isReviewScoreUnavailable(new BackendApiError(404, '尚未评标'))).toBe(true);
+    expect(isReviewScoreUnavailable(new BackendApiError(404, '项目不存在'))).toBe(false);
+    expect(isReviewScoreUnavailable(new BackendApiError(500, '尚未评标'))).toBe(false);
   });
 
   it('detects a task moving from an active state to a terminal state', () => {

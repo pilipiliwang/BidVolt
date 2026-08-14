@@ -47,3 +47,9 @@ export function isProjectNotFound(error: unknown) {
   return error instanceof BackendApiError && error.status === 404;
 }
 
+export function isReviewScoreUnavailable(error: unknown) {
+  if (!(error instanceof BackendApiError) || error.status !== 404) return false;
+  if (error.message.includes('尚未评标')) return true;
+  return typeof error.detail === 'string' && error.detail.includes('尚未评标');
+}
+

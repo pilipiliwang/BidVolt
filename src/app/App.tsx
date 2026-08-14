@@ -74,6 +74,7 @@ import {
   hasTaskEnteredTerminalState,
   isActiveTaskStatus,
   isProjectNotFound,
+  isReviewScoreUnavailable,
   type ProjectResourceErrors,
   type ProjectResourceKey,
 } from './project-resource-state';
@@ -358,7 +359,10 @@ export function App() {
         (async () => {
           const [reviewRuns, score] = await Promise.all([
             backendApi.review.listRuns(projectId),
-            backendApi.review.latestScore(projectId),
+            backendApi.review.latestScore(projectId).catch((error) => {
+              if (isReviewScoreUnavailable(error)) return undefined;
+              throw error;
+            }),
           ]);
           const latestRun = [...reviewRuns.items].sort((a, b) => Number(b.run_id) - Number(a.run_id))[0];
           const runDetail = latestRun
