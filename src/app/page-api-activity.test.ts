@@ -77,9 +77,9 @@ describe('page API activity', () => {
       .toMatchObject({ status: 'unavailable', callCount: 0 });
   });
 
-  it('separates integrated task polling from the task stream that is not yet integrated', () => {
+  it('shows integrated task streaming as untriggered, then captures its real request', () => {
     const definitions = pageApiCatalog({ name: 'project-overview', projectId: '7' });
-    const result = buildPageApiActivity(definitions, [
+    const withoutStream = buildPageApiActivity(definitions, [
       requestEvent(),
       requestEvent({
         requestId: 'request-task',
@@ -89,21 +89,33 @@ describe('page API activity', () => {
       }),
     ]);
 
-    expect(result.status).toBe('degraded');
-    expect(result.checks.find((check) => check.id === 'task-status')).toMatchObject({
+    expect(withoutStream.checks.find((check) => check.id === 'task-status')).toMatchObject({
       status: 'success',
       callCount: 1,
       isTask: true,
       method: 'GET',
       path: '/tasks/{taskId}',
     });
-    expect(result.checks.find((check) => check.id === 'task-stream')).toMatchObject({
-      status: 'not-integrated',
+    expect(withoutStream.checks.find((check) => check.id === 'task-stream')).toMatchObject({
+      status: 'not-run',
       callCount: 0,
       method: 'GET',
       path: '/tasks/{taskId}/stream',
     });
-    expect(result.message).toContain('前端未接入 1 项');
+
+    const withStream = buildPageApiActivity(definitions, [
+      requestEvent({
+        requestId: 'request-stream',
+        sequence: 3,
+        path: '/tasks/31/stream',
+        pathname: '/tasks/31/stream',
+      }),
+    ]);
+    expect(withStream.checks.find((check) => check.id === 'task-stream')).toMatchObject({
+      actualPath: '/tasks/31/stream',
+      status: 'success',
+      callCount: 1,
+    });
   });
 
   it('shows unexpected runtime requests instead of silently dropping them', () => {
@@ -136,7 +148,7 @@ describe('page API activity', () => {
     expect(result.checks.find((check) => check.id === 'requirement-confirm')?.status)
       .toBe('unavailable');
     expect(result.checks.find((check) => check.id === 'task-stream')?.status)
-      .toBe('not-integrated');
+      .toBe('not-run');
     expect(result.checks.find((check) => check.id === 'task-status')?.status)
       .toBe('not-run');
   });

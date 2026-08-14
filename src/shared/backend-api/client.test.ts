@@ -78,6 +78,44 @@ describe('backend API client', () => {
     expect(blob.size).toBe(3);
   });
 
+  it('returns an unconsumed streaming response with bearer auth and one 401 refresh replay', async () => {
+    let accessToken = 'expired-access';
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+      const authorization = new Headers(init?.headers).get('Authorization');
+      if (authorization === 'Bearer expired-access') {
+        return new Response(JSON.stringify({ detail: '令牌已过期' }), { status: 401 });
+      }
+      return new Response('event: snapshot\ndata: {}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    });
+    const refreshHandler = vi.fn(async () => {
+      accessToken = 'fresh-access';
+      return true;
+    });
+    const client = createBackendApiClient({
+      baseUrl: '/api/v1',
+      fetchImpl,
+      refreshHandler,
+      tokenProvider: () => accessToken,
+    });
+
+    const response = await client.requestResponse('/tasks/5/stream', {
+      headers: { Accept: 'text/event-stream' },
+      signal: controller.signal,
+    });
+
+    expect(response.headers.get('Content-Type')).toContain('text/event-stream');
+    expect(await response.text()).toContain('event: snapshot');
+    expect(refreshHandler).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.map(([, init]) => new Headers(init?.headers).get('Authorization')))
+      .toEqual(['Bearer expired-access', 'Bearer fresh-access']);
+    expect(fetchImpl.mock.calls[1][1]?.signal).toBe(controller.signal);
+    expect(new Headers(fetchImpl.mock.calls[1][1]?.headers).get('Accept')).toBe('text/event-stream');
+  });
+
   it('single-flights concurrent 401 refreshes and replays both requests with the new token', async () => {
     let accessToken = 'expired-access';
     let resolveRefresh: (refreshed: boolean) => void = () => undefined;

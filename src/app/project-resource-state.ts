@@ -1,4 +1,5 @@
 import { BackendApiError } from '../shared/backend-api';
+import type { BackendTaskStreamUpdate } from '../shared/backend-api';
 import type { PublicTaskEvent } from '../shared/task-events';
 
 export type ProjectResourceKey =
@@ -30,6 +31,94 @@ const projectSubmissionTaskTypes = new Set(['bid_generate', 'bid_review']);
 
 export function isActiveTaskStatus(status: PublicTaskEvent['status']) {
   return activeTaskStatuses.has(status);
+}
+
+export function findLatestActiveBidGenerateTask(events: readonly PublicTaskEvent[]) {
+  return events.reduce<PublicTaskEvent | undefined>((latest, event) => {
+    if ((event.task_type ?? event.phase) !== 'bid_generate' || !activeTaskStatuses.has(event.status)) {
+      return latest;
+    }
+    return !latest || event.sequence > latest.sequence ? event : latest;
+  }, undefined);
+}
+
+const statusFromStreamUpdate = (
+  update: BackendTaskStreamUpdate,
+  fallback: PublicTaskEvent['status'],
+): PublicTaskEvent['status'] => {
+  const progressStatus = update.progress.status.toLocaleLowerCase();
+  const progressStatuses: Record<string, PublicTaskEvent['status']> = {
+    queued: 'queued',
+    running: 'running',
+    retrying: 'retrying',
+    waiting_user: 'waiting_user',
+    cancel_requested: 'cancel_requested',
+    cancelled: 'cancelled',
+    canceled: 'cancelled',
+    done: 'succeeded',
+    succeeded: 'succeeded',
+    failed: 'failed',
+  };
+  if (progressStatuses[progressStatus]) return progressStatuses[progressStatus];
+  if (update.type !== 'snapshot') return fallback;
+  const backendStatuses: Record<number, PublicTaskEvent['status']> = {
+    1: 'queued',
+    2: 'running',
+    3: 'succeeded',
+    4: 'retrying',
+    5: 'cancelled',
+    6: 'failed',
+  };
+  return backendStatuses[update.status] ?? fallback;
+};
+
+/**
+ * Replaces only the matching task in the matching project. The stream DTO is
+ * deliberately projected onto PublicTaskEvent instead of being spread into UI
+ * state, so unknown backend fields cannot cross the public-event boundary.
+ */
+export function mergeTaskStreamUpdate(
+  previous: readonly PublicTaskEvent[],
+  update: BackendTaskStreamUpdate,
+  {
+    projectId,
+    occurredAt = new Date().toISOString(),
+    holdTerminalStatus = false,
+  }: {
+    projectId: string;
+    occurredAt?: string;
+    holdTerminalStatus?: boolean;
+  },
+): PublicTaskEvent[] {
+  const index = previous.findIndex((event) =>
+    event.task_id === update.taskId && event.project_id === projectId);
+  if (index < 0) return previous as PublicTaskEvent[];
+
+  const current = previous[index];
+  if ((current.task_type ?? current.phase) !== 'bid_generate') {
+    return previous as PublicTaskEvent[];
+  }
+  const proposedStatus = statusFromStreamUpdate(update, current.status);
+  const status = holdTerminalStatus && terminalTaskStatuses.has(proposedStatus)
+    ? current.status
+    : proposedStatus;
+  const message = update.progress.current_work
+    ?? update.progress.summary
+    ?? update.progress.hint
+    ?? current.public_message;
+  const nextEvent: PublicTaskEvent = {
+    ...current,
+    event_id: `${current.task_id}-stream-${occurredAt}`,
+    phase: update.progress.phase,
+    status,
+    percent: Math.max(0, Math.min(100, Math.round(update.progress.percent))),
+    public_message: message,
+    error_code: status === 'failed' ? 'BACKEND_TASK_FAILED' : null,
+    occurred_at: occurredAt,
+  };
+  const next = [...previous];
+  next[index] = nextEvent;
+  return next;
 }
 
 export function findCurrentProjectSubmissionTask(events: readonly PublicTaskEvent[]) {

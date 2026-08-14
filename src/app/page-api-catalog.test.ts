@@ -72,7 +72,7 @@ describe('page API catalog', () => {
     expect(catalog.find((item) => item.id === 'task-status')?.notIntegratedReason)
       .toBeUndefined();
     expect(catalog.find((item) => item.id === 'task-stream')?.notIntegratedReason)
-      .toContain('Bearer');
+      .toBeUndefined();
     expect(catalog.find((item) => item.id === 'task-create')?.feature)
       .toBe('提交任务（仅入队）');
     expect(catalog.filter((item) => item.isTask).map((item) => item.id)).toEqual([
@@ -84,13 +84,14 @@ describe('page API catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('documents integrated task status polling and the deferred SSE stream', () => {
+  it('documents and matches integrated task polling and authenticated SSE streaming', () => {
     const catalog = pageApiCatalog({ name: 'project-overview', projectId: '7' });
     const status = catalog.find((item) => item.id === 'task-status')!;
     const stream = catalog.find((item) => item.id === 'task-stream')!;
 
     expect(status).toMatchObject({ method: 'GET', path: '/tasks/{taskId}' });
     expect(stream).toMatchObject({ method: 'GET', path: '/tasks/{taskId}/stream' });
+    expect(stream.notIntegratedReason).toBeUndefined();
     expect(pageApiOperationMatches(status, { method: 'GET', path: '/tasks/31' })).toBe(true);
     expect(pageApiOperationMatches(stream, { method: 'GET', path: '/tasks/31/stream' })).toBe(true);
   });

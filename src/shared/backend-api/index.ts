@@ -46,7 +46,21 @@ export type {
   BackendTaskPollOptions,
   BackendTaskPollReason,
   BackendTaskPollResult,
+  BackendTaskStreamOptions,
 } from './tasks';
+export {
+  BackendTaskStreamProtocolError,
+  consumeBackendTaskStream,
+  parseBackendTaskStreamEvent,
+  readBackendTaskStreamProgress,
+} from './task-stream';
+export type {
+  BackendTaskStreamEvent,
+  BackendTaskStreamProgress,
+  BackendTaskStreamTerminal,
+  BackendTaskStreamUpdate,
+  ConsumeBackendTaskStreamOptions,
+} from './task-stream';
 export * from './adapters';
 
 export const createBackendApi = ({

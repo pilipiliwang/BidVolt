@@ -458,9 +458,9 @@ multipart 字段：
 ### FE-TASK-003 任务事件流
 
 - 方法与路径：GET /tasks/{task_id}/stream
-- 状态：已存在
-- 页面动作：实时刷新任务抽屉。
-- 前端会保存 event_id 和 sequence，重连时发送 Last-Event-ID，并对重复事件去重。
+- 状态：已存在，前端已接入 Bearer 鉴权的 fetch stream
+- 页面动作：订阅当前项目最新的活动 `bid_generate` 任务，实时刷新成果生成进度；路由、租户或任务切换时主动取消旧订阅。
+- 当前后端事件契约为 `snapshot {task_id,status,progress}`、白名单 `progress`，以及 `done/cancelled/failed {task_id,status}`。事件没有 `id`/心跳，因此断流或协议错误时前端回退到 2.5 秒真实 GET 轮询，不伪造中间进度；终态会再次 GET `/tasks/{task_id}` 收敛并刷新项目成果。
 
 企业资料上传同样需要可恢复的处理进度。目前 Task 和 PublicTaskEvent 强制要求 project_id，但企业上传没有项目作用域。接口需要提供企业 ingestion 查询，或允许任务明确表达 enterprise scope，前端不接受伪造 project_id。
 

@@ -67,6 +67,7 @@ import {
   type BackendApiRequestEvent,
   type BackendFile,
   type BackendTask,
+  type BackendTaskStreamUpdate,
   type Deliverable,
   type DeliverableContent,
   type EditorSession,
@@ -91,11 +92,13 @@ import {
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
 import { mergeProjectPage, upsertProjectSummary } from './project-state';
 import {
+  findLatestActiveBidGenerateTask,
   findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
   isActiveTaskStatus,
   isProjectNotFound,
   isReviewScoreUnavailable,
+  mergeTaskStreamUpdate,
   type ProjectResourceErrors,
   type ProjectResourceKey,
 } from './project-resource-state';
@@ -162,6 +165,11 @@ type ProjectRouteFailure = {
   projectId: string;
 };
 
+type TaskStreamConnection = {
+  key: string | null;
+  status: 'idle' | 'connecting' | 'connected' | 'fallback';
+};
+
 async function loadBackendTaskSnapshots(projectId: string) {
   const response = await backendApi.tasks.list(projectId);
   const snapshots = [...response.items];
@@ -190,6 +198,19 @@ function toProjectTaskStatus(status: PublicTaskEvent['status']): ProjectTaskStat
   return projectTaskStatuses.has(status as ProjectTaskStatus)
     ? status as ProjectTaskStatus
     : undefined;
+}
+
+const terminalStreamProgressStatuses = new Set([
+  'done',
+  'succeeded',
+  'cancelled',
+  'canceled',
+  'failed',
+]);
+
+function isTerminalTaskStreamUpdate(update: BackendTaskStreamUpdate) {
+  return terminalStreamProgressStatuses.has(update.progress.status.toLocaleLowerCase())
+    || (update.type === 'snapshot' && [3, 5, 6].includes(update.status));
 }
 
 const projectResourceLabels: Record<ProjectResourceKey, string> = {
@@ -239,6 +260,10 @@ export function App() {
   const [enterpriseIngestions, setEnterpriseIngestions] = useState<EnterpriseIngestionItem[]>([]);
   const [reviewProviders, setReviewProviders] = useState<ReviewProvider[]>([]);
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
+  const [taskStreamConnection, setTaskStreamConnection] = useState<TaskStreamConnection>({
+    key: null,
+    status: 'idle',
+  });
   const [statusMessage, setStatusMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
   const [snapshotDetail, setSnapshotDetail] = useState<{ id: string; value: unknown } | null>(null);
   const [editor, setEditor] = useState<ActiveEditor | null>(null);
@@ -280,6 +305,7 @@ export function App() {
     setLocalPreviewProjectId(null);
     localPreviewPayloadRef.current = null;
     setTaskDrawerProjectId(empty.taskDrawerProjectId);
+    setTaskStreamConnection({ key: null, status: 'idle' });
     setSnapshotDetail(empty.snapshotDetail);
     setEditor(empty.editor);
     activeEditorRef.current = null;
@@ -657,8 +683,115 @@ export function App() {
     };
   }, [authState, loadProject, localPreviewActive, projectRetryNonce, routeProjectId, setError]);
 
-  const shouldPollTasks = Boolean(!localPreviewActive && routeProjectId && projectData[routeProjectId]?.tasks.some((event) =>
-    isActiveTaskStatus(event.status)));
+  const routeTaskEvents = routeProjectId ? projectData[routeProjectId]?.tasks ?? [] : [];
+  const activeBidGenerateTask = findLatestActiveBidGenerateTask(routeTaskEvents);
+  const activeBidGenerateTaskId = activeBidGenerateTask?.task_id;
+  const activeTaskStreamKey = routeProjectId && activeBidGenerateTaskId && session
+    ? `${session.enterpriseId}:${routeProjectId}:${activeBidGenerateTaskId}`
+    : null;
+
+  useEffect(() => {
+    if (authState !== 'authenticated'
+      || localPreviewActive
+      || !routeProjectId
+      || !activeBidGenerateTaskId
+      || !activeTaskStreamKey) {
+      setTaskStreamConnection((current) => current.key === null && current.status === 'idle'
+        ? current
+        : { key: null, status: 'idle' });
+      return undefined;
+    }
+
+    const projectId = routeProjectId;
+    const taskId = activeBidGenerateTaskId;
+    const streamKey = activeTaskStreamKey;
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const controller = new AbortController();
+    setTaskStreamConnection({ key: streamKey, status: 'connecting' });
+
+    const isCurrentSubscription = () =>
+      !controller.signal.aborted
+      && tenantGuardRef.current.isCurrent(tenantGeneration)
+      && routeProjectIdRef.current === projectId;
+
+    void backendApi.tasks.stream(taskId, {
+      signal: controller.signal,
+      onUpdate: (update) => {
+        if (!isCurrentSubscription() || update.taskId !== taskId) return;
+        const occurredAt = new Date().toISOString();
+        const previous = taskEventsRef.current[projectId] ?? [];
+        const next = mergeTaskStreamUpdate(previous, update, {
+          projectId,
+          occurredAt,
+          // The backend sends a terminal progress frame immediately before the
+          // terminal event. Keep the task subscribed until GET /tasks/{id}
+          // confirms that terminal state.
+          holdTerminalStatus: isTerminalTaskStreamUpdate(update),
+        });
+        if (next !== previous) {
+          taskEventsRef.current[projectId] = next;
+          setProjectData((current) => {
+            const existing = current[projectId];
+            if (!existing) return current;
+            return { ...current, [projectId]: { ...existing, tasks: next } };
+          });
+        }
+        setTaskStreamConnection((current) => current.key === streamKey
+          ? { key: streamKey, status: 'connected' }
+          : current);
+      },
+    }).then(async (terminal) => {
+      if (!isCurrentSubscription() || terminal.taskId !== taskId) return;
+      const detail = await backendApi.tasks.get(taskId, { signal: controller.signal });
+      if (!isCurrentSubscription() || String(detail.task_id) !== taskId) return;
+
+      const previous = taskEventsRef.current[projectId] ?? [];
+      const existing = previous.find((event) =>
+        event.task_id === taskId && event.project_id === projectId);
+      if (existing) {
+        const converged = adaptBackendTaskEvent(detail, {
+          projectId,
+          sequence: existing.sequence,
+          occurredAt: new Date().toISOString(),
+        });
+        const next = previous.map((event) => event === existing ? converged : event);
+        taskEventsRef.current[projectId] = next;
+        setProjectData((current) => {
+          const project = current[projectId];
+          if (!project) return current;
+          return { ...current, [projectId]: { ...project, tasks: next } };
+        });
+      }
+      await loadProject(projectId);
+    }).catch(() => {
+      if (controller.signal.aborted || !tenantGuardRef.current.isCurrent(tenantGeneration)) return;
+      // A transport/protocol failure falls back to the existing truthful GET
+      // polling. It never invents intermediate progress.
+      setTaskStreamConnection((current) => current.key === streamKey
+        ? { key: streamKey, status: 'fallback' }
+        : current);
+    });
+
+    return () => controller.abort();
+  }, [
+    activeBidGenerateTaskId,
+    activeTaskStreamKey,
+    authState,
+    loadProject,
+    localPreviewActive,
+    routeProjectId,
+  ]);
+
+  const hasActiveTasks = routeTaskEvents.some((event) => isActiveTaskStatus(event.status));
+  const hasOtherActiveTasks = routeTaskEvents.some((event) =>
+    isActiveTaskStatus(event.status) && event.task_id !== activeBidGenerateTaskId);
+  const streamNeedsPollingFallback = Boolean(activeTaskStreamKey
+    && taskStreamConnection.key === activeTaskStreamKey
+    && taskStreamConnection.status === 'fallback');
+  const shouldPollTasks = Boolean(!localPreviewActive
+    && routeProjectId
+    && hasActiveTasks
+    && (!activeBidGenerateTaskId || hasOtherActiveTasks || streamNeedsPollingFallback));
   useEffect(() => {
     if (!routeProjectId || !shouldPollTasks) return undefined;
     const timer = window.setInterval(() => {

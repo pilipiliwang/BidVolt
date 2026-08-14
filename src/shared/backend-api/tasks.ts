@@ -1,4 +1,9 @@
 import { idPath, queryString, type BackendApiClient } from './client';
+import {
+  consumeBackendTaskStream,
+  type BackendTaskStreamTerminal,
+  type BackendTaskStreamUpdate,
+} from './task-stream';
 import type { BackendId, BackendTask, CreatedTask } from './types';
 
 export type BackendTaskPollReason = 'terminal' | 'attempt-limit';
@@ -18,6 +23,11 @@ export type BackendTaskPollOptions = {
 };
 
 export type BackendTaskGetter = (signal?: AbortSignal) => Promise<BackendTask>;
+
+export type BackendTaskStreamOptions = {
+  signal?: AbortSignal;
+  onUpdate: (event: BackendTaskStreamUpdate) => void;
+};
 
 const TERMINAL_TASK_STATUSES = new Set([3, 5, 6]);
 const TERMINAL_PROGRESS_STATUSES = new Set([
@@ -134,6 +144,17 @@ export const createTasksApi = (client: BackendApiClient) => {
       client.request<{ task_id: number; generation: number }>(
         `/projects/${idPath(projectId)}/tasks/${idPath(taskId)}/interrupt`, { method: 'POST' },
       ),
+    stream: async (
+      taskId: BackendId,
+      { signal, onUpdate }: BackendTaskStreamOptions,
+    ): Promise<BackendTaskStreamTerminal> => {
+      const publicTaskId = String(taskId);
+      const response = await client.requestResponse(`/tasks/${idPath(taskId)}/stream`, {
+        headers: { Accept: 'text/event-stream' },
+        signal,
+      });
+      return consumeBackendTaskStream(response, { taskId: publicTaskId, signal, onUpdate });
+    },
     streamUrl: (taskId: BackendId, baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1') =>
       `${baseUrl.replace(/\/+$/, '')}/tasks/${idPath(taskId)}/stream`,
   };

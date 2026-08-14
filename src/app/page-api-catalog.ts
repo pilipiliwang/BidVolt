@@ -124,13 +124,12 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
     operation(
       'task-stream',
       '订阅单任务实时进度',
-      '计划接入：活动任务 SSE 推送',
+      '自动：当前项目存在执行中的成果生成任务时，以 Bearer 鉴权订阅；断流后回退轮询',
       'GET',
       '/tasks/{taskId}/stream',
       {
         isTask: true,
         matchPathname: /^\/tasks\/[^/]+\/stream$/,
-        notIntegratedReason: '后端已提供 SSE；前端尚未完成 Bearer 鉴权流式请求与事件 DTO 的安全接入。',
       },
     ),
     operation(

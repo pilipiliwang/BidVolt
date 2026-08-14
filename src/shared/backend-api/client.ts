@@ -24,6 +24,11 @@ export type BackendApiClient = {
   request<T>(path: string, options?: BackendRequestOptions): Promise<T>;
   requestVoid(path: string, options?: BackendRequestOptions): Promise<void>;
   requestBlob(path: string, options?: BackendRequestOptions): Promise<Blob>;
+  /**
+   * Returns the authenticated response without consuming its body. This is
+   * reserved for streaming endpoints whose body must be read incrementally.
+   */
+  requestResponse(path: string, options?: BackendRequestOptions): Promise<Response>;
 };
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -191,6 +196,13 @@ export const createBackendApiClient = ({
         const result = await execute(path, options); const { response } = result;
         if (!response.ok) throw await errorFromResponse(response, result.accessToken);
         return response.blob();
+      });
+    },
+    async requestResponse(path: string, options: BackendRequestOptions = {}): Promise<Response> {
+      return monitored(path, options, async () => {
+        const result = await execute(path, options); const { response } = result;
+        if (!response.ok) throw await errorFromResponse(response, result.accessToken);
+        return response;
       });
     },
   };

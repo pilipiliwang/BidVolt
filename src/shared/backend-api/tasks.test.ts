@@ -27,6 +27,7 @@ const task = (
 const clientWithRequest = (request: BackendApiClient['request']): BackendApiClient => ({
   request,
   requestBlob: vi.fn(),
+  requestResponse: vi.fn(),
   requestVoid: vi.fn(),
 });
 
@@ -140,5 +141,40 @@ describe('backend task polling', () => {
     })).resolves.toEqual({ task: terminal, attempts: 1, reason: 'terminal' });
 
     expect(request).toHaveBeenCalledWith('/tasks/task%2F17', { signal: controller.signal });
+  });
+
+  it('opens the authenticated SSE response and parses the backend task stream', async () => {
+    const encoder = new TextEncoder();
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          'event: snapshot\ndata: {"task_id":17,"status":1,"progress":{"phase":"bid_generate","status":"queued","percent":0}}\n\n',
+        ));
+        controller.enqueue(encoder.encode('event: done\ndata: {"task_id":17,"status":3}\n\n'));
+        controller.close();
+      },
+    }), { headers: { 'Content-Type': 'text/event-stream' } });
+    const requestResponse = vi.fn().mockResolvedValue(response);
+    const client: BackendApiClient = {
+      request: vi.fn(),
+      requestBlob: vi.fn(),
+      requestResponse,
+      requestVoid: vi.fn(),
+    };
+    const api = createTasksApi(client);
+    const controller = new AbortController();
+    const onUpdate = vi.fn();
+
+    await expect(api.stream(17, { signal: controller.signal, onUpdate }))
+      .resolves.toEqual({ type: 'done', taskId: '17', status: 3 });
+
+    expect(requestResponse).toHaveBeenCalledWith('/tasks/17/stream', {
+      headers: { Accept: 'text/event-stream' },
+      signal: controller.signal,
+    });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'snapshot',
+      taskId: '17',
+    }));
   });
 });

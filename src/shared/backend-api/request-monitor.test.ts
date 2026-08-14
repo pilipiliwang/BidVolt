@@ -145,21 +145,30 @@ describe('backend API request monitor', () => {
     }
   });
 
-  it('monitors JSON, void, and blob client methods', async () => {
+  it('monitors JSON, void, blob, and streaming-response client methods', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1]), { status: 200 }));
+      .mockResolvedValueOnce(new Response(new Uint8Array([1]), { status: 200 }))
+      .mockResolvedValueOnce(new Response('event: snapshot\ndata: {}\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }));
     const { events } = collectEvents();
     const client = createBackendApiClient({ fetchImpl });
 
     await client.request('/json');
     await client.requestVoid('/void', { method: 'DELETE' });
     await client.requestBlob('/blob');
+    await client.requestResponse('/tasks/5/stream', { headers: { Accept: 'text/event-stream' } });
 
-    expect(events.filter((event) => event.status === 'started')).toHaveLength(3);
-    expect(events.filter((event) => event.status === 'succeeded')).toHaveLength(3);
+    expect(events.filter((event) => event.status === 'started')).toHaveLength(4);
+    expect(events.filter((event) => event.status === 'succeeded')).toHaveLength(4);
     expect(events.filter((event) => event.status === 'failed')).toHaveLength(0);
+    expect(events.at(-1)).toMatchObject({
+      path: '/tasks/5/stream',
+      status: 'succeeded',
+    });
   });
 
   it('counts a 401 refresh and replay as one logical client request', async () => {
