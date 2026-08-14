@@ -36,6 +36,7 @@ export function createEmptyTenantDomainState() {
     reviewProviders: [],
     snapshotDetail: null,
     statusMessage: null,
+    supplementalMaterialIdsByScope: {},
     taskDrawerProjectId: null,
   };
 }

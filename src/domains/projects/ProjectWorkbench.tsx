@@ -155,6 +155,7 @@ type ProjectWorkbenchProps = {
   materials?: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantDraftChange?: (value: string) => void;
   onAssistantSend?: (value: string) => void | Promise<void>;
   rightRail: ReactNode;
@@ -170,6 +171,7 @@ export function ProjectWorkbench({
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantAddFiles,
   onAssistantDraftChange,
   onAssistantSend,
   rightRail,
@@ -191,7 +193,7 @@ export function ProjectWorkbench({
       <ProjectChatBar
         focusRequest={assistantFocusRequest}
         hint={footerHint}
-        onAddFiles={onAddFiles}
+        onAddFiles={onAssistantAddFiles ?? onAddFiles}
         onSend={onAssistantSend}
         onValueChange={onAssistantDraftChange}
         value={assistantDraft}

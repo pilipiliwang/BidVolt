@@ -23,6 +23,7 @@ type PricingCenterProps = {
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onApply?: (strategyId: string) => Promise<void> | void;
   onAssistantSend?: (value: string) => void | Promise<void>;
 };
@@ -98,6 +99,7 @@ export function PricingCenter({
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantAddFiles,
   onApply,
   onAssistantSend,
 }: PricingCenterProps) {
@@ -213,6 +215,7 @@ export function PricingCenter({
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
+      onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
       rightRail={
         <section className={styles.strategies} aria-labelledby="strategy-title">

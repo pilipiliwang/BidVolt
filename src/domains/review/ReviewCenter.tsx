@@ -71,6 +71,7 @@ type ReviewCenterProps = {
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   projectId?: string;
   providers: ReviewProvider[];
@@ -95,6 +96,7 @@ export function ReviewCenter({
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantAddFiles,
   onAssistantSend,
   projectId,
   providers,
@@ -225,6 +227,7 @@ export function ReviewCenter({
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
+      onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
       rightRail={
         <ReviewImpact

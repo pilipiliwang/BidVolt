@@ -15,17 +15,16 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { AppLink } from '../../app/router';
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
 import { RequirementsPanel } from './components/RequirementsPanel';
 import { SnapshotsPanel } from './components/SnapshotsPanel';
 import type {
+  ProjectMaterial,
   ProjectMaterialKind,
   ProjectMaterialParseStatus,
   ProjectMaterialsPageProps,
-  ProjectMaterialsTaskSummary,
 } from './types';
 import './project-materials.css';
 
@@ -58,54 +57,74 @@ function ParseStatusIcon({ status }: { status: ProjectMaterialParseStatus }) {
   return <LoaderCircle aria-hidden="true" size={15} />;
 }
 
-const taskStatusContent: Record<ProjectMaterialsTaskSummary['status'], {
-  headline: string;
-  hint: string;
-  tone: 'active' | 'failed' | 'succeeded';
-}> = {
-  queued: {
-    headline: '任务已提交',
-    hint: '任务已进入执行队列，请勿重复提交。',
-    tone: 'active',
-  },
-  running: {
-    headline: '任务正在执行',
-    hint: '系统正在处理本次任务，完成前无需再次发起。',
-    tone: 'active',
-  },
-  retrying: {
-    headline: '任务正在重试',
-    hint: '系统会继续处理本次任务，请留意任务进度。',
-    tone: 'active',
-  },
-  waiting_user: {
-    headline: '任务等待您的处理',
-    hint: '请打开任务进度并完成所需操作，任务随后才能继续。',
-    tone: 'active',
-  },
-  cancel_requested: {
-    headline: '正在停止任务',
-    hint: '停止请求正在处理中，完成前请勿重复提交。',
-    tone: 'active',
-  },
-  cancelled: {
-    headline: '任务已取消',
-    hint: '您可以调整材料或任务类型后重新发起。',
-    tone: 'failed',
-  },
-  succeeded: {
-    headline: '任务已完成',
-    hint: '本次成果已经生成，可前往标书成果预览继续查看。',
-    tone: 'succeeded',
-  },
-  failed: {
-    headline: '任务执行失败',
-    hint: '您可以调整材料或任务类型后重新发起。',
-    tone: 'failed',
-  },
-};
+function ProjectMaterialRows({
+  emptyDescription,
+  emptyTitle,
+  materials,
+}: {
+  emptyDescription: string;
+  emptyTitle: string;
+  materials: ProjectMaterial[];
+}) {
+  return (
+    <div className="project-material-list">
+      {materials.map((material) => {
+        const progress = material.parseProgress === undefined
+          ? undefined
+          : Math.min(100, Math.max(0, material.parseProgress));
+        return (
+          <article className="project-material-row" key={material.id}>
+            <span className="project-material-row__file" aria-hidden="true"><FileText size={18} /></span>
+            <div className="project-material-row__main">
+              <div className="project-material-row__title">
+                <strong>{material.name}</strong>
+                <span>{kindLabel[material.kind]}</span>
+                <span>文件版本 {material.revisionNo}</span>
+              </div>
+              <div className="project-material-row__meta">
+                <span>上传于 {material.uploadedAt}</span>
+                {material.blocksCount !== undefined && <span>{material.blocksCount} 个文本块</span>}
+                {material.supersedesRevisionNo !== undefined && (
+                  <span className="project-supersedes">
+                    <RotateCcw aria-hidden="true" size={12} />
+                    替代版本 {material.supersedesRevisionNo}
+                  </span>
+                )}
+              </div>
+              {progress === undefined ? (
+                <small className="project-parse-progress-unknown">后端未提供百分比进度</small>
+              ) : (
+                <div
+                  className="project-parse-progress"
+                  role="progressbar"
+                  aria-label={`${material.name}解析进度`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress}
+                >
+                  <span style={{ width: `${progress}%` }} />
+                </div>
+              )}
+            </div>
+            <span className={`project-parse-state project-parse-state--${material.parseStatus}`}>
+              <ParseStatusIcon status={material.parseStatus} />
+              {statusLabel[material.parseStatus]}
+            </span>
+          </article>
+        );
+      })}
+      {materials.length === 0 ? (
+        <div className="project-empty-state project-empty-state--material-group" role="status">
+          <FileText aria-hidden="true" size={30} />
+          <h3>{emptyTitle}</h3>
+          <p>{emptyDescription}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
-const taskActionBlockingStatuses = new Set<ProjectMaterialsTaskSummary['status']>([
+const taskActionBlockingStatuses = new Set<NonNullable<ProjectMaterialsPageProps['taskStatus']>>([
   'queued',
   'running',
   'retrying',
@@ -113,69 +132,6 @@ const taskActionBlockingStatuses = new Set<ProjectMaterialsTaskSummary['status']
   'cancel_requested',
   'succeeded',
 ]);
-
-function ProjectTaskStatusCard({
-  onOpenTasks,
-  projectId,
-  task,
-}: {
-  onOpenTasks?: () => void;
-  projectId: string;
-  task: ProjectMaterialsTaskSummary;
-}) {
-  const content = taskStatusContent[task.status];
-  const percent = task.percent === null
-    ? null
-    : Math.min(100, Math.max(0, Math.round(task.percent)));
-  const StatusIcon = task.status === 'succeeded'
-    ? CheckCircle2
-    : task.status === 'failed' || task.status === 'cancelled'
-      ? AlertTriangle
-      : LoaderCircle;
-
-  return (
-    <section
-      aria-label={`本次任务状态：${content.headline}`}
-      className={`project-submitted-task project-submitted-task--${content.tone}`}
-      data-task-status={task.status}
-      role={task.status === 'failed' ? 'alert' : 'status'}
-    >
-      <span className="project-submitted-task__icon">
-        <StatusIcon aria-hidden="true" size={22} />
-      </span>
-      <div className="project-submitted-task__body">
-        <small>{task.title}</small>
-        <h2>{content.headline}</h2>
-        <p>{task.message}</p>
-        <span>{content.hint}</span>
-        {percent === null ? (
-          <em>进度待更新</em>
-        ) : (
-          <div
-            aria-label={`${task.title}进度`}
-            aria-valuemax={100}
-            aria-valuemin={0}
-            aria-valuenow={percent}
-            className="project-submitted-task__progress"
-            role="progressbar"
-          >
-            <span style={{ width: `${percent}%` }} />
-          </div>
-        )}
-      </div>
-      <div className="project-submitted-task__actions">
-        {onOpenTasks ? (
-          <button type="button" onClick={onOpenTasks}>查看任务进度</button>
-        ) : null}
-        {task.status === 'succeeded' ? (
-          <AppLink to={`/projects/${encodeURIComponent(projectId)}/overview`}>
-            前往标书成果预览
-          </AppLink>
-        ) : null}
-      </div>
-    </section>
-  );
-}
 
 function SimulatedReviewPanel({
   materialCount,
@@ -299,19 +255,20 @@ function SimulatedReviewPanel({
 export function ProjectMaterialsPage({
   enterpriseMaterials = [],
   onAddEnterpriseFiles,
+  onAssistantAddFiles,
   onAssistantSend,
   onImportTenderNoticeUrl,
-  onOpenTasks,
   projectId,
   projectName,
   materials,
   requirements,
   snapshots,
+  supplementalMaterialIds = [],
   onUpload,
   onConfirmRequirement,
   onOpenSnapshot,
   onStartTask,
-  task,
+  taskStatus,
 }: ProjectMaterialsPageProps) {
   const [activeTab, setActiveTab] = useState<ProjectMaterialsTab>('materials');
   const [completedBidNames, setCompletedBidNames] = useState<string[]>([]);
@@ -327,6 +284,18 @@ export function ProjectMaterialsPage({
   const pendingRequirementCount = requirements.filter(
     (requirement) => requirement.confirmationStatus === 'needs_confirmation',
   ).length;
+  const supplementalMaterialIdSet = useMemo(
+    () => new Set(supplementalMaterialIds.map(String)),
+    [supplementalMaterialIds],
+  );
+  const supplementalMaterials = useMemo(
+    () => materials.filter((material) => supplementalMaterialIdSet.has(material.id)),
+    [materials, supplementalMaterialIdSet],
+  );
+  const currentTenderMaterials = useMemo(
+    () => materials.filter((material) => !supplementalMaterialIdSet.has(material.id)),
+    [materials, supplementalMaterialIdSet],
+  );
   const workspaceMaterials = useMemo(
     () =>
       materials.map((material) => ({
@@ -362,7 +331,7 @@ export function ProjectMaterialsPage({
       });
     }
   };
-  const taskBlocksActions = task ? taskActionBlockingStatuses.has(task.status) : false;
+  const taskBlocksActions = taskStatus ? taskActionBlockingStatuses.has(taskStatus) : false;
 
   return (
     <ProjectWorkbench
@@ -370,6 +339,7 @@ export function ProjectMaterialsPage({
       materials={workspaceMaterials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onUpload ? uploadProjectFiles : undefined}
+      onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
       workspaceNavigation={<ProjectWorkspaceTabs activeTab="materials" projectId={projectId} />}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
@@ -394,7 +364,7 @@ export function ProjectMaterialsPage({
         </header>
 
         <section className="project-material-summary" aria-label="当前项目材料概览">
-          <article><FileText aria-hidden="true" size={17} /><span>当前材料</span><strong>{materials.length}</strong></article>
+          <article><FileText aria-hidden="true" size={17} /><span>当前招标材料</span><strong>{currentTenderMaterials.length}</strong></article>
           <article><LoaderCircle aria-hidden="true" size={17} /><span>正在解析</span><strong>{parsingCount}</strong></article>
           <article><AlertTriangle aria-hidden="true" size={17} /><span>Requirement 待确认</span><strong>{pendingRequirementCount}</strong></article>
           <article><Layers3 aria-hidden="true" size={17} /><span>冻结快照</span><strong>{snapshots.length}</strong></article>
@@ -433,14 +403,6 @@ export function ProjectMaterialsPage({
         <div className="project-material-content">
           {activeTab === 'materials' && (
             <div className="project-material-flow">
-              {task ? (
-                <ProjectTaskStatusCard
-                  onOpenTasks={onOpenTasks}
-                  projectId={projectId}
-                  task={task}
-                />
-              ) : null}
-
               {!taskBlocksActions ? (
                 <ProjectMaterialUpload
                   projectId={projectId}
@@ -452,76 +414,47 @@ export function ProjectMaterialsPage({
                 />
               ) : null}
 
-              <section aria-labelledby="project-material-list-title">
+              <section className="project-material-group" aria-labelledby="project-supplemental-material-list-title">
                 <header className="project-section-heading">
                   <div>
-                    <p className="project-material-eyebrow">招标材料识别结果</p>
-                    <h2 id="project-material-list-title">材料与解析状态</h2>
-                    <p>补遗和替换文件创建新 revision，原版本保留在本项目事件链中。</p>
+                    <p className="project-material-eyebrow">项目助手添加文件</p>
+                    <h2 id="project-supplemental-material-list-title">补充资料</h2>
+                    <p>仅展示当前登录会话内，通过页面底部“添加文件”成功上传的文件；刷新后分组可能无法恢复。</p>
                   </div>
                   <span className="project-project-only-badge">
-                    <FileLock2 aria-hidden="true" size={14} />
-                    仅当前项目
+                    <FolderCheck aria-hidden="true" size={14} />
+                    {supplementalMaterials.length} 项
                   </span>
                 </header>
 
-                <div className="project-material-list">
-                  {materials.map((material) => {
-                    const progress = material.parseProgress === undefined
-                      ? undefined
-                      : Math.min(100, Math.max(0, material.parseProgress));
-                    return (
-                      <article className="project-material-row" key={material.id}>
-                        <span className="project-material-row__file" aria-hidden="true"><FileText size={18} /></span>
-                        <div className="project-material-row__main">
-                          <div className="project-material-row__title">
-                            <strong>{material.name}</strong>
-                            <span>{kindLabel[material.kind]}</span>
-                            <span>文件版本 {material.revisionNo}</span>
-                          </div>
-                          <div className="project-material-row__meta">
-                            <span>上传于 {material.uploadedAt}</span>
-                            {material.blocksCount !== undefined && <span>{material.blocksCount} 个文本块</span>}
-                            {material.supersedesRevisionNo !== undefined && (
-                              <span className="project-supersedes">
-                                <RotateCcw aria-hidden="true" size={12} />
-                                替代版本 {material.supersedesRevisionNo}
-                              </span>
-                            )}
-                          </div>
-                          {progress === undefined ? (
-                            <small className="project-parse-progress-unknown">后端未提供百分比进度</small>
-                          ) : (
-                            <div
-                              className="project-parse-progress"
-                              role="progressbar"
-                              aria-label={`${material.name}解析进度`}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={progress}
-                            >
-                              <span style={{ width: `${progress}%` }} />
-                            </div>
-                          )}
-                        </div>
-                        <span className={`project-parse-state project-parse-state--${material.parseStatus}`}>
-                          <ParseStatusIcon status={material.parseStatus} />
-                          {statusLabel[material.parseStatus]}
-                        </span>
-                      </article>
-                    );
-                  })}
-                  {materials.length === 0 && (
-                    <div className="project-empty-state">
-                      <FileText aria-hidden="true" size={30} />
-                      <h3>请先上传当前招标材料</h3>
-                      <p>当前招标材料是启动解析、生成或校核任务的必传输入。</p>
-                    </div>
-                  )}
-                </div>
+                <ProjectMaterialRows
+                  emptyDescription="请使用页面底部项目助手的“添加文件”上传本项目补充资料。"
+                  emptyTitle="暂无补充资料"
+                  materials={supplementalMaterials}
+                />
               </section>
 
-              {materials.length > 0 && !taskBlocksActions && (
+              <section className="project-material-group" aria-labelledby="project-current-material-list-title">
+                <header className="project-section-heading">
+                  <div>
+                    <p className="project-material-eyebrow">招标材料识别结果</p>
+                    <h2 id="project-current-material-list-title">当前招标材料</h2>
+                    <p>主上传区和招标公告网址导入的文件保留在本区，解析状态来自后端。</p>
+                  </div>
+                  <span className="project-project-only-badge">
+                    <FileLock2 aria-hidden="true" size={14} />
+                    {currentTenderMaterials.length} 项
+                  </span>
+                </header>
+
+                <ProjectMaterialRows
+                  emptyDescription="当前招标材料是启动解析、生成或校核任务的必传输入。"
+                  emptyTitle="请先上传当前招标材料"
+                  materials={currentTenderMaterials}
+                />
+              </section>
+
+              {currentTenderMaterials.length > 0 && !taskBlocksActions && (
                 <div className="project-start-task-wrap">
                   <fieldset className="project-task-mode">
                     <legend>选择本次任务</legend>

@@ -27,6 +27,7 @@ type ProjectOverviewPageProps = {
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   onOpenTasks: () => void;
   onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
@@ -98,6 +99,7 @@ export function ProjectOverviewPage({
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantAddFiles,
   onAssistantSend,
   onOpenTasks,
   onSelectVersion,
@@ -133,6 +135,7 @@ export function ProjectOverviewPage({
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
       onAddFiles={onAddFiles}
+      onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
       workspaceNavigation={<ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />}
       rightRail={

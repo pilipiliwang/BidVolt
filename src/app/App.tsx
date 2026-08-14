@@ -95,6 +95,11 @@ import {
   type ProjectResourceKey,
 } from './project-resource-state';
 import { getEditorDraftScopeKey, type AppSession } from './session';
+import {
+  getSupplementalMaterialIds,
+  recordSupplementalMaterialFiles,
+  type SupplementalMaterialIdsByScope,
+} from './supplemental-material-state';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
 import { createEditorSaveGate } from './editor-save-gate';
@@ -233,6 +238,7 @@ export function App() {
   const [projectRouteFailure, setProjectRouteFailure] = useState<ProjectRouteFailure | null>(null);
   const [projectRetryNonce, setProjectRetryNonce] = useState(0);
   const [projectResourceErrors, setProjectResourceErrors] = useState<Record<string, ProjectResourceErrors>>({});
+  const [supplementalMaterialIdsByScope, setSupplementalMaterialIdsByScope] = useState<SupplementalMaterialIdsByScope>({});
   const [backendRequestEvents, setBackendRequestEvents] = useState<Record<string, BackendApiRequestEvent>>({});
   const editorLoadKeyRef = useRef('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
@@ -271,6 +277,7 @@ export function App() {
     setMissingProjectId(null);
     setProjectRouteFailure(null);
     setProjectResourceErrors({});
+    setSupplementalMaterialIdsByScope(empty.supplementalMaterialIdsByScope);
     apiRouteStartedAtRef.current = Date.now();
     setBackendRequestEvents({});
     setStatusMessage(empty.statusMessage);
@@ -896,6 +903,27 @@ export function App() {
     tenantGuardRef.current.commit(generation, () => {
       setStatusMessage({ tone: 'info', text: `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库。` });
     });
+    return uploaded;
+  };
+
+  const handleProjectSupplementalUpload = async (projectId: string, files: File[]) => {
+    if (!session) throw new Error('当前登录会话不可用，请重新登录后再添加文件。');
+    const generation = tenantGuardRef.current.capture();
+    const enterpriseId = session.enterpriseId;
+    const uploaded = await handleProjectUpload(projectId, files);
+    if (!uploaded?.length || !tenantGuardRef.current.isCurrent(generation)) return;
+    tenantGuardRef.current.commit(generation, () => {
+      setSupplementalMaterialIdsByScope((current) => recordSupplementalMaterialFiles(
+        current,
+        enterpriseId,
+        projectId,
+        uploaded,
+      ));
+      setStatusMessage({
+        tone: 'info',
+        text: `已通过项目助手添加 ${uploaded.length} 份补充资料。该分组将在当前登录会话中保留。`,
+      });
+    });
   };
 
   const handleImportTenderNoticeUrl = async (projectId: string, url: string) => {
@@ -1289,6 +1317,9 @@ export function App() {
   const latestTask = taskEvents.reduce<PublicTaskEvent | undefined>((latest, event) =>
     !latest || event.sequence > latest.sequence ? event : latest, undefined);
   const latestSubmissionTask = findCurrentProjectSubmissionTask(taskEvents);
+  const supplementalMaterialIds = routeProjectId && session
+    ? getSupplementalMaterialIds(supplementalMaterialIdsByScope, session.enterpriseId, routeProjectId)
+    : [];
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
   const deliverableVersionOptions = activeData
     ? buildProjectOverviewVersionOptions(
@@ -1432,8 +1463,12 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
-          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
@@ -1464,13 +1499,16 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
+            throw error;
+          })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onConfirmRequirement={handleConfirmRequirement}
           onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
-          onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
           onOpenSnapshot={handleOpenSnapshot}
           onStartTask={handleStartTask}
-          onUpload={(projectId, files) => handleProjectUpload(projectId, files).catch((error) => {
+          onUpload={(projectId, files) => handleProjectUpload(projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
             throw error;
           })}
@@ -1478,12 +1516,8 @@ export function App() {
           projectName={activeProject.title}
           requirements={activeData?.requirements ?? []}
           snapshots={activeData?.snapshots ?? []}
-          task={latestSubmissionTask ? {
-            message: latestSubmissionTask.public_message,
-            percent: latestSubmissionTask.percent,
-            status: latestSubmissionTask.status,
-            title: taskPhaseLabel(latestSubmissionTask.task_type ?? latestSubmissionTask.phase),
-          } : undefined}
+          supplementalMaterialIds={supplementalMaterialIds}
+          taskStatus={latestSubmissionTask?.status}
         />
       ) : null}
       {route.name === 'review-center' && activeProject ? (
@@ -1494,8 +1528,12 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
-          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
@@ -1517,8 +1555,12 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
-          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
             throw error;
           })}
           onApply={(strategyId) => handleApplyQuote(route.projectId, strategyId)}
@@ -1544,8 +1586,12 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
-          onAddFiles={(files) => handleProjectUpload(route.projectId, files).catch((error) => {
+          onAddFiles={(files) => handleProjectUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
+            throw error;
+          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
+            setError(error, '补充资料上传失败');
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}

@@ -78,7 +78,7 @@ describe('App local read-only preview', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('passes the latest generation task into the materials page and prevents duplicate submission', async () => {
+  it('uses the latest generation task to prevent duplicate submission without rendering task progress in materials', async () => {
     const user = userEvent.setup();
     const fetchSpy = vi.fn<typeof fetch>();
     vi.stubGlobal('fetch', fetchSpy);
@@ -89,17 +89,15 @@ describe('App local read-only preview', () => {
     const previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
     await user.click(within(previewNavigation).getByRole('link', { name: '招标材料' }));
 
-    const taskCard = await screen.findByRole('status', { name: '本次任务状态：任务已提交' });
-    expect(taskCard).toHaveAttribute('data-task-status', 'queued');
-    expect(taskCard).toHaveTextContent('已有成果编制任务正在排队');
+    expect(await screen.findByRole('region', { name: '补充资料' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '当前招标材料' })).toBeInTheDocument();
     expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('补充上传当前项目资料')).toBeInTheDocument();
     expect(screen.getByText('上传企业资料')).toBeInTheDocument();
     expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
-
-    await user.click(within(taskCard).getByRole('button', { name: '查看任务进度' }));
-    expect(screen.getByRole('dialog', { name: '任务进度' })).toBeInTheDocument();
+    expect(screen.queryByText('已有成果编制任务正在排队')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

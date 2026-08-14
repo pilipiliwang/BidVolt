@@ -32,6 +32,7 @@ describe('tenant state isolation', () => {
       reviewProviders: [],
       snapshotDetail: null,
       statusMessage: null,
+      supplementalMaterialIdsByScope: {},
       taskDrawerProjectId: null,
     });
     expect(second.projects).not.toBe(first.projects);

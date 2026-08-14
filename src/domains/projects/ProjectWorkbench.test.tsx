@@ -44,6 +44,35 @@ describe('ProjectWorkbench', () => {
       'bv-project-workspace--fill',
     );
   });
+
+  it('routes source-rail and bottom-assistant uploads to their dedicated handlers', async () => {
+    const user = userEvent.setup();
+    const onAddFiles = vi.fn();
+    const onAssistantAddFiles = vi.fn();
+    render(
+      <ProjectWorkbench
+        enterpriseMaterials={[]}
+        materials={projectMaterials}
+        onAddFiles={onAddFiles}
+        onAssistantAddFiles={onAssistantAddFiles}
+        rightRail={<div>Review</div>}
+      >
+        <div>Editor</div>
+      </ProjectWorkbench>,
+    );
+
+    const railFile = new File(['rail'], '左栏材料.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('补充上传当前项目资料'), railFile);
+    expect(onAddFiles).toHaveBeenCalledWith([railFile]);
+    expect(onAssistantAddFiles).not.toHaveBeenCalled();
+
+    const assistantFile = new File(['assistant'], '助手补充资料.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    await user.upload(screen.getByLabelText('添加当前项目文件'), assistantFile);
+    expect(onAssistantAddFiles).toHaveBeenCalledWith([assistantFile]);
+    expect(onAddFiles).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ProjectSourceRail', () => {

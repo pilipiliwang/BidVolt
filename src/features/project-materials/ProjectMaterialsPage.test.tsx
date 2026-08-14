@@ -90,7 +90,7 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '当前招标材料' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: '当前招标材料' })).toHaveLength(2);
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
     expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' }))
       .toHaveAttribute('aria-current', 'page');
@@ -99,6 +99,8 @@ describe('ProjectMaterialsPage', () => {
     );
     expect(screen.queryByText('项目域 · BV-2026-0088')).not.toBeInTheDocument();
     expect(screen.queryByText(/不会跨项目复用/)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '补充资料' }))
+      .toHaveTextContent('暂无补充资料');
     expect(screen.getByText('替代版本 2')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: '补遗文件一.pdf解析进度' })).toHaveAttribute(
       'aria-valuenow',
@@ -150,15 +152,9 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText(/生成任务已创建/)).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['queued', '任务已提交'],
-    ['running', '任务正在执行'],
-    ['retrying', '任务正在重试'],
-    ['waiting_user', '任务等待您的处理'],
-  ] as const)('hides both central submission areas for a %s backend task', async (status, headline) => {
-    const user = userEvent.setup();
-    const onOpenTasks = vi.fn();
-
+  it.each(['queued', 'running', 'retrying', 'waiting_user', 'succeeded'] as const)(
+    'hides both central submission areas for a %s backend task without showing task progress',
+    (status) => {
     render(
       <ProjectMaterialsPage
         projectId="BV-2026-0088"
@@ -166,21 +162,12 @@ describe('ProjectMaterialsPage', () => {
         materials={materials}
         requirements={requirements}
         snapshots={snapshots}
-        onOpenTasks={onOpenTasks}
         onStartTask={vi.fn()}
         onUpload={vi.fn()}
-        task={{
-          message: '后端返回的任务状态',
-          percent: status === 'queued' ? 0 : 42,
-          status,
-          title: '成果编制',
-        }}
+        taskStatus={status}
       />,
     );
 
-    const taskCard = screen.getByRole('status', { name: `本次任务状态：${headline}` });
-    expect(taskCard).toHaveAttribute('data-task-status', status);
-    expect(within(taskCard).getByText('后端返回的任务状态')).toBeInTheDocument();
     expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/已制作完成的标书/)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
@@ -189,38 +176,63 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
     expect(screen.getByText('替代版本 2')).toBeInTheDocument();
-
-    await user.click(within(taskCard).getByRole('button', { name: '查看任务进度' }));
-    expect(onOpenTasks).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/成果编制|任务已提交|任务正在执行/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '补充资料' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '当前招标材料' })).toBeInTheDocument();
   });
 
-  it('keeps successful task actions hidden and guides the user to the result preview', () => {
+  it('groups materials only by the supplied real file ids and keeps supplemental files above tender files', () => {
     render(
       <ProjectMaterialsPage
-        projectId="project/88"
+        projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
         materials={materials}
         requirements={requirements}
         snapshots={snapshots}
-        onOpenTasks={vi.fn()}
         onStartTask={vi.fn()}
-        task={{
-          message: '成果版本已经保存',
-          percent: 100,
-          status: 'succeeded',
-          title: '成果编制',
-        }}
+        supplementalMaterialIds={['material-2']}
       />,
     );
 
-    expect(screen.getByRole('status', { name: '本次任务状态：任务已完成' }))
-      .toHaveAttribute('data-task-status', 'succeeded');
-    expect(screen.getByRole('link', { name: '前往标书成果预览' })).toHaveAttribute(
-      'href', '/projects/project%2F88/overview',
+    const supplementalRegion = screen.getByRole('region', { name: '补充资料' });
+    const tenderRegion = screen.getByRole('region', { name: '当前招标材料' });
+    expect(supplementalRegion.compareDocumentPosition(tenderRegion) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+    expect(within(supplementalRegion).getByText('补遗文件一.pdf')).toBeInTheDocument();
+    expect(within(supplementalRegion).queryByText('海上升压站招标文件.pdf')).not.toBeInTheDocument();
+    expect(within(tenderRegion).getByText('海上升压站招标文件.pdf')).toBeInTheDocument();
+    expect(within(tenderRegion).queryByText('补遗文件一.pdf')).not.toBeInTheDocument();
+  });
+
+  it('routes only the bottom assistant attachment input to supplemental upload handling', async () => {
+    const user = userEvent.setup();
+    const onAssistantAddFiles = vi.fn();
+    const onUpload = vi.fn();
+    render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={materials}
+        requirements={requirements}
+        snapshots={snapshots}
+        onAssistantAddFiles={onAssistantAddFiles}
+        onStartTask={vi.fn()}
+        onUpload={onUpload}
+      />,
     );
-    expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
-    expect(screen.getByText('替代版本 2')).toBeInTheDocument();
+
+    const railFile = new File(['rail'], '左栏补遗.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('补充上传当前项目资料'), railFile);
+    expect(onUpload).toHaveBeenCalledWith('BV-2026-0088', [railFile]);
+    expect(onAssistantAddFiles).not.toHaveBeenCalled();
+
+    const assistantFile = new File(['assistant'], '设备清单.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await user.upload(screen.getByLabelText('添加当前项目文件'), assistantFile);
+    expect(onAssistantAddFiles).toHaveBeenCalledWith([assistantFile]);
+    expect(onUpload).toHaveBeenCalledTimes(1);
   });
 
   it('shows a failed backend task but keeps both submission areas retryable', async () => {
@@ -234,20 +246,13 @@ describe('ProjectMaterialsPage', () => {
         materials={materials}
         requirements={requirements}
         snapshots={snapshots}
-        onOpenTasks={vi.fn()}
         onStartTask={onStartTask}
         onUpload={vi.fn()}
-        task={{
-          message: '生成服务暂时不可用',
-          percent: 68,
-          status: 'failed',
-          title: '成果编制',
-        }}
+        taskStatus="failed"
       />,
     );
 
-    expect(screen.getByRole('alert', { name: '本次任务状态：任务执行失败' }))
-      .toHaveTextContent('可以调整材料或任务类型后重新发起');
+    expect(screen.queryByText(/成果编制|任务执行失败/)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/选择或拖拽招标材料/)).toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: '生成标书' }));
     await user.click(screen.getByRole('button', { name: '开始生成' }));

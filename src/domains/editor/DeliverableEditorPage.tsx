@@ -29,6 +29,7 @@ type DeliverableEditorPageProps = {
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   onSave?: (payload: OfficeEditorSavePayload) => Promise<void> | void;
   project?: ProjectSummary;
@@ -74,6 +75,7 @@ export function DeliverableEditorPage({
   materials,
   onAddEnterpriseFiles,
   onAddFiles,
+  onAssistantAddFiles,
   onAssistantSend,
   onSave,
   project: projectOverride,
@@ -185,6 +187,7 @@ export function DeliverableEditorPage({
         materials={materials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAddFiles={onAddFiles}
+        onAssistantAddFiles={onAssistantAddFiles}
         onAssistantDraftChange={setAssistantDraft}
         onAssistantSend={onAssistantSend}
         rightRail={

@@ -72,17 +72,11 @@ export interface ProjectMaterialUploadProps {
   onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
 }
 
-export interface ProjectMaterialsTaskSummary {
-  message: string;
-  percent: number | null;
-  status: PublicTaskEvent['status'];
-  title: string;
-}
-
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   onImportTenderNoticeUrl?: (
     projectId: string,
@@ -90,9 +84,9 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   ) => Promise<{ message?: string; status?: 'queued' | 'processing' | 'completed' } | void>;
   requirements: ProjectRequirement[];
   snapshots: ProjectSnapshot[];
-  task?: ProjectMaterialsTaskSummary;
+  supplementalMaterialIds?: readonly string[];
+  taskStatus?: PublicTaskEvent['status'];
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;
-  onOpenTasks?: () => void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
   onStartTask: (projectId: string, mode: 'generate' | 'validate') => Promise<void> | void;
 }
