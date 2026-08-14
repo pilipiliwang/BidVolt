@@ -16,13 +16,23 @@ export type BackendApiStatus =
   | 'disconnected'
   | 'preview';
 
-export type BackendApiCheckStatus = 'success' | 'failed' | 'checking' | 'not-run';
+export type BackendApiCheckStatus =
+  | 'success'
+  | 'failed'
+  | 'checking'
+  | 'not-run'
+  | 'unavailable';
 
 export type BackendApiCheck = {
   id: string;
+  feature?: string;
+  trigger?: string;
   method: string;
   path: string;
+  actualPath?: string;
   status: BackendApiCheckStatus;
+  callCount?: number;
+  lastCalledAt?: Date | string | null;
   latencyMs?: number | null;
   detail?: string;
 };
@@ -81,19 +91,33 @@ const checkedAtFormatter = new Intl.DateTimeFormat('zh-CN', {
   hour12: false,
 });
 
-function formatCheckedAt(value: Date | string | null | undefined) {
-  if (!value) return '尚未检测';
+function formatDateTime(
+  value: Date | string | null | undefined,
+  emptyLabel: string,
+) {
+  if (!value) return emptyLabel;
 
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return checkedAtFormatter.format(date);
 }
 
+function formatCheckedAt(value: Date | string | null | undefined) {
+  return formatDateTime(value, '尚未检测');
+}
+
+function toDateTimeAttribute(value: Date | string | null | undefined) {
+  if (!value) return undefined;
+  if (typeof value === 'string') return value;
+  return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+}
+
 const checkStatusContent = {
   success: { label: '调用成功', Icon: CheckCircle2 },
   failed: { label: '调用失败', Icon: CircleX },
   checking: { label: '调用中', Icon: LoaderCircle },
-  'not-run': { label: '未执行', Icon: FlaskConical },
+  'not-run': { label: '未触发', Icon: FlaskConical },
+  unavailable: { label: '后端未提供', Icon: AlertTriangle },
 } satisfies Record<BackendApiCheckStatus, {
   label: string;
   Icon: typeof CheckCircle2;
@@ -103,6 +127,18 @@ function formatLatency(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? `${Math.round(value)} ms`
     : '—';
+}
+
+function formatCallCount(check: BackendApiCheck) {
+  if (
+    typeof check.callCount === 'number'
+    && Number.isFinite(check.callCount)
+    && check.callCount >= 0
+  ) {
+    return Math.floor(check.callCount);
+  }
+
+  return check.status === 'not-run' || check.status === 'unavailable' ? 0 : 1;
 }
 
 export function BackendApiStatusBar({
@@ -126,6 +162,19 @@ export function BackendApiStatusBar({
   ]
     .filter(Boolean)
     .join(' ');
+  const checkSummary = checks.reduce(
+    (summary, check) => {
+      summary[check.status] += 1;
+      return summary;
+    },
+    {
+      success: 0,
+      failed: 0,
+      checking: 0,
+      'not-run': 0,
+      unavailable: 0,
+    } satisfies Record<BackendApiCheckStatus, number>,
+  );
 
   return (
     <section
@@ -185,39 +234,91 @@ export function BackendApiStatusBar({
       ) : null}
 
       {checks.length > 0 ? (
-        <div className="backend-api-status__checks" aria-label="API 接口调用明细" role="table">
-          <div className="backend-api-status__check-row backend-api-status__check-row--heading" role="row">
-            <span role="columnheader">方法</span>
-            <span role="columnheader">接口路径</span>
-            <span role="columnheader">调用状态</span>
-            <span role="columnheader">耗时</span>
+        <div className="backend-api-status__monitor">
+          <div className="backend-api-status__check-summary" aria-label="接口调用状态汇总" role="group">
+            <strong>页面接口监控</strong>
+            <span className="backend-api-status__summary-chip backend-api-status__summary-chip--success">
+              成功 {checkSummary.success}
+            </span>
+            <span className="backend-api-status__summary-chip backend-api-status__summary-chip--failed">
+              失败 {checkSummary.failed}
+            </span>
+            <span className="backend-api-status__summary-chip backend-api-status__summary-chip--checking">
+              调用中 {checkSummary.checking}
+            </span>
+            <span className="backend-api-status__summary-chip backend-api-status__summary-chip--not-run">
+              未触发 {checkSummary['not-run']}
+            </span>
+            <span className="backend-api-status__summary-chip backend-api-status__summary-chip--unavailable">
+              后端未提供 {checkSummary.unavailable}
+            </span>
           </div>
-          {checks.map((check) => {
-            const checkContent = checkStatusContent[check.status];
-            const CheckIcon = checkContent.Icon;
+          <div className="backend-api-status__checks" aria-label="API 接口调用明细" role="table">
+            <div className="backend-api-status__check-row backend-api-status__check-row--heading" role="row">
+              <span role="columnheader">功能 / 触发方式</span>
+              <span role="columnheader">方法</span>
+              <span role="columnheader">接口路径</span>
+              <span role="columnheader">操作状态</span>
+              <span role="columnheader">调用次数</span>
+              <span role="columnheader">最近调用时间</span>
+              <span role="columnheader">最近耗时</span>
+            </div>
+            {checks.map((check) => {
+              const checkContent = checkStatusContent[check.status];
+              const CheckIcon = checkContent.Icon;
 
-            return (
-              <div
-                className={`backend-api-status__check-row backend-api-status__check-row--${check.status}`}
-                key={check.id}
-                role="row"
-                title={check.detail}
-              >
-                <span className="backend-api-status__method" role="cell">{check.method.toUpperCase()}</span>
-                <code role="cell">{check.path}</code>
-                <span className="backend-api-status__check-state" role="cell">
-                  <CheckIcon
-                    aria-hidden="true"
-                    className={check.status === 'checking' ? 'backend-api-status__icon-svg--spinning' : undefined}
-                    size={14}
-                  />
-                  {checkContent.label}
-                </span>
-                <span className="backend-api-status__check-latency" role="cell">{formatLatency(check.latencyMs)}</span>
-                {check.detail ? <small>{check.detail}</small> : null}
-              </div>
-            );
-          })}
+              return (
+                <div
+                  className={`backend-api-status__check-row backend-api-status__check-row--${check.status}`}
+                  key={check.id}
+                  role="row"
+                  title={check.detail}
+                >
+                  <span className="backend-api-status__feature" data-label="功能 / 触发方式" role="cell">
+                    <strong>{check.feature ?? '接口调用'}</strong>
+                    <small>{check.trigger ?? '触发方式未标注'}</small>
+                    {check.detail ? <em>{check.detail}</em> : null}
+                  </span>
+                  <span className="backend-api-status__method" data-label="方法" role="cell">
+                    {check.method.toUpperCase()}
+                  </span>
+                  <code className="backend-api-status__check-path" data-label="接口路径" role="cell">
+                    <span>{check.actualPath ?? check.path}</span>
+                    {check.actualPath ? <small title={check.path}>模板：{check.path}</small> : null}
+                  </code>
+                  <span className="backend-api-status__check-state" data-label="操作状态" role="cell">
+                    <CheckIcon
+                      aria-hidden="true"
+                      className={check.status === 'checking' ? 'backend-api-status__icon-svg--spinning' : undefined}
+                      size={14}
+                    />
+                    {checkContent.label}
+                  </span>
+                  <span className="backend-api-status__check-count" data-label="调用次数" role="cell">
+                    {formatCallCount(check)} 次
+                  </span>
+                  <time
+                    className="backend-api-status__check-time"
+                    data-label="最近调用时间"
+                    dateTime={toDateTimeAttribute(check.lastCalledAt)}
+                    role="cell"
+                  >
+                    {formatDateTime(
+                      check.lastCalledAt,
+                      check.status === 'not-run'
+                        ? '未调用'
+                        : check.status === 'unavailable'
+                          ? '无可用接口'
+                          : '未记录',
+                    )}
+                  </time>
+                  <span className="backend-api-status__check-latency" data-label="最近耗时" role="cell">
+                    {formatLatency(check.latencyMs)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </section>
