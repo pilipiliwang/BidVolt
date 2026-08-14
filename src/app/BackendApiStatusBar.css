@@ -1,0 +1,203 @@
+.backend-api-status {
+  --api-status-accent: #18794e;
+  --api-status-border: #a9dec5;
+  --api-status-surface: #f0fbf5;
+  --api-status-badge: #d8f3e4;
+
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--api-status-border);
+  border-radius: 10px;
+  color: #173028;
+  background: var(--api-status-surface);
+  box-shadow: 0 3px 10px rgb(20 66 49 / 5%);
+}
+
+.backend-api-status--checking,
+.backend-api-status--preview {
+  --api-status-accent: #27649a;
+  --api-status-border: #b9d6ed;
+  --api-status-surface: #f2f8fd;
+  --api-status-badge: #dceefa;
+}
+
+.backend-api-status--degraded {
+  --api-status-accent: #a45b07;
+  --api-status-border: #efd29a;
+  --api-status-surface: #fff9e9;
+  --api-status-badge: #f9e9b9;
+}
+
+.backend-api-status--disconnected {
+  --api-status-accent: #b4232f;
+  --api-status-border: #efbec3;
+  --api-status-surface: #fff3f4;
+  --api-status-badge: #f9dce0;
+}
+
+.backend-api-status__icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--api-status-accent);
+  background: var(--api-status-badge);
+}
+
+.backend-api-status__content {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.backend-api-status__summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.backend-api-status__summary strong {
+  color: var(--api-status-accent);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.backend-api-status__truth-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--api-status-accent);
+  background: var(--api-status-badge);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.backend-api-status__content p {
+  overflow: hidden;
+  margin: 0;
+  color: #50655d;
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-api-status__metrics {
+  display: flex;
+  min-width: 0;
+  gap: 14px;
+  margin: 0;
+}
+
+.backend-api-status__metrics > div {
+  display: grid;
+  min-width: 76px;
+  gap: 1px;
+}
+
+.backend-api-status__metrics dt {
+  color: #71817b;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.backend-api-status__metrics dd {
+  max-width: 190px;
+  overflow: hidden;
+  margin: 0;
+  color: #273b34;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-api-status__retest {
+  display: inline-flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid var(--api-status-border);
+  border-radius: 8px;
+  color: var(--api-status-accent);
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.backend-api-status__retest:hover:not(:disabled) {
+  border-color: var(--api-status-accent);
+  box-shadow: 0 2px 7px rgb(20 66 49 / 9%);
+}
+
+.backend-api-status__retest:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--api-status-accent) 22%, transparent);
+  outline-offset: 2px;
+}
+
+.backend-api-status__retest:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.backend-api-status__icon-svg--spinning {
+  animation: backend-api-status-spin 900ms linear infinite;
+}
+
+@keyframes backend-api-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backend-api-status__icon-svg--spinning {
+    animation: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .backend-api-status {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .backend-api-status__metrics {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 620px) {
+  .backend-api-status {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 10px 12px;
+  }
+
+  .backend-api-status__content p {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .backend-api-status__metrics {
+    grid-column: 1 / -1;
+  }
+
+  .backend-api-status__retest {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+}
