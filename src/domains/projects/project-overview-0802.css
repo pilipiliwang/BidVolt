@@ -135,11 +135,12 @@
 .bv-overview-empty[data-task-status='succeeded'] > svg { color: #0a9a58; }
 .bv-overview-empty[data-task-status='queued'],
 .bv-overview-empty[data-task-status='running'] {
-  border-color: #b7dfc9;
-  background: #f7fcf9;
+  border-color: #d5ddd8;
+  color: #445149;
+  background: #fff;
 }
 .bv-overview-empty[data-task-status='queued'] > svg,
-.bv-overview-empty[data-task-status='running'] > svg { color: #009a55; }
+.bv-overview-empty[data-task-status='running'] > svg { color: #526057; }
 .bv-overview-empty--task > svg { color: #a96c07; }
 .bv-overview-empty__task {
   display: grid;
@@ -155,9 +156,9 @@
 }
 .bv-overview-empty__task--queued,
 .bv-overview-empty__task--running {
-  border-color: #a9dcbf;
-  color: #087747;
-  background: #effaf4;
+  border-color: #d5ddd8;
+  color: #29362f;
+  background: #fff;
 }
 .bv-overview-empty__task--retrying,
 .bv-overview-empty__task--failed {
