@@ -61,8 +61,8 @@ const statusContent = {
     Icon: CheckCircle2,
   },
   degraded: {
-    label: '部分 API 调用异常',
-    message: '基础 API 可以访问，但部分业务接口响应异常或缺少数据。',
+    label: '部分接口异常或缺失',
+    message: '已捕获真实 API 调用，但部分业务接口调用失败或后端尚未提供。',
     Icon: AlertTriangle,
   },
   disconnected: {

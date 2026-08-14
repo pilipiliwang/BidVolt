@@ -21,6 +21,10 @@
   margin-bottom: 12px;
 }
 
+.login-api-status {
+  margin: 12px;
+}
+
 .backend-api-status--checking,
 .backend-api-status--preview {
   --api-status-accent: #27649a;
