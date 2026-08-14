@@ -81,6 +81,26 @@ import { getEditorDraftScopeKey, type AppSession } from './session';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
 import { createEditorSaveGate } from './editor-save-gate';
+import {
+  getLocalPreviewEditor,
+  isLocalPreviewAvailable,
+  LOCAL_PREVIEW_PROJECT_ID,
+  localPreviewDeliverables,
+  localPreviewEnterpriseAssets,
+  localPreviewHistoryRecords,
+  localPreviewIngestions,
+  localPreviewMaterials,
+  localPreviewProject,
+  localPreviewProviders,
+  localPreviewQuote,
+  localPreviewQuoteSamples,
+  localPreviewRequirements,
+  localPreviewReview,
+  localPreviewSession,
+  localPreviewSnapshots,
+  localPreviewTasks,
+  localPreviewWriteError,
+} from './local-preview';
 
 type ProjectData = {
   deliverables: Deliverable[];
@@ -146,6 +166,7 @@ export function App() {
   const route = useUrlRoute();
   const routeProjectId = 'projectId' in route ? route.projectId : undefined;
   const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking');
+  const [localPreviewActive, setLocalPreviewActive] = useState(false);
   const [session, setSession] = useState<AppSession | null>(null);
   const [loginError, setLoginError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
@@ -260,12 +281,13 @@ export function App() {
 
   useEffect(() => {
     const handleExpiredSession = () => {
+      if (localPreviewActive) return;
       becomeAnonymous({ clearStoredSession: false });
       navigate('/login', { replace: true });
     };
     window.addEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
     return () => window.removeEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
-  }, [becomeAnonymous]);
+  }, [becomeAnonymous, localPreviewActive]);
 
   const loadProjects = useCallback(async () => {
     const generation = tenantGuardRef.current.capture();
@@ -315,7 +337,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (authState !== 'authenticated') return;
+    if (authState !== 'authenticated' || localPreviewActive) return;
     const generation = tenantGuardRef.current.capture();
     void Promise.all([loadProjects(), loadEnterprise(), loadHistory(), backendApi.review.listProviders()])
       .then(([, , , providers]) => tenantGuardRef.current.commit(generation, () => {
@@ -324,7 +346,7 @@ export function App() {
       .catch((error) => {
         if (tenantGuardRef.current.isCurrent(generation)) setError(error, '基础数据加载失败');
       });
-  }, [authState, loadEnterprise, loadHistory, loadProjects, setError]);
+  }, [authState, loadEnterprise, loadHistory, loadProjects, localPreviewActive, setError]);
 
   const loadProject = useCallback(async (projectId: string) => {
     const tenantGeneration = tenantGuardRef.current.capture();
@@ -462,7 +484,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (authState !== 'authenticated' || !routeProjectId) return;
+    if (authState !== 'authenticated' || !routeProjectId || localPreviewActive) return;
     const tenantGeneration = tenantGuardRef.current.capture();
     const projectGeneration = ++projectLoadGenerationRef.current;
     setLoadingProjectId(routeProjectId);
@@ -499,9 +521,9 @@ export function App() {
     return () => {
       if (projectLoadGenerationRef.current === projectGeneration) projectLoadGenerationRef.current += 1;
     };
-  }, [authState, loadProject, projectRetryNonce, routeProjectId, setError]);
+  }, [authState, loadProject, localPreviewActive, projectRetryNonce, routeProjectId, setError]);
 
-  const shouldPollTasks = Boolean(routeProjectId && projectData[routeProjectId]?.tasks.some((event) =>
+  const shouldPollTasks = Boolean(!localPreviewActive && routeProjectId && projectData[routeProjectId]?.tasks.some((event) =>
     isActiveTaskStatus(event.status)));
   useEffect(() => {
     if (!routeProjectId || !shouldPollTasks) return undefined;
@@ -526,6 +548,7 @@ export function App() {
   }, [pageMeta.title, routeProjectId]);
 
   const handleLogin = async ({ email, password, remember }: LoginCredentials) => {
+    setLocalPreviewActive(false);
     becomeAnonymous();
     setAuthSubmitting(true);
     setLoginError('');
@@ -547,6 +570,7 @@ export function App() {
   };
 
   const handleRegister = async ({ email, enterpriseName, password }: RegisterCredentials) => {
+    setLocalPreviewActive(false);
     becomeAnonymous();
     setAuthSubmitting(true);
     setLoginError('');
@@ -567,7 +591,57 @@ export function App() {
     }
   };
 
+  const blockLocalPreviewWrite = (action: string) => {
+    const error = localPreviewWriteError(action);
+    setStatusMessage({ tone: 'error', text: error.message });
+    return error;
+  };
+
+  const handleOpenLocalPreview = () => {
+    if (!isLocalPreviewAvailable()) {
+      setLoginError('本地预览仅能在 localhost 的 local-preview 开发模式中使用。');
+      return;
+    }
+    clearBackendSession();
+    clearTenantDomainState();
+    taskEventsRef.current[LOCAL_PREVIEW_PROJECT_ID] = localPreviewTasks;
+    setLocalPreviewActive(true);
+    setSession(localPreviewSession);
+    setProjects([localPreviewProject]);
+    setProjectsTotal(1);
+    setEnterpriseAssets(localPreviewEnterpriseAssets);
+    setEnterpriseIngestions(localPreviewIngestions);
+    setReviewProviders(localPreviewProviders);
+    setHistory({
+      records: localPreviewHistoryRecords,
+      samples: localPreviewQuoteSamples,
+      total: localPreviewHistoryRecords.length,
+    });
+    setProjectData({
+      [LOCAL_PREVIEW_PROJECT_ID]: {
+        deliverables: localPreviewDeliverables,
+        historyRecords: localPreviewHistoryRecords,
+        materials: localPreviewMaterials,
+        quote: localPreviewQuote,
+        quoteSamples: localPreviewQuoteSamples,
+        requirements: localPreviewRequirements,
+        reviewRun: localPreviewReview,
+        snapshots: localPreviewSnapshots,
+        tasks: localPreviewTasks,
+      },
+    });
+    setStatusMessage(null);
+    setAuthState('authenticated');
+    navigate('/projects', { replace: true });
+  };
+
   const handleLogout = async () => {
+    if (localPreviewActive) {
+      setLocalPreviewActive(false);
+      becomeAnonymous();
+      navigate('/login', { replace: true });
+      return;
+    }
     const refreshToken = getBackendRefreshToken();
     const logoutRequest = refreshToken
       ? backendApi.auth.logout(refreshToken).catch(() => undefined)
@@ -578,6 +652,7 @@ export function App() {
   };
 
   const handleCreateProject = async (project: ProjectSummary) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('新增项目');
     const generation = tenantGuardRef.current.capture();
     const created = await backendApi.projects.create({
       name: project.title,
@@ -594,6 +669,7 @@ export function App() {
   };
 
   const handleArchiveProject = async (projectId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('归档项目');
     const generation = tenantGuardRef.current.capture();
     await backendApi.projects.archive(projectId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
@@ -604,6 +680,7 @@ export function App() {
   };
 
   const handleEnterpriseUpload = async (files: File[]) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('上传企业资料');
     const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'enterprise', files });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
@@ -641,6 +718,7 @@ export function App() {
   };
 
   const handleCorrectEnterpriseFact = async (assetId: string, factId: string, value: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('修改企业资料字段');
     const generation = tenantGuardRef.current.capture();
     await backendApi.enterprise.updateFact(factId, {
       fact_value: value,
@@ -652,6 +730,7 @@ export function App() {
   };
 
   const handleProjectUpload = async (projectId: string, files: File[]) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('上传项目材料');
     const generation = tenantGuardRef.current.capture();
     const result = await backendApi.files.upload({ target: 'project', project_id: projectId, files });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
@@ -683,6 +762,7 @@ export function App() {
   };
 
   const handleImportTenderNoticeUrl = async (projectId: string, url: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('导入招标公告网址');
     const generation = tenantGuardRef.current.capture();
     const job = await backendApi.tenderNotices.importFromUrl(projectId, url);
     if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('会话已切换，已忽略旧企业的导入结果。');
@@ -711,6 +791,10 @@ export function App() {
   };
 
   const handleConfirmRequirement = () => {
+    if (localPreviewActive) {
+      blockLocalPreviewWrite('确认招标要求');
+      return;
+    }
     setStatusMessage({
       tone: 'error',
       text: '后端尚未提供 Requirement 确认接口；已保留按钮，但不会在浏览器内伪造确认成功。',
@@ -718,6 +802,17 @@ export function App() {
   };
 
   const handleOpenSnapshot = async (projectId: string, snapshotId: string) => {
+    if (localPreviewActive) {
+      setSnapshotDetail({
+        id: snapshotId,
+        value: {
+          notice: '这是本地只读界面预览，未请求后端快照详情。',
+          project_id: projectId,
+          snapshot_id: snapshotId,
+        },
+      });
+      return;
+    }
     const generation = tenantGuardRef.current.capture();
     try {
       const detail = await backendApi.snapshots.get(projectId, snapshotId);
@@ -730,6 +825,7 @@ export function App() {
   };
 
   const handleStartTask = async (projectId: string, mode: 'generate' | 'validate') => {
+    if (localPreviewActive) throw blockLocalPreviewWrite(mode === 'generate' ? '创建成果生成任务' : '创建校核任务');
     const generation = tenantGuardRef.current.capture();
     try {
       await backendApi.tasks.create(projectId, {
@@ -749,6 +845,7 @@ export function App() {
   };
 
   const handleAssistantSend = async (projectId: string, value: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('发送项目助手消息');
     const generation = tenantGuardRef.current.capture();
     try {
       const list = await backendApi.chat.listConversations(projectId);
@@ -768,6 +865,7 @@ export function App() {
   };
 
   const handleRunReview = async (projectId: string, providerId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('执行外部评审');
     const generation = tenantGuardRef.current.capture();
     try {
       await backendApi.review.evaluate(projectId, { provider_id: providerId });
@@ -782,6 +880,7 @@ export function App() {
   };
 
   const handleSaveSuggestion = async (projectId: string, findingId: string, suggestion: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('保存评审建议');
     const generation = tenantGuardRef.current.capture();
     const scoreId = projectData[projectId]?.score?.score_id;
     if (!scoreId) throw new Error('当前评审没有可更新的评分版本。');
@@ -791,6 +890,7 @@ export function App() {
   };
 
   const handleApplyQuote = async (projectId: string, strategyId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('应用报价策略');
     const generation = tenantGuardRef.current.capture();
     const data = projectData[projectId];
     const quoteDeliverable = data?.deliverables.find((item) => item.deliverable_type === 3);
@@ -904,6 +1004,10 @@ export function App() {
     const editorKey = `${route.projectId}:${route.deliverableId}:${route.versionId}`;
     if (editorLoadKeyRef.current === editorKey) return;
     editorLoadKeyRef.current = editorKey;
+    if (localPreviewActive) {
+      setEditor(getLocalPreviewEditor(route.deliverableId, route.versionId) ?? null);
+      return;
+    }
     const generation = tenantGuardRef.current.capture();
     void loadEditor(route.projectId, route.deliverableId, route.versionId)
       .catch((error) => {
@@ -911,7 +1015,7 @@ export function App() {
         if (editorLoadKeyRef.current === editorKey) editorLoadKeyRef.current = '';
         setError(error, '成果编辑会话创建失败');
       });
-  }, [loadEditor, projectData, route, setError]);
+  }, [loadEditor, localPreviewActive, projectData, route, setError]);
 
   const editorRouteKey = route.name === 'deliverable-editor'
     ? `${route.projectId}:${route.deliverableId}:${route.versionId}`
@@ -932,6 +1036,7 @@ export function App() {
   }, [editorRouteKey]);
 
   const handleSaveEditor = (payload: OfficeMockSavePayload) => {
+    if (localPreviewActive) return Promise.reject(blockLocalPreviewWrite('保存成果'));
     const activeEditor = activeEditorRef.current;
     if (!activeEditor?.session?.lease_token || activeEditor.readOnlyReason) {
       return Promise.reject(new Error(activeEditor?.readOnlyReason || '编辑会话缺少有效租约，请刷新页面后重试。'));
@@ -987,6 +1092,7 @@ export function App() {
     routeId: DeliverableRouteId,
     requestedVersion?: string | number,
   ) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('下载成果文件');
     const generation = tenantGuardRef.current.capture();
     const deliverable = projectData[projectId]?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
     if (!deliverable?.current_version_no) throw new Error('当前成果没有可下载版本。');
@@ -1003,7 +1109,16 @@ export function App() {
   if (route.name === 'landing') return <LandingPage />;
   if (authState === 'checking') return <LoadingScreen />;
   if (authState === 'anonymous' || route.name === 'login' || !session) {
-    return <LoginPage error={loginError} isSubmitting={authSubmitting} onLogin={handleLogin} onRegister={handleRegister} />;
+    return (
+      <LoginPage
+        error={loginError}
+        isSubmitting={authSubmitting}
+        localPreviewAvailable={isLocalPreviewAvailable()}
+        onLogin={handleLogin}
+        onOpenLocalPreview={handleOpenLocalPreview}
+        onRegister={handleRegister}
+      />
+    );
   }
 
   const activeProject = routeProjectId ? projects.find((project) => project.id === routeProjectId) : undefined;
@@ -1033,6 +1148,24 @@ export function App() {
       taskCount={activeTaskCount}
       user={session.user}
     >
+      {localPreviewActive ? (
+        <aside className="local-preview-banner" aria-label="本地只读预览状态">
+          <div>
+            <strong>本地只读预览 · 无真实后端</strong>
+            <span>当前数据是明确标记的界面快照；未请求 API，所有写入、AI、下载操作均已阻止。</span>
+          </div>
+          <nav aria-label="预览页面快速导航">
+            <AppLink to="/projects">项目列表</AppLink>
+            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/overview`}>项目概览</AppLink>
+            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/materials`}>招标材料</AppLink>
+            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/review`}>评审中心</AppLink>
+            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/pricing`}>报价测算</AppLink>
+            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/deliverables/technical/versions/3`}>成果编辑器</AppLink>
+            <AppLink to="/enterprise-assets">企业资料</AppLink>
+            <AppLink to="/history-prices">历史报价</AppLink>
+          </nav>
+        </aside>
+      ) : null}
       {statusMessage ? (
         <div className={`integration-status integration-status--${statusMessage.tone}`} role={statusMessage.tone === 'error' ? 'alert' : 'status'}>
           <span>{statusMessage.text}</span>
@@ -1055,7 +1188,7 @@ export function App() {
       {route.name === 'projects' ? (
         <ProjectListPage
           error={undefined}
-          isLive
+          isLive={!localPreviewActive}
           projects={projects}
           total={projectsTotal}
           onArchiveProject={handleArchiveProject}
@@ -1067,7 +1200,9 @@ export function App() {
           assets={enterpriseAssets}
           enterpriseName={session.enterpriseName}
           ingestionItems={enterpriseIngestions}
-          onRefresh={() => loadEnterprise().catch((error) => {
+          onRefresh={() => (localPreviewActive
+            ? Promise.reject(blockLocalPreviewWrite('刷新企业资料'))
+            : loadEnterprise()).catch((error) => {
             setError(error, '企业资料刷新失败');
             throw error;
           })}
@@ -1184,7 +1319,7 @@ export function App() {
           editorKind={route.deliverableId === 'quote' ? 'spreadsheet' : 'word'}
           enterpriseMaterials={workspaceEnterprise}
           initialQuoteRows={route.deliverableId === 'quote' ? backendQuoteRows(editor.content.model) : undefined}
-          isBackendConnected
+          isBackendConnected={!localPreviewActive}
           isReadOnly={Boolean(editor.readOnlyReason)}
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
@@ -1196,7 +1331,9 @@ export function App() {
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
-          onDownload={() => downloadDeliverable(route.projectId, route.deliverableId, editor.content.version_no)}
+          onDownload={localPreviewActive
+            ? undefined
+            : () => downloadDeliverable(route.projectId, route.deliverableId, editor.content.version_no)}
           onSave={editor.session && !editor.readOnlyReason ? handleSaveEditor : undefined}
           project={activeProject}
           projectId={route.projectId}

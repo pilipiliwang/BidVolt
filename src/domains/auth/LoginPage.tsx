@@ -29,7 +29,9 @@ export type RegisterCredentials = {
 type LoginPageProps = {
   error?: string;
   isSubmitting?: boolean;
+  localPreviewAvailable?: boolean;
   onLogin?: (credentials: LoginCredentials) => void | Promise<void>;
+  onOpenLocalPreview?: () => void;
   onRegister?: (credentials: RegisterCredentials) => void | Promise<void>;
 };
 
@@ -104,7 +106,9 @@ function LoginWaveScenery() {
 export function LoginPage({
   error,
   isSubmitting = false,
+  localPreviewAvailable = false,
   onLogin,
+  onOpenLocalPreview,
   onRegister,
 }: LoginPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -272,6 +276,14 @@ export function LoginPage({
                   ? '注册并进入'
                   : '提交注册申请'}
           </button>
+
+          {mode === 'login' && localPreviewAvailable && onOpenLocalPreview ? (
+            <section className="login0802__local-preview" aria-label="本地只读预览入口">
+              <p><strong>后端不可用？</strong>可以进入本地只读界面预览。</p>
+              <button type="button" onClick={onOpenLocalPreview}>进入本地只读预览</button>
+              <small>仅 localhost 开发模式可见；不连接真实后端，不会提交任何数据。</small>
+            </section>
+          ) : null}
         </form>
       </section>
     </main>

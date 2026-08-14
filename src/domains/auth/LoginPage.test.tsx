@@ -48,4 +48,18 @@ describe('LoginPage', () => {
       '当前后端尚未提供找回密码接口，请联系企业管理员重置密码。',
     );
   });
+
+  it('shows the explicit local read-only entry only when the caller enables it', async () => {
+    const user = userEvent.setup();
+    const onOpenLocalPreview = vi.fn();
+    const { rerender } = render(<LoginPage />);
+
+    expect(screen.queryByRole('button', { name: '进入本地只读预览' })).not.toBeInTheDocument();
+
+    rerender(<LoginPage localPreviewAvailable onOpenLocalPreview={onOpenLocalPreview} />);
+    await user.click(screen.getByRole('button', { name: '进入本地只读预览' }));
+
+    expect(onOpenLocalPreview).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/localhost 开发模式可见/)).toBeInTheDocument();
+  });
 });

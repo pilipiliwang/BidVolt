@@ -22,6 +22,14 @@ npm install
 npm run dev
 ```
 
+后端不可用时，可启动仅用于检查页面和路由的本地只读预览：
+
+```bash
+npm run dev:local-preview
+```
+
+访问 `http://127.0.0.1:4173/login`，点击“进入本地只读预览”。该入口同时校验 Vite 开发态、`local-preview` 模式和回环域名；生产构建中 `import.meta.env.DEV` 恒为 `false`，因此无法启用。预览模式不会替换 API 客户端，只注入明确标记的界面快照；所有上传、新增、修改、AI、任务、评审、报价应用、保存和下载操作均会显式失败，不会产生假成功状态。
+
 常用检查：
 
 ```bash

@@ -1060,6 +1060,41 @@ a {
   font-weight: 700;
 }
 
+.local-preview-banner {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: grid;
+  gap: 9px;
+  padding: 12px 15px;
+  margin: -2px 0 14px;
+  border: 2px solid #e2a422;
+  border-radius: 12px;
+  color: #5e3e00;
+  background: #fff5d8;
+  box-shadow: 0 8px 22px rgb(99 67 0 / 12%);
+}
+
+.local-preview-banner div,
+.local-preview-banner nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+
+.local-preview-banner strong { font-size: 14px; }
+
+.local-preview-banner span { font-size: 12px; font-weight: 650; }
+
+.local-preview-banner a {
+  padding: 4px 8px;
+  border: 1px solid #d9ac4e;
+  border-radius: 6px;
+  color: #654400;
+  background: #fffdf6;
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.local-preview-banner a:hover { background: #ffebae; }
+
 .workbench-score {
   align-self: center;
   padding: 20px;

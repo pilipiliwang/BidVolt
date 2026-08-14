@@ -1250,6 +1250,35 @@
   opacity: 0.55;
 }
 
+.login0802__local-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #f0bd54;
+  border-radius: 10px;
+  color: #6e4a00;
+  background: #fff9e9;
+}
+
+.login0802__local-preview p,
+.login0802__local-preview small { margin: 0; }
+
+.login0802__local-preview p { font-size: 13px; }
+
+.login0802__local-preview small { font-size: 11px; line-height: 1.5; }
+
+.login0802__local-preview button {
+  min-height: 38px;
+  border: 1px solid #d99716;
+  border-radius: 7px;
+  color: #704900;
+  background: #fff;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.login0802__local-preview button:hover { background: #fff4d2; }
+
 .login0802__register-note {
   min-height: 27px;
   margin: 4px 0 0;

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:backend": "vite --mode backend",
+    "dev:local-preview": "vite --mode local-preview",
     "build": "tsc --noEmit -p tsconfig.app.json --incremental false && tsc --noEmit -p tsconfig.node.json --incremental false && vite build --configLoader runner",
     "build:backend": "tsc --noEmit -p tsconfig.app.json --incremental false && tsc --noEmit -p tsconfig.node.json --incremental false && vite build --mode backend --configLoader runner",
     "lint": "eslint .",
