@@ -148,6 +148,37 @@ export function hasTaskEnteredTerminalState(
   });
 }
 
+export const TASK_POLL_INTERVAL_MS = 2_500;
+export const STREAM_CONVERGENCE_POLL_INTERVAL_MS = 15_000;
+
+export function resolveTaskPollingInterval({
+  hasActiveBidGenerateTask,
+  hasActiveTasks,
+  hasOtherActiveTasks,
+  localPreviewActive,
+  streamMatchesActiveTask,
+  streamStatus,
+}: {
+  hasActiveBidGenerateTask: boolean;
+  hasActiveTasks: boolean;
+  hasOtherActiveTasks: boolean;
+  localPreviewActive: boolean;
+  streamMatchesActiveTask: boolean;
+  streamStatus: 'connected' | 'connecting' | 'fallback' | 'idle';
+}) {
+  if (localPreviewActive || !hasActiveTasks) return null;
+
+  const streamIsLive = streamMatchesActiveTask
+    && (streamStatus === 'connecting' || streamStatus === 'connected');
+  if (hasActiveBidGenerateTask && !hasOtherActiveTasks && streamIsLive) {
+    // The current backend does not emit heartbeats. Keep a low-frequency GET
+    // convergence path so a half-open or silent stream cannot freeze the UI.
+    return STREAM_CONVERGENCE_POLL_INTERVAL_MS;
+  }
+
+  return TASK_POLL_INTERVAL_MS;
+}
+
 export function isProjectNotFound(error: unknown) {
   return error instanceof BackendApiError && error.status === 404;
 }

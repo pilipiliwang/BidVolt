@@ -134,6 +134,38 @@ describe('ProjectOverviewPage', () => {
     expect(onOpenTasks).toHaveBeenCalledOnce();
   });
 
+  it('keeps a real task visible when the backend has not reported a percent', () => {
+    const commonProps = {
+      deliverablesRequest: {
+        endpoint: '/api/v1/deliverables?project_id=1',
+        status: 'success' as const,
+      },
+      enterpriseMaterials: [],
+      materials: [],
+      onOpenTasks: vi.fn(),
+      project,
+      projectId: '1',
+      taskSummary: {
+        message: '后端尚未返回百分比。',
+        percent: null,
+        status: 'running' as const,
+        title: '成果编制',
+      },
+    };
+    const { rerender } = render(<ProjectOverviewPage {...commonProps} deliverables={[]} />);
+
+    const emptyState = screen.getByRole('status', { name: '成果生成正在执行' });
+    expect(within(emptyState).getByText('进度待更新')).toBeInTheDocument();
+    expect(within(emptyState).queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(within(emptyState).getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
+    expect(emptyState).not.toHaveTextContent('0%');
+
+    rerender(<ProjectOverviewPage {...commonProps} deliverables={overview.deliverables} />);
+    const headerProgress = screen.getByRole('button', { name: '查看任务进度，当前进度待更新' });
+    expect(headerProgress).toHaveTextContent('进度待更新');
+    expect(headerProgress).not.toHaveTextContent('0%');
+  });
+
   it('distinguishes a pending deliverables request from a failed request', () => {
     const baseProps = {
       deliverables: [],

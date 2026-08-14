@@ -42,7 +42,7 @@ type ProjectOverviewPageProps = {
   outcomeReview?: ProjectOutcomeReviewViewModel;
   taskSummary?: {
     message: string;
-    percent: number;
+    percent: number | null;
     status?: ProjectTaskStatus;
     title: string;
   };
@@ -115,6 +115,8 @@ export function ProjectOverviewPage({
 }: ProjectOverviewPageProps) {
   const project = projectOverride;
   const visibleDeliverables = deliverables ?? overview?.deliverables;
+  const taskPercent = taskSummary ? normalizeTaskPercent(taskSummary.percent) : null;
+  const taskProgressLabel = taskPercent === null ? '进度待更新' : `${taskPercent}%`;
 
   if (!project) {
     return (
@@ -167,14 +169,14 @@ export function ProjectOverviewPage({
             />
             {taskSummary && visibleDeliverables && visibleDeliverables.length > 0 ? (
               <button
-                aria-label={`查看任务进度，当前 ${normalizeTaskPercent(taskSummary.percent)}%`}
+                aria-label={`查看任务进度，当前${taskProgressLabel === '进度待更新' ? '' : ' '}${taskProgressLabel}`}
                 className="bv-overview-header-action"
                 type="button"
                 onClick={onOpenTasks}
               >
                 <Clock3 aria-hidden="true" size={17} />
                 查看任务进度
-                <span>{normalizeTaskPercent(taskSummary.percent)}%</span>
+                <span>{taskProgressLabel}</span>
               </button>
             ) : null}
           </div>
@@ -426,7 +428,8 @@ const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
   },
 };
 
-function normalizeTaskPercent(percent: number) {
+function normalizeTaskPercent(percent: number | null) {
+  if (percent === null) return null;
   if (!Number.isFinite(percent)) return null;
   return Math.max(0, Math.min(100, Math.round(percent)));
 }

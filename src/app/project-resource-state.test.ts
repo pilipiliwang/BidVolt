@@ -10,6 +10,9 @@ import {
   isProjectNotFound,
   isReviewScoreUnavailable,
   mergeTaskStreamUpdate,
+  resolveTaskPollingInterval,
+  STREAM_CONVERGENCE_POLL_INTERVAL_MS,
+  TASK_POLL_INTERVAL_MS,
 } from './project-resource-state';
 
 const task = (taskId: string, status: PublicTaskEvent['status']): PublicTaskEvent => ({
@@ -27,6 +30,54 @@ const task = (taskId: string, status: PublicTaskEvent['status']): PublicTaskEven
 });
 
 describe('project resource state', () => {
+  it('keeps low-frequency GET convergence while the active SSE stream is live', () => {
+    expect(resolveTaskPollingInterval({
+      hasActiveBidGenerateTask: true,
+      hasActiveTasks: true,
+      hasOtherActiveTasks: false,
+      localPreviewActive: false,
+      streamMatchesActiveTask: true,
+      streamStatus: 'connected',
+    })).toBe(STREAM_CONVERGENCE_POLL_INTERVAL_MS);
+
+    expect(resolveTaskPollingInterval({
+      hasActiveBidGenerateTask: true,
+      hasActiveTasks: true,
+      hasOtherActiveTasks: false,
+      localPreviewActive: false,
+      streamMatchesActiveTask: true,
+      streamStatus: 'connecting',
+    })).toBe(STREAM_CONVERGENCE_POLL_INTERVAL_MS);
+  });
+
+  it('uses fast polling for fallback or other active tasks and stops without active tasks', () => {
+    const base = {
+      hasActiveBidGenerateTask: true,
+      hasActiveTasks: true,
+      hasOtherActiveTasks: false,
+      localPreviewActive: false,
+      streamMatchesActiveTask: true,
+    } as const;
+
+    expect(resolveTaskPollingInterval({ ...base, streamStatus: 'fallback' }))
+      .toBe(TASK_POLL_INTERVAL_MS);
+    expect(resolveTaskPollingInterval({
+      ...base,
+      hasOtherActiveTasks: true,
+      streamStatus: 'connected',
+    })).toBe(TASK_POLL_INTERVAL_MS);
+    expect(resolveTaskPollingInterval({
+      ...base,
+      hasActiveTasks: false,
+      streamStatus: 'connected',
+    })).toBeNull();
+    expect(resolveTaskPollingInterval({
+      ...base,
+      localPreviewActive: true,
+      streamStatus: 'connected',
+    })).toBeNull();
+  });
+
   it('only treats an explicit backend 404 as a missing project', () => {
     expect(isProjectNotFound(new BackendApiError(404, 'missing'))).toBe(true);
     expect(isProjectNotFound(new BackendApiError(500, 'failed'))).toBe(false);

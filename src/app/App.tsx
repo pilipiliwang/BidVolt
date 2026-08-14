@@ -99,6 +99,7 @@ import {
   isProjectNotFound,
   isReviewScoreUnavailable,
   mergeTaskStreamUpdate,
+  resolveTaskPollingInterval,
   type ProjectResourceErrors,
   type ProjectResourceKey,
 } from './project-resource-state';
@@ -801,15 +802,17 @@ export function App() {
   const hasActiveTasks = routeTaskEvents.some((event) => isActiveTaskStatus(event.status));
   const hasOtherActiveTasks = routeTaskEvents.some((event) =>
     isActiveTaskStatus(event.status) && event.task_id !== activeBidGenerateTaskId);
-  const streamNeedsPollingFallback = Boolean(activeTaskStreamKey
-    && taskStreamConnection.key === activeTaskStreamKey
-    && taskStreamConnection.status === 'fallback');
-  const shouldPollTasks = Boolean(!localPreviewActive
-    && routeProjectId
-    && hasActiveTasks
-    && (!activeBidGenerateTaskId || hasOtherActiveTasks || streamNeedsPollingFallback));
+  const taskPollingIntervalMs = resolveTaskPollingInterval({
+    hasActiveBidGenerateTask: Boolean(activeBidGenerateTaskId),
+    hasActiveTasks,
+    hasOtherActiveTasks,
+    localPreviewActive,
+    streamMatchesActiveTask: Boolean(activeTaskStreamKey
+      && taskStreamConnection.key === activeTaskStreamKey),
+    streamStatus: taskStreamConnection.status,
+  });
   useEffect(() => {
-    if (!routeProjectId || !shouldPollTasks) return undefined;
+    if (!routeProjectId || taskPollingIntervalMs === null) return undefined;
     const timer = window.setInterval(() => {
       const generation = tenantGuardRef.current.capture();
       void refreshTaskEvents(routeProjectId).then((enteredTerminalState) => {
@@ -829,9 +832,9 @@ export function App() {
           setError(error, '任务进度刷新失败');
         }
       });
-    }, 2500);
+    }, taskPollingIntervalMs);
     return () => window.clearInterval(timer);
-  }, [loadProject, refreshTaskEvents, routeProjectId, setError, shouldPollTasks]);
+  }, [loadProject, refreshTaskEvents, routeProjectId, setError, taskPollingIntervalMs]);
 
   const pageMeta = useMemo(() => pageMetadata(route.name), [route.name]);
   useEffect(() => {
@@ -1741,7 +1744,7 @@ export function App() {
           outcomeReview={projectOutcomeReview}
           project={activeProject}
           projectId={route.projectId}
-          taskSummary={latestGenerationTask?.percent !== null && latestGenerationTask?.percent !== undefined ? {
+          taskSummary={latestGenerationTask ? {
             message: latestGenerationTask.public_message,
             percent: latestGenerationTask.percent,
             status: toProjectTaskStatus(latestGenerationTask.status),
