@@ -419,9 +419,10 @@ export function adaptBackendDeliverableCards(
       lift: asString(stat.lift) ?? '—',
       missing: asNumber(stat.missing) ?? asNumber(stat.missing_count),
       tone: deliverableToneByType[deliverable.deliverable_type],
-      versionId: deliverable.current_version_no === undefined
-        ? undefined
-        : String(deliverable.current_version_no),
+      versionId: Number.isInteger(deliverable.current_version_no)
+        && (deliverable.current_version_no ?? 0) > 0
+        ? String(deliverable.current_version_no)
+        : undefined,
     }];
   });
 }

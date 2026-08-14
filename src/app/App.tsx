@@ -15,7 +15,9 @@ import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricin
 import { ProjectListPage } from '../domains/projects/ProjectListPage';
 import {
   ProjectOverviewPage,
+  type DeliverablesRequestView,
   type ProjectOverviewView,
+  type ProjectTaskStatus,
 } from '../domains/projects/ProjectOverviewPage';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
 import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
@@ -146,6 +148,21 @@ async function loadBackendTaskSnapshots(projectId: string) {
 }
 
 const backendApiBaseLabel = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+
+const projectTaskStatuses = new Set<ProjectTaskStatus>([
+  'queued',
+  'running',
+  'retrying',
+  'waiting_user',
+  'succeeded',
+  'failed',
+]);
+
+function toProjectTaskStatus(status: PublicTaskEvent['status']): ProjectTaskStatus | undefined {
+  return projectTaskStatuses.has(status as ProjectTaskStatus)
+    ? status as ProjectTaskStatus
+    : undefined;
+}
 
 const projectResourceLabels: Record<ProjectResourceKey, string> = {
   materials: '项目材料',
@@ -1247,6 +1264,23 @@ export function App() {
   const currentResourceErrorCount = routeProjectId
     ? Object.keys(projectResourceErrors[routeProjectId] ?? {}).length
     : 0;
+  const deliverablesEndpoint = routeProjectId
+    ? `${backendApiBaseLabel.replace(/\/+$/, '')}/deliverables?project_id=${encodeURIComponent(routeProjectId)}`
+    : `${backendApiBaseLabel.replace(/\/+$/, '')}/deliverables`;
+  const deliverablesRequest: DeliverablesRequestView = localPreviewActive
+    ? { endpoint: deliverablesEndpoint, method: 'GET', status: 'idle' }
+    : loadingProjectId === routeProjectId
+      ? { endpoint: deliverablesEndpoint, method: 'GET', status: 'loading' }
+      : routeProjectId && projectResourceErrors[routeProjectId]?.deliverables
+        ? {
+            endpoint: deliverablesEndpoint,
+            errorMessage: projectResourceErrors[routeProjectId]?.deliverables,
+            method: 'GET',
+            status: 'error',
+          }
+        : activeData
+          ? { endpoint: deliverablesEndpoint, method: 'GET', status: 'success' }
+          : { endpoint: deliverablesEndpoint, method: 'GET', status: 'idle' };
   const backendActivityMessage = currentResourceErrorCount > 0
     ? `${pageApiActivity.message} 当前页面另有 ${currentResourceErrorCount} 组业务数据加载失败，相关区域可能保留上次成功数据。`
     : pageApiActivity.message;
@@ -1349,6 +1383,7 @@ export function App() {
       {route.name === 'project-overview' && activeProject ? (
         <ProjectOverviewPage
           deliverables={deliverableCards}
+          deliverablesRequest={deliverablesRequest}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
@@ -1368,6 +1403,7 @@ export function App() {
           taskSummary={latestTask?.percent !== null && latestTask?.percent !== undefined ? {
             message: latestTask.public_message,
             percent: latestTask.percent,
+            status: toProjectTaskStatus(latestTask.status),
             title: taskPhaseLabel(latestTask.phase),
           } : undefined}
         />

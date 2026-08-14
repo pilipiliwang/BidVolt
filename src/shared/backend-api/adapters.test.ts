@@ -246,6 +246,19 @@ describe('backend DTO adapters', () => {
     });
   });
 
+  it('does not expose a backend deliverable without a positive saved version as V0', () => {
+    expect(adaptBackendDeliverableCards([{
+      deliverable_id: 3,
+      project_id: 18,
+      deliverable_type: 2,
+      title: '技术标文件',
+      current_version_no: 0,
+      stat: {},
+    }])).toEqual([
+      expect.objectContaining({ versionId: undefined }),
+    ]);
+  });
+
   it('distinguishes a queued task from a task that is already executing', () => {
     expect(adaptBackendTaskEvent({
       task_id: 22,

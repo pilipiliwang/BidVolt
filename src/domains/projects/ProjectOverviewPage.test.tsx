@@ -105,6 +105,45 @@ describe('ProjectOverviewPage', () => {
     expect(onOpenTasks).toHaveBeenCalledOnce();
   });
 
+  it('distinguishes a pending deliverables request from a failed request', () => {
+    const baseProps = {
+      deliverables: [],
+      enterpriseMaterials: [],
+      materials: [],
+      onOpenTasks: vi.fn(),
+      project,
+      projectId: '1',
+    };
+    const { rerender } = render(
+      <ProjectOverviewPage
+        {...baseProps}
+        deliverablesRequest={{
+          endpoint: '/api/v1/deliverables?project_id=1',
+          status: 'loading',
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '正在调用成果接口' }))
+      .toHaveAttribute('data-request-status', 'loading');
+    expect(screen.getByText('请求进行中')).toBeInTheDocument();
+
+    rerender(
+      <ProjectOverviewPage
+        {...baseProps}
+        deliverablesRequest={{
+          endpoint: '/api/v1/deliverables?project_id=1',
+          errorMessage: '成果版本加载超时',
+          status: 'error',
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '成果接口调用失败' }))
+      .toHaveAttribute('data-request-status', 'error');
+    expect(screen.getByText('成果版本加载超时')).toBeInTheDocument();
+  });
+
   it('routes each preview to its own versioned editor and keeps pricing separate', () => {
     render(
       <ProjectOverviewPage
