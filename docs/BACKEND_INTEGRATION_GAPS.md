@@ -260,25 +260,29 @@
 - 明确提供列表项 summary 或独立 summary 接口，返回材料数、未解决风险数、当前评分、进度所依据的可解释状态。
 - 分页搜索返回准确 `total`，空值语义在 OpenAPI 中明确。
 
-### P1-2：SSE 鉴权与断线续传契约不完整
+### P1-2：SSE 鉴权、事件模型与断线续传契约不完整
 
-**建议 Issue 标题**：`[P1][Tasks] 完善 SSE 浏览器鉴权、事件 ID、心跳和 Last-Event-ID 续传`
+**建议 Issue 标题**：`[P1][Tasks] 规范任务 SSE 的 Bearer 鉴权、事件白名单、心跳与 Last-Event-ID 续传`
 
 **现状**
 
-- `/tasks/{task_id}/stream` 需要 Bearer Token；浏览器原生 `EventSource` 不能自定义 `Authorization` 请求头。
-- 服务器会在连接时先发 snapshot，这可以恢复当前状态；但事件没有 `id:`，服务端不处理 `Last-Event-ID`，因此不能证明中间事件不丢失。
+- `GET /tasks/{task_id}/stream` 需要 Bearer Token；浏览器原生 `EventSource` 不能自定义 `Authorization` 请求头，前端只能用 `fetch` 读取流才能继续使用现有 Bearer 鉴权。
+- 当前事件没有稳定的 `id:`，服务端不处理 `Last-Event-ID`，也没有 heartbeat；代理空闲超时或弱网断开后，客户端无法从确定断点恢复，也无法区分“任务暂无新进度”和“连接已经失活”。
+- progress、状态消息与 completed/failed/interrupted 终态没有统一且版本化的 DTO；事件类型也没有公开白名单，前端只能防御性猜测字段。
+- OpenAPI 把该路径标记为 `application/json`，与实际 SSE 响应不一致，无法生成正确客户端或契约测试。
 
 **前端影响**
 
-前端只能使用 fetch 流式解析或轮询，无法直接获得 EventSource 的自动重连能力；弱网重连时可以得到最终状态，但可能丢失中间进度/提示事件。
+前端现阶段只能把 SSE 作为实时进度加速通道：流中数据可以即时刷新进度，但断线、解析失败或收到终态后仍须调用 `GET /tasks/{task_id}` 收敛到服务端最终状态。若只相信流事件，页面可能长期停在旧进度、遗漏失败原因或把连接中断误判为任务结束。
 
 **建议验收标准**
 
-- 明确一种浏览器可用鉴权方式：推荐短期、单任务、只读 stream token 或同源 HttpOnly 会话；若坚持 fetch stream，给出官方客户端示例和 token 刷新策略。
-- 每个事件包含单调递增 `id`，服务端接受 `Last-Event-ID` 并从可保留的事件点续传；无法续传时明确返回 snapshot/reset 事件。
-- 增加心跳、终态关闭、代理禁止缓冲配置和断线重连测试。
-- 401 时前端能终止流、只执行一次刷新/重连，不产生多个并发流。
+- 明确支持 `Authorization: Bearer <access_token>` 的 fetch-stream 调用，并给出 token 过期后的单次刷新/重连示例；禁止把长期 access token 放入 query string。跨域部署时允许 `Authorization` 与 `Last-Event-ID` 请求头。
+- OpenAPI/接口文档将成功响应声明为 `text/event-stream`，并固定事件白名单，例如 `snapshot`、`progress`、`message`、`completed`、`failed`、`interrupted`、`heartbeat`、`reset`；未知事件必须可安全忽略。
+- 除 heartbeat 外，事件使用统一 envelope，至少包含单调递增的 `id`、`type`、`task_id`、`status`、`progress`、`message`、`occurred_at`；终态补充稳定 `result` 或公开可展示的 `error`，`progress` 的范围和空值语义一致。
+- 服务端按文档化间隔发送 heartbeat，并配置代理禁用缓冲/延长读超时；任务进入终态后发送一次终态事件并正常关闭连接。
+- 服务端在明确的短时保留窗口内接受 `Last-Event-ID` 并重放后续事件；断点已经淘汰时发送包含当前完整状态的 `reset`/`snapshot`，而不是静默从任意位置继续。
+- `GET /tasks/{task_id}` 与 SSE snapshot/终态使用同一状态枚举及字段口径；断线、401 刷新、重复连接、事件重放、保留窗口过期、代理超时和三类终态均有集成测试，最终 GET 结果与终态事件一致。
 
 ### P1-3：写接口的幂等与并发控制需要统一
 
@@ -449,6 +453,53 @@
 - 两个读取能力均做企业和项目归属校验并写入 OpenAPI；空数据返回明确的 0/none 语义，不能要求前端通过调用写接口生成读模型。
 - 集成测试覆盖：无标书为 0、不同文档角色不混计、已有/无校核结果、校核结果过期、跨租户拒绝，以及读取请求没有创建任务或校核记录的副作用。
 
+### P1-13：评分摘要缺少页面可直接消费的真实分项与版本关联
+
+**建议 Issue 标题**：`[P1][Review] 补齐评分摘要 DTO、分项满分、风险计数和冻结版本关联`
+
+**现状**
+
+- “标书成果预览”右侧模拟评标在结果返回后需要展示综合分、商务分、技术分、报价分、否决风险数、缺失材料数和预计可提升分值；这些数值必须来自同一次真实评审，不能由前端按比例拆分或从文案推算。
+- 当前评分相关数据库模型虽存在部分字段，但列表/摘要序列化没有完整暴露，部分评审执行路径也没有填充这些字段。现有响应无法稳定取得各分项的 `score/full_score`、`reject_count`、`missing_count`、`improvable`，也无法把摘要可靠关联到 `score_id`、`review_run_id`、冻结快照和成果版本。
+- 评分摘要没有完整携带 `is_stale` 与版本基线；前端无法判断返回值是不是当前成果版本的有效评分。`is_stale` 的服务端判定规则仍按 P1-8 补齐。
+
+**前端影响**
+
+缺少或未填充的字段只能显示“—”，不得显示 0、正常状态或演示分数。前端也不能把项目资料页的材料识别指标复用成标书成果评审结果；只有与当前成果版本匹配且服务端判定未过期的评分摘要，才能展示“查看提升建议”。
+
+**建议验收标准**
+
+- 提供稳定的最新评分摘要读取能力，或扩展现有 `GET /projects/{project_id}/scores` item；单条摘要至少返回 `score_id`、`review_run_id`、`snapshot_id`、`deliverable_versions`、`is_stale` 和可选 `stale_reasons`。
+- 总分以及商务、技术、报价三个分项均使用明确结构 `{score, full_score}`；同时返回语义和单位固定的 `reject_count`、`missing_count`、`improvable`。数值可空时在 OpenAPI 中声明 nullable，不能用默认 0 掩盖未计算。
+- `deliverable_versions` 至少包含 `deliverable_id`、成果类型和 `version_no`；摘要中的全部指标来自同一个 `review_run_id + snapshot_id`，不得混用不同运行或不同成果版本的最新值。
+- 明确“最新有效摘要”的排序与空数据语义；无评审结果返回空/404 的既定方案，执行中由 ReviewRun/Task 状态表达，不能提前创建一条全 0 的 ScoreRecord 冒充结果。
+- 评审成功事务性写入 ScoreRecord、分项和计数后再进入 succeeded；接口契约测试使用非零且分项不等满分的样本，验证序列化值、总分汇总、ID 关联、版本关联与 stale 计算均一致。
+
+### P1-14：自动评标缺少统一异步执行态、ReviewRun 持久化和结果落库链路
+
+**建议 Issue 标题**：`[P1][Review] 统一 evaluate/bid_review 执行链路并持久化 ReviewRun、进度与 ScoreRecord`
+
+**现状**
+
+- `POST /projects/{project_id}/evaluate` 当前按同步流程执行，页面无法在长时间评标期间取得可持续查询的真实进度。
+- 任务枚举/调用侧存在 `mock_evaluate`，但没有对应 worker handler；提交后无法形成可执行闭环，正式环境也不应暴露名称带 mock 的任务类型。
+- `bid_review` 任务不会稳定产出并关联 ScoreRecord，因此即使任务进入终态，评分摘要接口仍可能返回空列表。
+- ReviewRun 缺少供页面复核的完整时间、进度和公开失败原因；在没有调度统计或 worker 估算依据时，服务端也不能提供可信 ETA。
+
+**前端影响**
+
+页面无法可靠区分“尚未发起”“正在执行”“已成功但结果尚未可读”和“执行失败”，只能一直显示生成中或空白。前端不得制造倒计时、预计完成时间、进度百分比或成功结果来弥补执行链路缺口。
+
+**建议验收标准**
+
+- 收敛到一条正式异步入口：建议 `POST /projects/{project_id}/evaluate` 返回 HTTP 202 与 `{task_id, review_run_id, status}`，由 `bid_review` worker 执行；若保留同步接口，必须使用不同路径并明确超时与适用范围。
+- 删除/禁用无 handler 的 `mock_evaluate`，或只在显式测试环境注册完整 handler；正式 OpenAPI 和任务枚举不得允许提交不可执行任务。
+- ReviewRun 持久化统一状态枚举（至少 `queued/running/succeeded/failed/interrupted`）、`progress`、`queued_at`、`started_at`、`updated_at`、`completed_at`，并关联 `task_id`、Provider、snapshot、成果版本和最终 `score_id`。
+- 失败态返回稳定公开 `error_code` 与脱敏 `error_message`，内部堆栈只写服务端日志并以 `request_id/trace_id` 关联；重试或恢复不得覆盖历史失败记录。
+- ETA 仅在 worker/队列确有可验证估算时返回 `estimated_completed_at` 或 `remaining_seconds`，并注明估算时间；没有依据时返回 null，前端只展示“执行中”和真实进度，不自行倒计时。
+- worker 成功时在同一可靠提交边界内持久化 ScoreRecord、评分项和 ReviewRun→Score 关联，再发布 succeeded；写入失败必须使运行进入 failed 或可重试状态，不能出现“任务成功但永久没有评分”。
+- Task GET、ReviewRun GET、评分摘要和 P1-2 SSE 使用一致状态/进度；集成测试覆盖同步入口迁移、无 handler 拒绝、正常落库、超时/中断/失败、重复幂等提交、结果读取与公开错误脱敏。
+
 ## 5. P2：安全加固与契约一致性
 
 ### P2-1：递增整数 ID 的可枚举性需要持续做 IDOR 防护
@@ -493,7 +544,7 @@
 2. P0-3 上传到资产关联、P0-4 Requirement 修订：保证企业资料和本次项目材料两条数据链路不混写且能持久化。
 3. P0-5 金额/ID 精度、P0-6 报价产品规则：在报价页面正式接入前冻结契约。
 4. P0-7 evidence 与 P0-8 Provider 选择：在外部 Document/Code/API Provider 联调前完成。
-5. P1 项目摘要、SSE、幂等、真实历史报价、文档角色、材料看板只读汇总、stale 状态、编辑版本、OpenAPI Schema、企业分页按页面联调节奏补齐。
+5. P1 项目摘要、SSE、幂等、真实历史报价、文档角色、材料看板只读汇总、评分摘要、自动评标执行态、stale 状态、编辑版本、OpenAPI Schema、企业分页按页面联调节奏补齐。
 6. P2 作为安全与平台一致性专项，但 IDOR 回归应尽早进入 CI。
 
 ## 7. 前端临时行为（后端补齐前）
@@ -501,5 +552,7 @@
 - 可以真实接入：登录/刷新/退出、项目基本 CRUD、双域上传、文件查询、企业资料读取、事实修订、要求读取、快照、任务、成果、编辑会话、评审基本操作、确定性报价。
 - 明确降级：企业名称显示企业 ID 占位；项目 buyer/统计显示“暂无后端数据”；生产页面不把 `mock_history` 合成样本当作真实历史中标数据。
 - 材料页“已上传标书数量”和“待校核内容数量”显示“— / 接口待提供”；不按文件名猜用途，也不为读取看板调用 `POST /check`。
+- 标书成果尚未返回时，根据真实 Task/ReviewRun 状态显示“执行中”；评分摘要缺字段时显示“—”，不把未序列化/未填充字段当 0，也不复用项目材料识别指标。只有真实评分返回后才展示对应分项与“查看提升建议”。
+- `/tasks/{task_id}/stream` 只作为实时进度加速通道；前端使用 Bearer fetch stream，断线或收到终态后通过 `GET /tasks/{task_id}` 做最终状态收敛，不凭本地计时器制造进度或 ETA。
 - 明确禁用持久化假象：Requirement 用户确认/修正保留入口但提示缺接口；企业上传若拿不到 `asset_id`，只刷新资产列表，不用差集猜测后自动 ingest；AI 数字报价入口不接入。
 - 真实接口失败时显示错误和重试，不回退 Mock，不把页面内存修改标记为后端保存成功。
