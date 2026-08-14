@@ -42,7 +42,7 @@ function DrawerHarness({ events = publicEvents }: { events?: PublicTaskEvent[] }
 }
 
 describe('TaskProgressDrawer', () => {
-  it('renders the supplied project and public event display fields without exposing identifiers', () => {
+  it('renders only the public event display fields without the active project summary card', () => {
     render(
       <TaskProgressDrawer
         events={publicEvents}
@@ -52,12 +52,9 @@ describe('TaskProgressDrawer', () => {
       />,
     );
 
-    expect(screen.getByText('海上平台电气设备采购项目')).toBeInTheDocument();
-    expect(screen.getByText('正在核验技术方案中的引用位置')).toBeInTheDocument();
+    expect(screen.queryByText('海上平台电气设备采购项目')).not.toBeInTheDocument();
     expect(screen.getByText('checking')).toBeInTheDocument();
-    expect(screen.getByText('任务当前状态')).toBeInTheDocument();
-    expect(screen.getByText(/每一行代表一个独立任务/)).toBeInTheDocument();
-    expect(screen.getByText('72%')).toBeInTheDocument();
+    expect(screen.getByText('正在核验技术方案中的引用位置')).toBeInTheDocument();
     expect(
       screen.getByText((_, element) => element?.tagName === 'SMALL' && element.textContent?.includes('72%') === true),
     ).toBeInTheDocument();
@@ -66,6 +63,12 @@ describe('TaskProgressDrawer', () => {
     expect(screen.queryByText('project-private-1')).not.toBeInTheDocument();
     expect(screen.queryByText('event-private-1')).not.toBeInTheDocument();
     expect(screen.queryByText('internal-result-1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: '任务进度' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '关闭任务进度' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '任务当前状态' })).toBeInTheDocument();
+    expect(screen.getByText(/每一行代表一个独立任务/)).toBeInTheDocument();
   });
 
   it('shows an empty state when no public events are available', () => {
