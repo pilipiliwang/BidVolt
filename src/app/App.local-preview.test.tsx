@@ -82,7 +82,7 @@ describe('App local read-only preview', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('keeps overview and materials review metrics synchronized from the same project data', async () => {
+  it('keeps outcome scoring separate from the materials status metrics', async () => {
     const user = userEvent.setup();
     const fetchSpy = vi.fn<typeof fetch>();
     vi.stubGlobal('fetch', fetchSpy);
@@ -93,12 +93,8 @@ describe('App local read-only preview', () => {
     let previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
     await user.click(within(previewNavigation).getByRole('link', { name: '项目概览' }));
 
-    const overviewMetrics = await screen.findByRole('list', { name: '模拟评标六项指标' });
-    const overviewMetricSnapshot = within(overviewMetrics).getAllByRole('listitem').map((item) => ({
-      id: item.getAttribute('data-metric-id'),
-      state: item.getAttribute('data-metric-state'),
-      text: item.textContent,
-    }));
+    expect(await screen.findByRole('heading', { name: '评分结果正在同步' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '查看任务进度，当前 0%' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查看任务进度，当前 100%' }))
       .not.toBeInTheDocument();
@@ -122,11 +118,6 @@ describe('App local read-only preview', () => {
 
     const reviewMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
     expect(within(reviewMetrics).getAllByRole('listitem')).toHaveLength(6);
-    expect(within(reviewMetrics).getAllByRole('listitem').map((item) => ({
-      id: item.getAttribute('data-metric-id'),
-      state: item.getAttribute('data-metric-state'),
-      text: item.textContent,
-    }))).toEqual(overviewMetricSnapshot);
     expect(within(reviewMetrics).getByText('已识别评分项').closest('[role="listitem"]'))
       .toHaveTextContent('0项');
     expect(within(reviewMetrics).getByText('商务标状态').closest('[role="listitem"]'))

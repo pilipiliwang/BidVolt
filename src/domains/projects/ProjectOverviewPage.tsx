@@ -4,13 +4,16 @@ import {
   Download,
   Eye,
   FileCheck2,
-  Lightbulb,
 } from 'lucide-react';
 
 import { AppLink, deliverableEditorPath } from '../../app/router';
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import type { ProjectSummary } from './project-view-model';
-import { ProjectReviewSidebar, type ProjectReviewSidebarViewModel } from './ProjectReviewSidebar';
+import {
+  ProjectOutcomeReviewPanel,
+  type ProjectOutcomeReviewViewModel,
+  type ProjectOutcomeScore,
+} from './ProjectOutcomeReviewPanel';
 import {
   ProjectWorkbench,
   ResultCover,
@@ -30,12 +33,13 @@ type ProjectOverviewPageProps = {
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
+  onOpenImprovementSuggestions?: () => void;
   onOpenTasks: () => void;
   onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
   projectId: string;
-  reviewSidebar?: ProjectReviewSidebarViewModel;
+  outcomeReview?: ProjectOutcomeReviewViewModel;
   taskSummary?: {
     message: string;
     percent: number;
@@ -83,15 +87,7 @@ export type ProjectOverviewVersionOption = {
 
 export type ProjectOverviewView = {
   deliverables: ProjectDeliverableView[];
-  score: {
-    business?: number;
-    estimatedLift?: number;
-    missingMaterials: number;
-    pricing?: number;
-    rejectionRisks?: number;
-    technical?: number;
-    total: number;
-  };
+  score: ProjectOutcomeScore;
 };
 
 export function ProjectOverviewPage({
@@ -105,12 +101,13 @@ export function ProjectOverviewPage({
   onAddFiles,
   onAssistantAddFiles,
   onAssistantSend,
+  onOpenImprovementSuggestions,
   onOpenTasks,
   onSelectVersion,
   overview,
   project: projectOverride,
   projectId,
-  reviewSidebar,
+  outcomeReview,
   taskSummary,
   versionOptions,
   downloadHrefFor,
@@ -145,7 +142,13 @@ export function ProjectOverviewPage({
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
       workspaceNavigation={<ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />}
-      rightRail={<ProjectReviewSidebar viewModel={reviewSidebar} />}
+      rightRail={(
+        <ProjectOutcomeReviewPanel
+          onOpenImprovementSuggestions={onOpenImprovementSuggestions}
+          onOpenTasks={onOpenTasks}
+          viewModel={outcomeReview}
+        />
+      )}
     >
       <section className="bv-deliverables" aria-labelledby="deliverables-title">
         <h2 className="bv-visually-hidden">{project.title}</h2>
@@ -162,10 +165,6 @@ export function ProjectOverviewPage({
               onSelectVersion={onSelectVersion}
               options={versionOptions}
             />
-            <AppLink className="bv-overview-header-action" to={`/projects/${projectId}/review`}>
-              <Lightbulb aria-hidden="true" size={17} />
-              查看提升建议
-            </AppLink>
             {taskSummary && visibleDeliverables && visibleDeliverables.length > 0 ? (
               <button
                 aria-label={`查看任务进度，当前 ${normalizeTaskPercent(taskSummary.percent)}%`}

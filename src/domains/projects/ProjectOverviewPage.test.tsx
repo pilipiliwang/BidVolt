@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { buildProjectOutcomeReviewViewModel } from './ProjectOutcomeReviewPanel';
 import { ProjectOverviewPage, type ProjectOverviewView } from './ProjectOverviewPage';
 import type { ProjectSummary } from './project-view-model';
 
@@ -55,8 +56,8 @@ describe('ProjectOverviewPage', () => {
 
     expect(screen.queryByRole('link', { name: '打开项目材料' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '报价分析' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '查看提升建议' }))
-      .toHaveAttribute('href', '/projects/BV-2026-018/review');
+    expect(screen.queryByRole('link', { name: '查看提升建议' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看提升建议' })).not.toBeInTheDocument();
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
     expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' })).toHaveAttribute(
       'href', '/projects/BV-2026-018/materials',
@@ -76,11 +77,8 @@ describe('ProjectOverviewPage', () => {
 
     expect(screen.getByText('当前暂无标书成果')).toBeInTheDocument();
     expect(screen.getByText('尚未发现成果生成任务，请完成材料准备后发起成果生成。')).toBeInTheDocument();
-    const reviewMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
-    expect(within(reviewMetrics).getAllByRole('listitem')).toHaveLength(6);
-    expect(within(reviewMetrics).getByText('已识别评分项').closest('[role="listitem"]'))
-      .toHaveTextContent('0项');
-    expect(screen.queryByText('暂无模拟得分')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '尚无模拟评标结果' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
     const emptyState = screen.getByText('当前暂无标书成果').closest<HTMLElement>('.bv-overview-empty');
     expect(emptyState).not.toBeNull();
     expect(within(emptyState!).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
@@ -226,6 +224,7 @@ describe('ProjectOverviewPage', () => {
   it('routes each preview to its own versioned editor and selects only real versions', async () => {
     const user = userEvent.setup();
     const onSelectVersion = vi.fn();
+    const onOpenImprovementSuggestions = vi.fn();
     const versionOptions = [
       { deliverableId: 'business' as const, title: '商务标文件', versionId: 'business-v8', isCurrent: true },
       { deliverableId: 'technical' as const, title: '技术标文件', versionId: 'technical-v6' },
@@ -236,8 +235,10 @@ describe('ProjectOverviewPage', () => {
         enterpriseMaterials={[]}
         materials={[]}
         onOpenTasks={vi.fn()}
+        onOpenImprovementSuggestions={onOpenImprovementSuggestions}
         onSelectVersion={onSelectVersion}
         overview={overview}
+        outcomeReview={buildProjectOutcomeReviewViewModel({ score: overview.score })}
         project={project}
         projectId="BV-2026-018"
         versionOptions={versionOptions}
@@ -268,6 +269,9 @@ describe('ProjectOverviewPage', () => {
 
     await user.selectOptions(versionSelect, 'technical:technical-v6');
     expect(onSelectVersion).toHaveBeenCalledWith(versionOptions[1]);
+
+    await user.click(screen.getByRole('button', { name: '查看提升建议' }));
+    expect(onOpenImprovementSuggestions).toHaveBeenCalledOnce();
   });
 
   it('keeps the task progress entry available when results already exist', async () => {
@@ -317,7 +321,7 @@ describe('ProjectOverviewPage', () => {
     expect(within(emptyState).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
   });
 
-  it('shows truthful shared review states and disables download without a version', () => {
+  it('shows truthful outcome scores and disables download without a version', () => {
     const unknownOverview: ProjectOverviewView = {
       deliverables: [{
         id: 'technical', title: '技术标文件', words: '—', score: '待评审', lift: '—',
@@ -332,6 +336,7 @@ describe('ProjectOverviewPage', () => {
         onDownloadDeliverable={vi.fn()}
         onOpenTasks={vi.fn()}
         overview={unknownOverview}
+        outcomeReview={buildProjectOutcomeReviewViewModel({ score: unknownOverview.score })}
         project={project}
         projectId="BV-2026-018"
       />,
@@ -342,12 +347,10 @@ describe('ProjectOverviewPage', () => {
     expect(within(card!).getByText('总页数').parentElement).toHaveTextContent('总页数—');
     expect(within(card!).getByText('缺资料份数').parentElement).toHaveTextContent('缺资料份数—');
     expect(screen.getByRole('button', { name: '技术标文件尚无可下载版本' })).toBeDisabled();
-    const reviewMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
-    for (const label of ['商务标状态', '技术标状态', '报价单状态']) {
-      expect(within(reviewMetrics).getByText(label).closest('[role="listitem"]'))
-        .toHaveTextContent('未生成暂无有效成果版本');
-    }
-    expect(within(reviewMetrics).getAllByText('接口待提供')).toHaveLength(2);
-    expect(screen.queryByText('商务分')).not.toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
+    const reviewMetrics = screen.getByRole('group', { name: '标书成果模拟评标分项' });
+    expect(within(reviewMetrics).getByText('商务分').parentElement).toHaveTextContent('—');
+    expect(within(reviewMetrics).getByText('缺失材料数').parentElement).toHaveTextContent('0 项');
+    expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
   });
 });

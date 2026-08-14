@@ -26,6 +26,7 @@ import {
   type ProjectTaskStatus,
 } from '../domains/projects/ProjectOverviewPage';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
+import { buildProjectOutcomeReviewViewModel } from '../domains/projects/ProjectOutcomeReviewPanel';
 import { buildProjectReviewSidebarViewModel } from '../domains/projects/ProjectReviewSidebar';
 import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
 import { ReviewCenter } from '../domains/review/ReviewCenter';
@@ -1390,6 +1391,16 @@ export function App() {
         ? 'error'
         : 'ready',
   });
+  const projectOutcomeReview = buildProjectOutcomeReviewViewModel({
+    reviewRunStatus: activeData?.reviewRun.status,
+    reviewSourceState: !activeData || loadingProjectId === routeProjectId
+      ? 'loading'
+      : routeProjectId && projectResourceErrors[routeProjectId]?.review
+        ? 'error'
+        : 'ready',
+    score: activeData?.overview?.score,
+    tasks: taskEvents,
+  });
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
   const deliverableVersionOptions = activeData
     ? buildProjectOverviewVersionOptions(
@@ -1546,6 +1557,7 @@ export function App() {
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id, item.versionId).catch((error) => setError(error, '成果下载失败'))}
+          onOpenImprovementSuggestions={() => navigate(`/projects/${encodeURIComponent(route.projectId)}/review`)}
           onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
           onSelectVersion={(option) => navigate(deliverableEditorPath(
             route.projectId,
@@ -1553,9 +1565,9 @@ export function App() {
             option.versionId,
           ))}
           overview={activeData?.overview}
+          outcomeReview={projectOutcomeReview}
           project={activeProject}
           projectId={route.projectId}
-          reviewSidebar={projectReviewSidebar}
           taskSummary={latestGenerationTask?.percent !== null && latestGenerationTask?.percent !== undefined ? {
             message: latestGenerationTask.public_message,
             percent: latestGenerationTask.percent,

@@ -7,6 +7,7 @@ import {
   ProjectReviewSidebar,
   type ProjectReviewSidebarViewModel,
 } from './ProjectReviewSidebar';
+import { buildProjectOutcomeReviewViewModel } from './ProjectOutcomeReviewPanel';
 import { ProjectOverviewPage, type ProjectOverviewView } from './ProjectOverviewPage';
 import type { ProjectSummary } from './project-view-model';
 
@@ -147,7 +148,7 @@ describe('ProjectReviewSidebar', () => {
     }
   });
 
-  it('renders identical values and states on overview and materials after project data updates', () => {
+  it('keeps the materials six-card model separate from outcome scoring on overview', () => {
     const active = activeGenerationViewModel();
     const overviewRender = render(
       <ProjectOverviewPage
@@ -155,9 +156,9 @@ describe('ProjectReviewSidebar', () => {
         materials={[]}
         onOpenTasks={vi.fn()}
         overview={scoreOnlyOverview}
+        outcomeReview={buildProjectOutcomeReviewViewModel({ score: scoreOnlyOverview.score })}
         project={project}
         projectId={project.id}
-        reviewSidebar={active}
       />,
     );
     const materialsRender = render(
@@ -172,22 +173,15 @@ describe('ProjectReviewSidebar', () => {
       />,
     );
 
-    expect(snapshotReviewMetrics(overviewRender.container))
-      .toEqual(snapshotReviewMetrics(materialsRender.container));
-    expect(within(overviewRender.container).queryByText('商务分')).not.toBeInTheDocument();
+    expect(within(overviewRender.container).queryByRole('list', { name: '模拟评标六项指标' }))
+      .not.toBeInTheDocument();
+    const outcomeMetrics = within(overviewRender.container)
+      .getByRole('group', { name: '标书成果模拟评标分项' });
+    expect(within(outcomeMetrics).getByText('商务分').parentElement).toHaveTextContent('30 分');
+    expect(snapshotReviewMetrics(materialsRender.container).map((metric) => metric.id))
+      .toEqual(active.metrics.map((metric) => metric.id));
 
     const reloaded = terminalReloadViewModel();
-    overviewRender.rerender(
-      <ProjectOverviewPage
-        enterpriseMaterials={[]}
-        materials={[]}
-        onOpenTasks={vi.fn()}
-        overview={scoreOnlyOverview}
-        project={project}
-        projectId={project.id}
-        reviewSidebar={reloaded}
-      />,
-    );
     materialsRender.rerender(
       <ProjectMaterialsPage
         materials={[]}
@@ -200,13 +194,12 @@ describe('ProjectReviewSidebar', () => {
       />,
     );
 
-    const overviewReloaded = snapshotReviewMetrics(overviewRender.container);
-    expect(overviewReloaded).toEqual(snapshotReviewMetrics(materialsRender.container));
-    expect(overviewReloaded.find((metric) => metric.id === 'technical')).toMatchObject({
+    const materialReloaded = snapshotReviewMetrics(materialsRender.container);
+    expect(materialReloaded.find((metric) => metric.id === 'technical')).toMatchObject({
       state: 'generated',
       text: '技术标状态已生成当前版本 V6',
     });
-    expect(overviewReloaded.find((metric) => metric.id === 'quote')).toMatchObject({
+    expect(materialReloaded.find((metric) => metric.id === 'quote')).toMatchObject({
       state: 'missing',
       text: '报价单状态未生成暂无有效成果版本',
     });
