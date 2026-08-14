@@ -62,4 +62,10 @@ describe('LoginPage', () => {
     expect(onOpenLocalPreview).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/localhost 开发模式可见/)).toBeInTheDocument();
   });
+
+  it('disables the local preview entry while its payload is loading', () => {
+    render(<LoginPage isSubmitting localPreviewAvailable onOpenLocalPreview={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: '正在打开只读预览…' })).toBeDisabled();
+  });
 });

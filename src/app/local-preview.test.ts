@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canUseLocalPreview, localPreviewWriteError } from './local-preview';
+import { canUseLocalPreview, localPreviewWriteError } from './local-preview-gate';
 
 describe('local preview safety gate', () => {
   it.each(['localhost', '127.0.0.1', '::1', '[::1]'])('allows development local-preview mode on %s', (hostname) => {

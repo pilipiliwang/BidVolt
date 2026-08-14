@@ -31,7 +31,7 @@ type LoginPageProps = {
   isSubmitting?: boolean;
   localPreviewAvailable?: boolean;
   onLogin?: (credentials: LoginCredentials) => void | Promise<void>;
-  onOpenLocalPreview?: () => void;
+  onOpenLocalPreview?: () => void | Promise<void>;
   onRegister?: (credentials: RegisterCredentials) => void | Promise<void>;
 };
 
@@ -280,7 +280,13 @@ export function LoginPage({
           {mode === 'login' && localPreviewAvailable && onOpenLocalPreview ? (
             <section className="login0802__local-preview" aria-label="本地只读预览入口">
               <p><strong>后端不可用？</strong>可以进入本地只读界面预览。</p>
-              <button type="button" onClick={onOpenLocalPreview}>进入本地只读预览</button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => void onOpenLocalPreview()}
+              >
+                {isSubmitting ? '正在打开只读预览…' : '进入本地只读预览'}
+              </button>
               <small>仅 localhost 开发模式可见；不连接真实后端，不会提交任何数据。</small>
             </section>
           ) : null}

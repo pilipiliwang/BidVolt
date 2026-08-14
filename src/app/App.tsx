@@ -82,25 +82,15 @@ import { createEmptyTenantDomainState, createTenantGenerationGuard } from './ten
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
 import { createEditorSaveGate } from './editor-save-gate';
 import {
-  getLocalPreviewEditor,
   isLocalPreviewAvailable,
-  LOCAL_PREVIEW_PROJECT_ID,
-  localPreviewDeliverables,
-  localPreviewEnterpriseAssets,
-  localPreviewHistoryRecords,
-  localPreviewIngestions,
-  localPreviewMaterials,
-  localPreviewProject,
-  localPreviewProviders,
-  localPreviewQuote,
-  localPreviewQuoteSamples,
-  localPreviewRequirements,
-  localPreviewReview,
-  localPreviewSession,
-  localPreviewSnapshots,
-  localPreviewTasks,
   localPreviewWriteError,
-} from './local-preview';
+} from './local-preview-gate';
+
+type LocalPreviewPayload = typeof import('./local-preview');
+
+const loadLocalPreviewPayload = import.meta.env.DEV
+  ? () => import('./local-preview')
+  : undefined;
 
 type ProjectData = {
   deliverables: Deliverable[];
@@ -167,6 +157,7 @@ export function App() {
   const routeProjectId = 'projectId' in route ? route.projectId : undefined;
   const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking');
   const [localPreviewActive, setLocalPreviewActive] = useState(false);
+  const [localPreviewProjectId, setLocalPreviewProjectId] = useState<string | null>(null);
   const [session, setSession] = useState<AppSession | null>(null);
   const [loginError, setLoginError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
@@ -193,6 +184,8 @@ export function App() {
   const projectLoadGenerationRef = useRef(0);
   const projectResourceGenerationRef = useRef<Record<string, number>>({});
   const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
+  const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
+  const localPreviewLoadRef = useRef(false);
   const routeProjectIdRef = useRef(routeProjectId);
   routeProjectIdRef.current = routeProjectId;
   activeEditorRef.current = editor;
@@ -207,6 +200,8 @@ export function App() {
     setEnterpriseAssets(empty.enterpriseAssets);
     setEnterpriseIngestions(empty.enterpriseIngestions);
     setReviewProviders(empty.reviewProviders);
+    setLocalPreviewProjectId(null);
+    localPreviewPayloadRef.current = null;
     setTaskDrawerProjectId(empty.taskDrawerProjectId);
     setSnapshotDetail(empty.snapshotDetail);
     setEditor(empty.editor);
@@ -597,41 +592,63 @@ export function App() {
     return error;
   };
 
-  const handleOpenLocalPreview = () => {
-    if (!isLocalPreviewAvailable()) {
+  const handleOpenLocalPreview = async () => {
+    if (localPreviewLoadRef.current) return;
+    if (!isLocalPreviewAvailable() || !loadLocalPreviewPayload) {
       setLoginError('本地预览仅能在 localhost 的 local-preview 开发模式中使用。');
+      return;
+    }
+    localPreviewLoadRef.current = true;
+    setAuthSubmitting(true);
+    setLoginError('');
+    let preview: LocalPreviewPayload;
+    try {
+      preview = await loadLocalPreviewPayload();
+    } catch {
+      setLoginError('本地只读预览快照加载失败，请重新启动开发服务。');
+      setAuthSubmitting(false);
+      localPreviewLoadRef.current = false;
+      return;
+    }
+    if (!isLocalPreviewAvailable()) {
+      setAuthSubmitting(false);
+      localPreviewLoadRef.current = false;
       return;
     }
     clearBackendSession();
     clearTenantDomainState();
-    taskEventsRef.current[LOCAL_PREVIEW_PROJECT_ID] = localPreviewTasks;
+    localPreviewPayloadRef.current = preview;
+    setLocalPreviewProjectId(preview.LOCAL_PREVIEW_PROJECT_ID);
+    taskEventsRef.current[preview.LOCAL_PREVIEW_PROJECT_ID] = preview.localPreviewTasks;
     setLocalPreviewActive(true);
-    setSession(localPreviewSession);
-    setProjects([localPreviewProject]);
+    setSession(preview.localPreviewSession);
+    setProjects([preview.localPreviewProject]);
     setProjectsTotal(1);
-    setEnterpriseAssets(localPreviewEnterpriseAssets);
-    setEnterpriseIngestions(localPreviewIngestions);
-    setReviewProviders(localPreviewProviders);
+    setEnterpriseAssets(preview.localPreviewEnterpriseAssets);
+    setEnterpriseIngestions(preview.localPreviewIngestions);
+    setReviewProviders(preview.localPreviewProviders);
     setHistory({
-      records: localPreviewHistoryRecords,
-      samples: localPreviewQuoteSamples,
-      total: localPreviewHistoryRecords.length,
+      records: preview.localPreviewHistoryRecords,
+      samples: preview.localPreviewQuoteSamples,
+      total: preview.localPreviewHistoryRecords.length,
     });
     setProjectData({
-      [LOCAL_PREVIEW_PROJECT_ID]: {
-        deliverables: localPreviewDeliverables,
-        historyRecords: localPreviewHistoryRecords,
-        materials: localPreviewMaterials,
-        quote: localPreviewQuote,
-        quoteSamples: localPreviewQuoteSamples,
-        requirements: localPreviewRequirements,
-        reviewRun: localPreviewReview,
-        snapshots: localPreviewSnapshots,
-        tasks: localPreviewTasks,
+      [preview.LOCAL_PREVIEW_PROJECT_ID]: {
+        deliverables: preview.localPreviewDeliverables,
+        historyRecords: preview.localPreviewHistoryRecords,
+        materials: preview.localPreviewMaterials,
+        quote: preview.localPreviewQuote,
+        quoteSamples: preview.localPreviewQuoteSamples,
+        requirements: preview.localPreviewRequirements,
+        reviewRun: preview.localPreviewReview,
+        snapshots: preview.localPreviewSnapshots,
+        tasks: preview.localPreviewTasks,
       },
     });
     setStatusMessage(null);
     setAuthState('authenticated');
+    setAuthSubmitting(false);
+    localPreviewLoadRef.current = false;
     navigate('/projects', { replace: true });
   };
 
@@ -1005,7 +1022,7 @@ export function App() {
     if (editorLoadKeyRef.current === editorKey) return;
     editorLoadKeyRef.current = editorKey;
     if (localPreviewActive) {
-      setEditor(getLocalPreviewEditor(route.deliverableId, route.versionId) ?? null);
+      setEditor(localPreviewPayloadRef.current?.getLocalPreviewEditor(route.deliverableId, route.versionId) ?? null);
       return;
     }
     const generation = tenantGuardRef.current.capture();
@@ -1148,7 +1165,7 @@ export function App() {
       taskCount={activeTaskCount}
       user={session.user}
     >
-      {localPreviewActive ? (
+      {localPreviewActive && localPreviewProjectId ? (
         <aside className="local-preview-banner" aria-label="本地只读预览状态">
           <div>
             <strong>本地只读预览 · 无真实后端</strong>
@@ -1156,11 +1173,11 @@ export function App() {
           </div>
           <nav aria-label="预览页面快速导航">
             <AppLink to="/projects">项目列表</AppLink>
-            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/overview`}>项目概览</AppLink>
-            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/materials`}>招标材料</AppLink>
-            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/review`}>评审中心</AppLink>
-            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/pricing`}>报价测算</AppLink>
-            <AppLink to={`/projects/${LOCAL_PREVIEW_PROJECT_ID}/deliverables/technical/versions/3`}>成果编辑器</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/overview`}>项目概览</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/materials`}>招标材料</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/review`}>评审中心</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/pricing`}>报价测算</AppLink>
+            <AppLink to={`/projects/${localPreviewProjectId}/deliverables/technical/versions/latest`}>成果编辑器</AppLink>
             <AppLink to="/enterprise-assets">企业资料</AppLink>
             <AppLink to="/history-prices">历史报价</AppLink>
           </nav>
