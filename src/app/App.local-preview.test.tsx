@@ -100,6 +100,10 @@ describe('App local read-only preview', () => {
     expect(screen.getByLabelText('添加当前项目文件')).toBeInTheDocument();
     expect(screen.getByText('上传企业资料')).toBeInTheDocument();
     expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     expect(screen.queryByText('已有成果编制任务正在排队')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
 

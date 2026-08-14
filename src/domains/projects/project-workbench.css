@@ -34,8 +34,11 @@
 }
 
 .bv-source-rail {
+  display: flex;
   grid-row: 1 / 3;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
   padding: 16px 17px 18px;
 }
 
@@ -47,6 +50,7 @@
   min-height: 48px;
   padding: 0 2px 14px;
   border-bottom: 1px solid #e8edf2;
+  flex: 0 0 auto;
 }
 
 .bv-source-rail__header > span {
@@ -80,11 +84,81 @@
   white-space: nowrap;
 }
 
+.bv-source-rail__folders {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  flex: 1 1 auto;
+  gap: 3px;
+  padding: 10px 0 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.bv-source-folder {
+  display: grid;
+  min-width: 0;
+}
+
+.bv-source-folder__toggle {
+  display: grid;
+  width: 100%;
+  min-height: 36px;
+  grid-template-columns: 15px 19px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: 7px;
+  color: #26384f;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bv-source-folder__toggle:hover,
+.bv-source-folder__toggle[aria-expanded='true'] { background: #f1f8f4; }
+
+.bv-source-folder__toggle:focus-visible {
+  outline: 3px solid rgb(0 154 85 / 20%);
+  outline-offset: 1px;
+}
+
+.bv-source-folder__toggle > svg:nth-of-type(2) { color: var(--bv-green); }
+
+.bv-source-folder__chevron {
+  color: #718096;
+  transition: transform 150ms ease;
+}
+
+.bv-source-folder__toggle[aria-expanded='true'] .bv-source-folder__chevron {
+  transform: rotate(90deg);
+}
+
+.bv-source-folder__toggle > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bv-source-folder__toggle > small {
+  min-width: 21px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #596a7d;
+  background: #eaf0ed;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .bv-source-rail__files {
   display: grid;
   gap: 0;
   margin: 0;
-  padding: 12px 0 4px;
+  padding: 2px 0 5px 22px;
   list-style: none;
 }
 
@@ -118,8 +192,8 @@
 }
 
 .bv-source-rail__empty {
-  margin: 14px 0 0;
-  padding: 18px 10px;
+  margin: 3px 0 5px 22px;
+  padding: 12px 8px;
   border: 1px dashed #d7e1e9;
   border-radius: 9px;
   color: #758195;
@@ -157,6 +231,7 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .bv-source-rail__upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -208,6 +283,7 @@
 
 .bv-project-workspace--content .bv-source-rail__files li,
 .bv-project-workspace--content .bv-source-rail__files small { font-size: 14px; }
+.bv-project-workspace--content .bv-source-folder__toggle { font-size: 15px; }
 .bv-project-workspace--content .bv-source-rail__empty { font-size: 13px; }
 .bv-project-workspace--content .bv-source-rail__upload,
 .bv-project-workspace--content .bv-project-chat button,

@@ -2,7 +2,11 @@ import type { HistoricalQuoteRecord } from '../domains/history/types';
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
 import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
-import type { EnterpriseAsset, EnterpriseIngestionItem } from '../features/enterprise-assets';
+import type {
+  EnterpriseAsset,
+  EnterpriseAssetCategoryFolder,
+  EnterpriseIngestionItem,
+} from '../features/enterprise-assets';
 import type { ProjectMaterial, ProjectRequirement, ProjectSnapshot } from '../features/project-materials';
 import type { PublicTaskEvent } from '../shared/task-events';
 import type { Deliverable, DeliverableContent } from '../shared/backend-api';
@@ -221,6 +225,8 @@ export const localPreviewEnterpriseAssets: EnterpriseAsset[] = [{
   id: 'preview-enterprise-asset-1',
   name: '营业执照界面预览.pdf',
   category: 'license',
+  categoryId: 'preview-license',
+  categoryLabel: '企业证照',
   classificationConfidence: 0.96,
   status: 'needs_review',
   updatedAt: '2026-08-14 08:30',
@@ -243,6 +249,12 @@ export const localPreviewEnterpriseAssets: EnterpriseAsset[] = [{
     changeNote: '仅展示版本追溯界面，未写入企业资料库。',
     isCurrent: true,
   }],
+}];
+
+export const localPreviewEnterpriseCategories: EnterpriseAssetCategoryFolder[] = [{
+  id: 'preview-license',
+  label: '企业证照',
+  parentId: null,
 }];
 
 export const localPreviewIngestions: EnterpriseIngestionItem[] = [{

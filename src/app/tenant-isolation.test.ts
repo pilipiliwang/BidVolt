@@ -23,6 +23,7 @@ describe('tenant state isolation', () => {
     expect(second).toEqual({
       editor: null,
       enterpriseAssets: [],
+      enterpriseCategories: [],
       enterpriseIngestions: [],
       history: { records: [], samples: [], total: 0 },
       loadingProjectId: null,

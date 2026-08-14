@@ -12,6 +12,7 @@ import {
   deliverableEditorPath,
   type DeliverableRouteId,
 } from '../../app/router';
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import type { ProjectSummary } from '../projects/project-view-model';
 import {
   ProjectWorkbench,
@@ -25,6 +26,8 @@ import './office-mock-editor.css';
 type DeliverableEditorPageProps = {
   deliverableId: DeliverableRouteId;
   draftScopeId: string;
+  enterpriseCategories?: EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
@@ -71,6 +74,8 @@ const MAX_QUOTE_TEXT_LENGTH = 500;
 export function DeliverableEditorPage({
   deliverableId,
   draftScopeId,
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
@@ -182,6 +187,8 @@ export function DeliverableEditorPage({
       <ProjectWorkbench
         assistantDraft={assistantDraft}
         assistantFocusRequest={assistantFocusRequest}
+        enterpriseCategories={enterpriseCategories}
+        enterpriseLibraryKey={enterpriseLibraryKey}
         enterpriseMaterials={enterpriseMaterials}
         footerHint="请输入您的问题，如“检查当前成果中仍需人工确认的内容”"
         materials={materials}

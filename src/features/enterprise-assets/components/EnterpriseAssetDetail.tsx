@@ -3,17 +3,6 @@ import { useState, type FormEvent } from 'react';
 
 import type { EnterpriseAsset, EnterpriseFact } from '../types';
 
-const categoryLabel = {
-  license: '企业证照',
-  qualification: '企业资质',
-  performance: '项目业绩',
-  personnel: '人员资料',
-  product: '产品参数',
-  inspection: '检测报告',
-  finance: '财务资料',
-  other: '其他资料',
-} as const;
-
 const statusLabel = {
   processing: '处理中',
   needs_review: '需要确认',
@@ -144,7 +133,7 @@ export function EnterpriseAssetDetail({
       <header className="enterprise-detail__header">
         <div>
           <div className="enterprise-detail__tags">
-            <span className="enterprise-chip">{categoryLabel[asset.category]}</span>
+            <span className="enterprise-chip">{asset.categoryLabel}</span>
             <span className={`enterprise-status enterprise-status--${asset.status}`}>
               {statusLabel[asset.status]}
             </span>

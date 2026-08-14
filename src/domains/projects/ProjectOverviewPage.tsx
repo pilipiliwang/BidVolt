@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { AppLink, deliverableEditorPath } from '../../app/router';
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import type { ProjectSummary } from './project-view-model';
 import {
   ProjectWorkbench,
@@ -23,6 +24,8 @@ import './project-overview-0802.css';
 type ProjectOverviewPageProps = {
   deliverables?: ProjectDeliverableView[];
   deliverablesRequest?: DeliverablesRequestView;
+  enterpriseCategories?: EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
@@ -95,6 +98,8 @@ export type ProjectOverviewView = {
 export function ProjectOverviewPage({
   deliverables,
   deliverablesRequest,
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
@@ -129,6 +134,8 @@ export function ProjectOverviewPage({
 
   return (
     <ProjectWorkbench
+      enterpriseCategories={enterpriseCategories}
+      enterpriseLibraryKey={enterpriseLibraryKey}
       enterpriseMaterials={enterpriseMaterials}
       heightMode="content"
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"

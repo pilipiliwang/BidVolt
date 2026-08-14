@@ -9,6 +9,7 @@ import type {
 } from './types';
 import {
   adaptBackendEnterpriseAsset,
+  adaptBackendEnterpriseCategories,
   adaptBackendDeliverableCards,
   adaptBackendFile,
   adaptBackendHistorySamples,
@@ -177,7 +178,12 @@ describe('backend DTO adapters', () => {
       [{ category_id: 1, name: '证照', parent_id: null }],
     );
 
-    expect(result).toMatchObject({ category: 'license', status: 'needs_review' });
+    expect(result).toMatchObject({
+      category: 'license',
+      categoryId: '1',
+      categoryLabel: '证照',
+      status: 'needs_review',
+    });
     expect(result.facts[0]).toMatchObject({
       id: '81',
       key: '81',
@@ -186,6 +192,17 @@ describe('backend DTO adapters', () => {
       needsReview: true,
     });
     expect(result.revisions[0]).toMatchObject({ isCurrent: true, createdBy: '用户 #3' });
+  });
+
+  it('keeps backend enterprise category ids, labels, and hierarchy without mock folders', () => {
+    expect(adaptBackendEnterpriseCategories([
+      { category_id: 10, name: ' 企业证照 ', parent_id: null },
+      { category_id: 11, name: '安全许可证', parent_id: 10 },
+      { category_id: 11, name: '重复分类不会覆盖', parent_id: null },
+    ])).toEqual([
+      { id: '10', label: '企业证照', parentId: null },
+      { id: '11', label: '安全许可证', parentId: '10' },
+    ]);
   });
 
   it('adapts requirement coordinates but marks confirmation as unavailable', () => {

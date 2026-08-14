@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import {
   ProjectChatBar,
   ProjectSourceRail,
@@ -25,13 +26,40 @@ const projectMaterials: WorkspaceMaterial[] = [
 ];
 
 const enterpriseMaterials: WorkspaceMaterial[] = [
-  { id: 'enterprise-1', name: '企业营业执照.pdf', status: '可复用', tone: 'green' },
+  {
+    categoryId: 'license',
+    id: 'enterprise-1',
+    name: '企业营业执照.pdf',
+    status: '可复用',
+    tone: 'green',
+  },
+  {
+    categoryId: 'performance',
+    id: 'enterprise-2',
+    name: '近三年业绩.xlsx',
+    status: '可复用',
+    tone: 'green',
+  },
+  {
+    categoryId: 'removed-backend-category',
+    id: 'enterprise-uncategorized',
+    name: '待归类资料.pdf',
+    status: '待确认',
+    tone: 'orange',
+  },
+];
+
+const enterpriseCategories: EnterpriseAssetCategoryFolder[] = [
+  { id: 'license', label: '企业证照', parentId: null },
+  { id: 'performance', label: '企业业绩', parentId: null },
+  { id: 'inspection', label: '检测报告', parentId: null },
 ];
 
 describe('ProjectWorkbench', () => {
   it('keeps the viewport-filling layout by default for editor pages', () => {
     render(
       <ProjectWorkbench
+        enterpriseCategories={enterpriseCategories}
         enterpriseMaterials={[]}
         materials={[]}
         rightRail={<div>Review</div>}
@@ -51,6 +79,7 @@ describe('ProjectWorkbench', () => {
     const onAssistantAddFiles = vi.fn();
     render(
       <ProjectWorkbench
+        enterpriseCategories={enterpriseCategories}
         enterpriseMaterials={[]}
         materials={projectMaterials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
@@ -83,18 +112,100 @@ describe('ProjectSourceRail', () => {
     expect(projectWorkbenchCss).not.toContain('.bv-source-rail__tabs');
   });
 
-  it('renders enterprise data as a card heading without source tabs or project materials', () => {
-    render(<ProjectSourceRail enterpriseMaterials={enterpriseMaterials} />);
+  it('renders the real enterprise category mapping with counts and no project materials', () => {
+    render(
+      <ProjectSourceRail
+        enterpriseCategories={enterpriseCategories}
+        enterpriseMaterials={enterpriseMaterials}
+      />,
+    );
 
     const rail = screen.getByRole('complementary', { name: '企业资料' });
     expect(within(rail).getByRole('heading', { level: 2, name: /企业资料/ })).toBeInTheDocument();
     expect(within(rail).queryByRole('tablist')).not.toBeInTheDocument();
     expect(within(rail).queryByRole('tab')).not.toBeInTheDocument();
+    expect(within(rail).getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(within(rail).getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(within(rail).getByRole('button', { name: '检测报告，0项' })).toBeInTheDocument();
+    expect(within(rail).getByRole('button', { name: '未分类资料，1项' })).toBeInTheDocument();
     expect(within(rail).getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
     expect(within(rail).queryByText('当前招标材料')).not.toBeInTheDocument();
     expect(within(rail).queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
     expect(within(rail).queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
     expect(within(rail).getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
+  });
+
+  it('expands one real folder at a time and reports an empty backend folder honestly', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectSourceRail
+        enterpriseCategories={enterpriseCategories}
+        enterpriseMaterials={enterpriseMaterials}
+      />,
+    );
+
+    const allFolder = screen.getByRole('button', { name: '全部资料，3项' });
+    const licenseFolder = screen.getByRole('button', { name: '企业证照，1项' });
+    await user.click(licenseFolder);
+
+    expect(allFolder).toHaveAttribute('aria-expanded', 'false');
+    expect(licenseFolder).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
+    expect(screen.queryByLabelText('近三年业绩.xlsx')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('待归类资料.pdf')).not.toBeInTheDocument();
+
+    await user.click(licenseFolder);
+    expect(licenseFolder).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('企业营业执照.pdf')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '检测报告，0项' }));
+    expect(screen.getByRole('status')).toHaveTextContent('该文件夹暂无企业资料');
+  });
+
+  it('resets the open folder when the enterprise tenant key changes', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ProjectWorkbench
+        enterpriseCategories={enterpriseCategories}
+        enterpriseLibraryKey="enterprise-a"
+        enterpriseMaterials={enterpriseMaterials}
+        rightRail={<div>Review</div>}
+      >
+        <div>Workspace</div>
+      </ProjectWorkbench>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '企业证照，1项' }));
+    expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
+    rerender(
+      <ProjectWorkbench
+        enterpriseCategories={enterpriseCategories}
+        enterpriseLibraryKey="enterprise-b"
+        enterpriseMaterials={enterpriseMaterials}
+        rightRail={<div>Review</div>}
+      >
+        <div>Workspace</div>
+      </ProjectWorkbench>,
+    );
+
+    expect(screen.getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('dispatches the left upload only to the enterprise callback', async () => {
@@ -103,6 +214,7 @@ describe('ProjectSourceRail', () => {
     const onAddFiles = vi.fn();
     render(
       <ProjectWorkbench
+        enterpriseCategories={enterpriseCategories}
         enterpriseMaterials={enterpriseMaterials}
         materials={projectMaterials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}

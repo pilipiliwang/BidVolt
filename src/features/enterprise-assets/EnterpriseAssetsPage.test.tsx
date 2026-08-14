@@ -3,13 +3,20 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EnterpriseAssetsPage } from './EnterpriseAssetsPage';
-import type { EnterpriseAsset } from './types';
+import type { EnterpriseAsset, EnterpriseAssetCategoryFolder } from './types';
+
+const categories: EnterpriseAssetCategoryFolder[] = [
+  { id: 'category-license', label: '企业证照', parentId: null },
+  { id: 'category-empty', label: '检测报告', parentId: null },
+];
 
 const assets: EnterpriseAsset[] = [
   {
     id: 'asset-license-1',
     name: '华东电气营业执照.pdf',
     category: 'license',
+    categoryId: 'category-license',
+    categoryLabel: '企业证照',
     classificationConfidence: 0.96,
     status: 'needs_review',
     updatedAt: '2026-08-05 09:20',
@@ -61,6 +68,7 @@ describe('EnterpriseAssetsPage', () => {
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
         assets={assets}
+        categories={categories}
         ingestionItems={[
           {
             id: 'ingestion-1',
@@ -78,6 +86,7 @@ describe('EnterpriseAssetsPage', () => {
     expect(screen.getByRole('note')).toHaveTextContent('项目材料也不会进入企业库');
     expect(screen.getByRole('table')).toHaveTextContent('华东电气营业执照.pdf');
     expect(screen.getByRole('button', { name: /企业证照/ })).toHaveTextContent('1');
+    expect(screen.getByRole('button', { name: /检测报告/ })).toHaveTextContent('0');
 
     await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
 
@@ -105,6 +114,7 @@ describe('EnterpriseAssetsPage', () => {
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
         assets={assets}
+        categories={categories}
         onUpload={onUpload}
         onCorrectFact={onCorrectFact}
       />,
@@ -143,6 +153,7 @@ describe('EnterpriseAssetsPage', () => {
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
         assets={assets}
+        categories={categories}
         onUpload={onUpload}
       />,
     );
@@ -162,6 +173,7 @@ describe('EnterpriseAssetsPage', () => {
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
         assets={assets}
+        categories={categories}
         onRefresh={onRefresh}
       />,
     );
@@ -181,6 +193,7 @@ describe('EnterpriseAssetsPage', () => {
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
         assets={assets}
+        categories={categories}
         onCorrectFact={onCorrectFact}
       />,
     );

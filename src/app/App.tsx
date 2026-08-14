@@ -32,6 +32,7 @@ import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
 import {
   EnterpriseAssetsPage,
   type EnterpriseAsset,
+  type EnterpriseAssetCategoryFolder,
   type EnterpriseIngestionItem,
 } from '../features/enterprise-assets';
 import {
@@ -45,6 +46,7 @@ import {
   BackendApiError,
   adaptBackendDeliverableCards,
   adaptBackendEnterpriseAssets,
+  adaptBackendEnterpriseCategories,
   adaptBackendFiles,
   adaptBackendHistorySamples,
   adaptBackendProjectOverview,
@@ -227,6 +229,7 @@ export function App() {
   const [history, setHistory] = useState<HistoryState>({ records: [], samples: [], total: 0 });
   const [projectData, setProjectData] = useState<Record<string, ProjectData>>({});
   const [enterpriseAssets, setEnterpriseAssets] = useState<EnterpriseAsset[]>([]);
+  const [enterpriseCategories, setEnterpriseCategories] = useState<EnterpriseAssetCategoryFolder[]>([]);
   const [enterpriseIngestions, setEnterpriseIngestions] = useState<EnterpriseIngestionItem[]>([]);
   const [reviewProviders, setReviewProviders] = useState<ReviewProvider[]>([]);
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
@@ -264,6 +267,7 @@ export function App() {
     setHistory(empty.history);
     setProjectData(empty.projectData);
     setEnterpriseAssets(empty.enterpriseAssets);
+    setEnterpriseCategories(empty.enterpriseCategories);
     setEnterpriseIngestions(empty.enterpriseIngestions);
     setReviewProviders(empty.reviewProviders);
     setLocalPreviewProjectId(null);
@@ -404,6 +408,7 @@ export function App() {
     }));
     tenantGuardRef.current.commit(generation, () => {
       setEnterpriseAssets(adaptBackendEnterpriseAssets(bundles, categories));
+      setEnterpriseCategories(adaptBackendEnterpriseCategories(categories));
       setEnterpriseIngestions(ingestionResponse.items.map(adaptIngestion));
     });
   }, []);
@@ -751,6 +756,7 @@ export function App() {
     setProjects([preview.localPreviewProject]);
     setProjectsTotal(1);
     setEnterpriseAssets(preview.localPreviewEnterpriseAssets);
+    setEnterpriseCategories(preview.localPreviewEnterpriseCategories);
     setEnterpriseIngestions(preview.localPreviewIngestions);
     setReviewProviders(preview.localPreviewProviders);
     setHistory({
@@ -1438,6 +1444,7 @@ export function App() {
       {route.name === 'enterprise-assets' ? (
         <EnterpriseAssetsPage
           assets={enterpriseAssets}
+          categories={enterpriseCategories}
           enterpriseName={session.enterpriseName}
           ingestionItems={enterpriseIngestions}
           onRefresh={() => (localPreviewActive
@@ -1463,6 +1470,8 @@ export function App() {
         <ProjectOverviewPage
           deliverables={deliverableCards}
           deliverablesRequest={deliverablesRequest}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
@@ -1500,6 +1509,8 @@ export function App() {
       {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
           deliverables={projectMaterialsDeliverables}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           generationInProgress={generationInProgress}
           materials={activeMaterials}
@@ -1530,6 +1541,8 @@ export function App() {
       ) : null}
       {route.name === 'review-center' && activeProject ? (
         <ReviewCenter
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
@@ -1557,6 +1570,8 @@ export function App() {
       {route.name === 'pricing-center' && activeProject ? (
         <PricingCenter
           calculation={activeData?.quote ?? emptyQuote(route.projectId)}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
           onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
@@ -1585,6 +1600,8 @@ export function App() {
           draftScopeId={getEditorDraftScopeKey(session.enterpriseId, session.userId, route.projectId)}
           editorContent={editor.content.model}
           editorKind={route.deliverableId === 'quote' ? 'spreadsheet' : 'word'}
+          enterpriseCategories={enterpriseCategories}
+          enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           initialQuoteRows={route.deliverableId === 'quote' ? backendQuoteRows(editor.content.model) : undefined}
           isBackendConnected={!localPreviewActive}
@@ -1708,7 +1725,13 @@ function toWorkspaceEnterpriseMaterials(assets: EnterpriseAsset[]): WorkspaceMat
   const tones: Record<EnterpriseAsset['status'], WorkspaceMaterial['tone']> = {
     failed: 'red', needs_review: 'orange', processing: 'blue', ready: 'green',
   };
-  return assets.map((asset) => ({ id: `enterprise:${asset.id}`, name: asset.name, status: statuses[asset.status], tone: tones[asset.status] }));
+  return assets.map((asset) => ({
+    categoryId: asset.categoryId,
+    id: `enterprise:${asset.id}`,
+    name: asset.name,
+    status: statuses[asset.status],
+    tone: tones[asset.status],
+  }));
 }
 
 function asId(value: unknown): string | undefined {

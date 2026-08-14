@@ -259,6 +259,8 @@ function SimulatedReviewPanel({
 
 export function ProjectMaterialsPage({
   deliverables = [],
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
   enterpriseMaterials = [],
   generationInProgress = false,
   onAddEnterpriseFiles,
@@ -335,6 +337,8 @@ export function ProjectMaterialsPage({
 
   return (
     <ProjectWorkbench
+      enterpriseCategories={enterpriseCategories}
+      enterpriseLibraryKey={enterpriseLibraryKey}
       enterpriseMaterials={enterpriseMaterials}
       materials={workspaceMaterials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}

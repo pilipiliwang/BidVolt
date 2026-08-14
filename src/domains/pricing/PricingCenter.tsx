@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import { ProjectWorkbench, type WorkspaceMaterial } from '../projects/ProjectWorkbench';
 import styles from './PricingCenter.module.css';
 import type { HistoryPriceSample, QuoteCalculationView } from './types';
@@ -19,6 +20,8 @@ import type { HistoryPriceSample, QuoteCalculationView } from './types';
 type PricingCenterProps = {
   samples: HistoryPriceSample[];
   calculation: QuoteCalculationView;
+  enterpriseCategories?: EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
   enterpriseMaterials?: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
@@ -95,6 +98,8 @@ const riskLabels = {
 export function PricingCenter({
   samples,
   calculation,
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
   enterpriseMaterials = [],
   materials,
   onAddEnterpriseFiles,
@@ -210,6 +215,8 @@ export function PricingCenter({
 
   return (
     <ProjectWorkbench
+      enterpriseCategories={enterpriseCategories}
+      enterpriseLibraryKey={enterpriseLibraryKey}
       enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“解释当前单价的时间与地区调整”"
       materials={materials}

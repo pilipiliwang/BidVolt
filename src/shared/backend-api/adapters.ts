@@ -2,7 +2,11 @@ import type { ProjectOverviewView, ProjectDeliverableView } from '../../domains/
 import type { ProjectSummary, ProjectStage } from '../../domains/projects/project-view-model';
 import type { HistoryPriceSample, QuoteCalculationView, QuoteStrategy } from '../../domains/pricing/types';
 import type { ReviewProvider as ReviewProviderView, ReviewRunView } from '../../domains/review/types';
-import type { EnterpriseAsset as EnterpriseAssetView, EnterpriseAssetCategory } from '../../features/enterprise-assets/types';
+import type {
+  EnterpriseAsset as EnterpriseAssetView,
+  EnterpriseAssetCategory,
+  EnterpriseAssetCategoryFolder,
+} from '../../features/enterprise-assets/types';
 import type {
   ProjectMaterial as ProjectMaterialView,
   ProjectMaterialKind,
@@ -194,6 +198,9 @@ export function adaptBackendEnterpriseAsset(
   const categoryIndex = new Map(categories.map((category) => [category.category_id, category]));
   const facts = bundle.detail?.facts ?? [];
   const revisions = bundle.revisions ?? [];
+  const backendCategory = bundle.asset.category_id === null
+    ? undefined
+    : categoryIndex.get(bundle.asset.category_id);
   const latestRevisionNo = Math.max(0, ...revisions.map((revision) => revision.revision_no));
   const latestCreatedAt = revisions.find((revision) => revision.revision_no === latestRevisionNo)?.created_at;
 
@@ -201,6 +208,10 @@ export function adaptBackendEnterpriseAsset(
     id: String(bundle.asset.asset_id),
     name: bundle.asset.name,
     category: assetCategory(bundle.asset, categoryIndex),
+    categoryId: bundle.asset.category_id === null ? null : String(bundle.asset.category_id),
+    categoryLabel: backendCategory
+      ? backendCategory.name.trim() || `分类 #${backendCategory.category_id}`
+      : '未分类资料',
     // Fact extraction confidence is not asset classification confidence.
     classificationConfidence: undefined,
     status:
@@ -238,6 +249,21 @@ export function adaptBackendEnterpriseAssets(
   categories: readonly EnterpriseCategory[] = [],
 ): EnterpriseAssetView[] {
   return bundles.map((bundle) => adaptBackendEnterpriseAsset(bundle, categories));
+}
+
+export function adaptBackendEnterpriseCategories(
+  categories: readonly EnterpriseCategory[],
+): EnterpriseAssetCategoryFolder[] {
+  const seen = new Set<number>();
+  return categories.flatMap((category) => {
+    if (seen.has(category.category_id)) return [];
+    seen.add(category.category_id);
+    return [{
+      id: String(category.category_id),
+      label: category.name.trim() || `分类 #${category.category_id}`,
+      parentId: category.parent_id === null ? null : String(category.parent_id),
+    }];
+  });
 }
 
 const requirementTypeAliases: Record<string, RequirementType> = {

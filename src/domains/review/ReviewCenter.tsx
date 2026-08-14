@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 import { AppLink } from '../../app/router';
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import {
   ProjectWorkbench,
   ScoreRing,
@@ -67,6 +68,8 @@ const riskLabel = (finding: ReviewFinding) => {
 };
 
 type ReviewCenterProps = {
+  enterpriseCategories?: EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
@@ -92,6 +95,8 @@ type SuggestionEditState = {
 type FindingFilter = 'all' | 'fail' | 'actionable' | `category:${string}`;
 
 export function ReviewCenter({
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
@@ -222,6 +227,8 @@ export function ReviewCenter({
 
   return (
     <ProjectWorkbench
+      enterpriseCategories={enterpriseCategories}
+      enterpriseLibraryKey={enterpriseLibraryKey}
       enterpriseMaterials={enterpriseMaterials}
       footerHint="请输入您的问题，如“解释第 2 条提升建议的评审依据”"
       materials={materials}

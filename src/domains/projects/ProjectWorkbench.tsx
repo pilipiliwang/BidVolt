@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   FileArchive,
   FileChartColumn,
   FileSpreadsheet,
@@ -12,30 +13,49 @@ import {
 } from 'lucide-react';
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from 'react';
 
+import {
+  ALL_ENTERPRISE_ASSETS_FOLDER_ID,
+  buildEnterpriseAssetFolders,
+} from '../../features/enterprise-assets/category-folders';
+import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets/types';
 import './project-workbench.css';
 
 export type WorkspaceMaterial = {
   id: string;
   name: string;
+  categoryId?: string | null;
   status?: string;
   tone?: 'blue' | 'green' | 'orange' | 'red';
 };
 
 type ProjectSourceRailProps = {
+  enterpriseCategories?: readonly EnterpriseAssetCategoryFolder[];
   enterpriseMaterials: WorkspaceMaterial[];
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
 };
 
 export function ProjectSourceRail({
+  enterpriseCategories = [],
   enterpriseMaterials,
   onAddEnterpriseFiles,
 }: ProjectSourceRailProps) {
+  const folderContentId = useId();
+  const folders = buildEnterpriseAssetFolders(enterpriseCategories, enterpriseMaterials);
+  const [openFolderId, setOpenFolderId] = useState<string | null>(
+    ALL_ENTERPRISE_ASSETS_FOLDER_ID,
+  );
+  const resolvedOpenFolderId = openFolderId === null
+    ? null
+    : folders.some((folder) => folder.id === openFolderId)
+      ? openFolderId
+      : ALL_ENTERPRISE_ASSETS_FOLDER_ID;
   const [uploadState, setUploadState] = useState({ error: null as string | null, pending: false });
 
   const uploadEnterpriseFiles = async (files: File[]) => {
@@ -65,27 +85,40 @@ export function ProjectSourceRail({
         <ChevronDown aria-hidden="true" size={20} />
       </header>
 
-      {enterpriseMaterials.length > 0 ? (
-        <ul className="bv-source-rail__files">
-          {enterpriseMaterials.map((material) => (
-            <li key={material.id}>
-              <MaterialIcon tone={material.tone} />
-              <span
-                aria-label={material.name}
-                className="bv-source-rail__filename"
-                data-name={material.name}
-                title={material.name}
-              />
-              <small>{material.status ?? '已识别'}</small>
-              <CheckCircle2 aria-hidden="true" size={15} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="bv-source-rail__empty" role="status">
-          企业资料库暂无可展示资料
-        </p>
-      )}
+      <nav aria-label="企业资料分类文件夹" className="bv-source-rail__folders">
+        {folders.map((folder, index) => {
+          const isExpanded = resolvedOpenFolderId === folder.id;
+          const contentId = `${folderContentId}-folder-${index}`;
+          return (
+            <div className="bv-source-folder" data-folder-kind={folder.kind} key={folder.id}>
+              <button
+                aria-label={`${folder.label}，${folder.items.length}项`}
+                aria-controls={contentId}
+                aria-expanded={isExpanded}
+                className="bv-source-folder__toggle"
+                onClick={() => setOpenFolderId(isExpanded ? null : folder.id)}
+                type="button"
+              >
+                <ChevronRight aria-hidden="true" className="bv-source-folder__chevron" size={15} />
+                <Folder aria-hidden="true" size={18} />
+                <span>{folder.label}</span>
+                <small aria-hidden="true">{folder.items.length}</small>
+              </button>
+              {isExpanded ? (
+                folder.items.length > 0 ? (
+                  <MaterialList id={contentId} label={`${folder.label}文件`} materials={folder.items} />
+                ) : (
+                  <p className="bv-source-rail__empty" id={contentId} role="status">
+                    {folder.kind === 'all'
+                      ? '企业资料库暂无可展示资料'
+                      : '该文件夹暂无企业资料'}
+                  </p>
+                )
+              ) : null}
+            </div>
+          );
+        })}
+      </nav>
 
       {onAddEnterpriseFiles ? (
         <label
@@ -121,6 +154,34 @@ export function ProjectSourceRail({
   );
 }
 
+function MaterialList({
+  id,
+  label,
+  materials,
+}: {
+  id: string;
+  label: string;
+  materials: readonly WorkspaceMaterial[];
+}) {
+  return (
+    <ul aria-label={label} className="bv-source-rail__files" id={id}>
+      {materials.map((material) => (
+        <li key={material.id}>
+          <MaterialIcon tone={material.tone} />
+          <span
+            aria-label={material.name}
+            className="bv-source-rail__filename"
+            data-name={material.name}
+            title={material.name}
+          />
+          <small>{material.status ?? '已识别'}</small>
+          <CheckCircle2 aria-hidden="true" size={15} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ReadonlyUploadControl({ label, title }: { label: string; title: string }) {
   return (
     <button
@@ -148,6 +209,8 @@ type ProjectWorkbenchProps = {
   assistantDraft?: string;
   assistantFocusRequest?: number;
   children: ReactNode;
+  enterpriseCategories?: readonly EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   footerHint?: string;
   heightMode?: 'content' | 'fill';
@@ -167,6 +230,8 @@ export function ProjectWorkbench({
   assistantFocusRequest,
   heightMode = 'fill',
   children,
+  enterpriseCategories = [],
+  enterpriseLibraryKey,
   enterpriseMaterials,
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
   onAddEnterpriseFiles,
@@ -180,6 +245,8 @@ export function ProjectWorkbench({
   return (
     <div className={`bv-project-workspace bv-project-workspace--${heightMode}`}>
       <ProjectSourceRail
+        key={enterpriseLibraryKey}
+        enterpriseCategories={enterpriseCategories}
         enterpriseMaterials={enterpriseMaterials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
       />

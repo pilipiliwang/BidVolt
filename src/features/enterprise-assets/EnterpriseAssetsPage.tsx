@@ -18,30 +18,15 @@ import { createPortal } from 'react-dom';
 
 import { EnterpriseAssetDetail } from './components/EnterpriseAssetDetail';
 import { EnterpriseAssetUpload } from './components/EnterpriseAssetUpload';
+import {
+  ALL_ENTERPRISE_ASSETS_FOLDER_ID,
+  buildEnterpriseAssetFolders,
+} from './category-folders';
 import type {
   EnterpriseAsset,
-  EnterpriseAssetCategory,
   EnterpriseAssetPageProps,
 } from './types';
 import './enterprise-assets.css';
-
-const categoryMeta: ReadonlyArray<{
-  category: EnterpriseAssetCategory;
-  label: string;
-}> = [
-  { category: 'other', label: '企业基本信息' },
-  { category: 'license', label: '企业证照' },
-  { category: 'qualification', label: '体系及资质认证' },
-  { category: 'personnel', label: '企业人员' },
-  { category: 'performance', label: '企业业绩' },
-  { category: 'product', label: '产品资料' },
-  { category: 'inspection', label: '检测报告' },
-  { category: 'finance', label: '财务资料' },
-];
-
-const categoryLabel = Object.fromEntries(
-  categoryMeta.map(({ category, label }) => [category, label]),
-) as Record<EnterpriseAssetCategory, string>;
 
 const statusLabel = {
   processing: '处理中',
@@ -71,15 +56,14 @@ function getAssetFileMeta(asset: EnterpriseAsset) {
 export function EnterpriseAssetsPage({
   enterpriseName,
   assets,
+  categories,
   ingestionItems,
   onUpload,
   onCorrectFact,
   onRefresh,
   onSelectRevision,
 }: EnterpriseAssetPageProps) {
-  const [selectedCategory, setSelectedCategory] = useState<EnterpriseAssetCategory | 'all'>(
-    'all',
-  );
+  const [selectedFolderId, setSelectedFolderId] = useState(ALL_ENTERPRISE_ASSETS_FOLDER_ID);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [isUploadOpen, setUploadOpen] = useState(false);
@@ -100,18 +84,22 @@ export function EnterpriseAssetsPage({
     }
   };
 
+  const folders = useMemo(
+    () => buildEnterpriseAssetFolders(categories, assets),
+    [assets, categories],
+  );
+  const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? folders[0];
   const visibleAssets = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    return assets.filter((asset) => {
-      const inFolder = selectedCategory === 'all' || asset.category === selectedCategory;
+    return selectedFolder.items.filter((asset) => {
       const matchesQuery =
         !normalizedQuery ||
-        `${asset.name} ${categoryLabel[asset.category]}`
+        `${asset.name} ${asset.categoryLabel}`
           .toLocaleLowerCase()
           .includes(normalizedQuery);
-      return inFolder && matchesQuery;
+      return matchesQuery;
     });
-  }, [assets, query, selectedCategory]);
+  }, [query, selectedFolder.items]);
 
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
   const processingCount = (ingestionItems ?? []).filter(
@@ -170,32 +158,19 @@ export function EnterpriseAssetsPage({
             <span>{assets.length}</span>
           </div>
           <nav aria-label="企业资料分类">
-            <button
-              className={`enterprise-folder${selectedCategory === 'all' ? ' enterprise-folder--active' : ''}`}
-              type="button"
-              onClick={() => setSelectedCategory('all')}
-            >
-              <ChevronRight aria-hidden="true" size={13} />
-              <Folder aria-hidden="true" size={18} />
-              <span>全部资料</span>
-              <em>{assets.length}</em>
-            </button>
-            {categoryMeta.map(({ category, label }) => {
-              const count = assets.filter((asset) => asset.category === category).length;
-              return (
-                <button
-                  className={`enterprise-folder${selectedCategory === category ? ' enterprise-folder--active' : ''}`}
-                  key={category}
-                  type="button"
-                  onClick={() => setSelectedCategory(category)}
-                >
-                  <ChevronRight aria-hidden="true" size={13} />
-                  <Folder aria-hidden="true" size={18} />
-                  <span>{label}</span>
-                  <em>{count}</em>
-                </button>
-              );
-            })}
+            {folders.map((folder) => (
+              <button
+                className={`enterprise-folder${selectedFolder.id === folder.id ? ' enterprise-folder--active' : ''}`}
+                key={folder.id}
+                type="button"
+                onClick={() => setSelectedFolderId(folder.id)}
+              >
+                <ChevronRight aria-hidden="true" size={13} />
+                <Folder aria-hidden="true" size={18} />
+                <span>{folder.label}</span>
+                <em>{folder.items.length}</em>
+              </button>
+            ))}
           </nav>
           <div className="enterprise-boundary" role="note">
             <ShieldCheck aria-hidden="true" size={17} />
@@ -237,7 +212,7 @@ export function EnterpriseAssetsPage({
                       </button>
                     </td>
                     <td>{fileMeta.label}</td>
-                    <td>{categoryLabel[asset.category]}</td>
+                    <td>{asset.categoryLabel}</td>
                     <td>
                       <span className={`enterprise-status enterprise-status--${asset.status}`}>
                         {statusLabel[asset.status]}
@@ -335,6 +310,7 @@ export function EnterpriseAssetsPage({
 export type {
   EnterpriseAsset,
   EnterpriseAssetCategory,
+  EnterpriseAssetCategoryFolder,
   EnterpriseAssetPageProps,
   EnterpriseAssetRevision,
   EnterpriseAssetStatus,

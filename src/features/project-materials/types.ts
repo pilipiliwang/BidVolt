@@ -80,6 +80,8 @@ export interface ProjectMaterialsDeliverableSummary {
 }
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   deliverables?: readonly ProjectMaterialsDeliverableSummary[];
+  enterpriseCategories?: import('../enterprise-assets').EnterpriseAssetCategoryFolder[];
+  enterpriseLibraryKey?: string;
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   generationInProgress?: boolean;
   materials: ProjectMaterial[];
