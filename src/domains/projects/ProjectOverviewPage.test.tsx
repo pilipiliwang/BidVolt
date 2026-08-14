@@ -56,10 +56,10 @@ describe('ProjectOverviewPage', () => {
     expect(screen.queryByRole('link', { name: '打开项目材料' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '报价分析' })).not.toBeInTheDocument();
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
-    expect(within(workspaceNavigation).getByRole('tab', { name: '项目资料' })).toHaveAttribute(
+    expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' })).toHaveAttribute(
       'href', '/projects/BV-2026-018/materials',
     );
-    expect(within(workspaceNavigation).getByRole('tab', { name: '标书成果预览' }))
+    expect(within(workspaceNavigation).getByRole('link', { name: '标书成果预览' }))
       .toHaveAttribute('aria-current', 'page');
     const versionSelect = screen.getByRole('combobox', { name: '成果版本' });
     expect(versionSelect).toBeDisabled();
@@ -112,8 +112,8 @@ describe('ProjectOverviewPage', () => {
     });
     expect(emptyState).toHaveAttribute('data-request-status', 'success');
     expect(emptyState).toHaveAttribute('data-task-status', 'queued');
-    expect(within(emptyState).getByText('任务已进入队列，正在等待后端执行器领取。')).toBeInTheDocument();
-    expect(within(emptyState).getByText('排队中 · 等待后端执行器')).toBeInTheDocument();
+    expect(within(emptyState).getByText('任务已进入队列，系统将在可用资源就绪后自动开始生成。')).toBeInTheDocument();
+    expect(within(emptyState).getByText('排队中 · 等待系统处理')).toBeInTheDocument();
     expect(within(emptyState).getByText('任务已经入队，尚未被 worker 领取。')).toBeInTheDocument();
     expect(within(emptyState).getByRole('progressbar', { name: '成果生成任务进度' }))
       .toHaveAttribute('aria-valuenow', '0');
@@ -162,7 +162,7 @@ describe('ProjectOverviewPage', () => {
 
     expect(screen.getByRole('status', { name: '暂时无法加载标书成果' }))
       .toHaveAttribute('data-request-status', 'error');
-    expect(screen.getByText('成果状态暂时不可用，请稍后重试；您也可以查看页面顶部的服务状态。')).toBeInTheDocument();
+    expect(screen.getByText('成果状态暂时不可用，请稍后重试。')).toBeInTheDocument();
     expect(screen.queryByText('成果版本加载超时')).not.toBeInTheDocument();
     expect(screen.queryByText('/api/v1/deliverables?project_id=1')).not.toBeInTheDocument();
   });
@@ -272,7 +272,7 @@ describe('ProjectOverviewPage', () => {
 
     const emptyState = screen.getByRole('status', { name: '暂时无法加载标书成果' });
     expect(within(emptyState).queryByText('服务不可用')).not.toBeInTheDocument();
-    expect(within(emptyState).getByText('成果状态暂时不可用，请稍后重试；您也可以查看页面顶部的服务状态。')).toBeInTheDocument();
+    expect(within(emptyState).getByText('成果状态暂时不可用，请稍后重试。')).toBeInTheDocument();
     expect(within(emptyState).queryByRole('link', { name: '前往项目材料' })).not.toBeInTheDocument();
   });
 

@@ -393,7 +393,7 @@ const requestEmptyStateContent: Record<DeliverablesRequestView['status'], EmptyS
   },
   error: {
     title: '暂时无法加载标书成果',
-    description: '成果状态暂时不可用，请稍后重试；您也可以查看页面顶部的服务状态。',
+    description: '成果状态暂时不可用，请稍后重试。',
   },
 };
 
@@ -406,8 +406,8 @@ const genericTaskEmptyStateContent: EmptyStateContent = {
 const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
   queued: {
     title: '成果生成任务等待执行',
-    description: '任务已进入队列，正在等待后端执行器领取。',
-    statusLabel: '排队中 · 等待后端执行器',
+    description: '任务已进入队列，系统将在可用资源就绪后自动开始生成。',
+    statusLabel: '排队中 · 等待系统处理',
   },
   running: {
     title: '正在生成标书成果',

@@ -4,8 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
-  type ComponentType,
 } from 'react';
 
 import { LoginPage, type LoginCredentials, type RegisterCredentials } from '../domains/auth/LoginPage';
@@ -102,7 +100,6 @@ import { pageApiCatalog } from './page-api-catalog';
 import {
   buildProjectOverviewVersionOptions,
   loadDeliverableVersionLists,
-  type DeliverableVersionOption,
   type DeliverableVersionsById,
 } from './deliverable-versions';
 import {
@@ -130,17 +127,6 @@ type ProjectData = {
   snapshots: ProjectSnapshot[];
   tasks: PublicTaskEvent[];
 };
-
-type ProjectOverviewPageWithVersionsProps = ComponentProps<typeof ProjectOverviewPage> & {
-  versionOptions?: DeliverableVersionOption[];
-  onSelectVersion?: (option: DeliverableVersionOption) => void;
-};
-
-// ProjectOverviewPage's UI branch consumes these props. Keeping the adapter here
-// lets the data-integration commit remain independent until that UI commit lands.
-const ProjectOverviewPageWithVersions = ProjectOverviewPage as ComponentType<
-  ProjectOverviewPageWithVersionsProps
->;
 
 type HistoryState = {
   records: HistoricalQuoteRecord[];
@@ -1425,7 +1411,7 @@ export function App() {
         <HistoryPricesPage records={history.records} totalCount={history.total} />
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
-        <ProjectOverviewPageWithVersions
+        <ProjectOverviewPage
           deliverables={deliverableCards}
           deliverablesRequest={deliverablesRequest}
           enterpriseMaterials={workspaceEnterprise}
