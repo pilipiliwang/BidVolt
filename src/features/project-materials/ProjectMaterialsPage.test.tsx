@@ -90,7 +90,13 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getAllByRole('heading', { name: '当前招标材料' })).toHaveLength(2);
+    expect(screen.getAllByRole('heading', { name: '当前招标材料' })).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: '补充资料' })).toBeInTheDocument();
+    expect(screen.queryByText('当前项目专属资料')).not.toBeInTheDocument();
+    expect(screen.queryByText('项目助手添加文件')).not.toBeInTheDocument();
+    expect(screen.queryByText('招标材料识别结果')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: '当前项目材料视图' })).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: '当前招标材料内容' })).toBeInTheDocument();
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
     expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' }))
       .toHaveAttribute('aria-current', 'page');
