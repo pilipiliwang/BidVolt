@@ -71,8 +71,10 @@ import {
   type ScoreSummary,
 } from '../shared/backend-api';
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
+import { ApiTestPanel } from './ApiTestPanel';
 import { AppShell } from './AppShell';
 import { BackendApiStatusBar } from './BackendApiStatusBar';
+import { shouldShowApiTestPanel } from './api-test-panel-gate';
 import {
   BACKEND_SESSION_EXPIRED_EVENT,
   clearBackendSession,
@@ -206,6 +208,7 @@ const emptyReview = (): ReviewRunView => ({
 
 export function App() {
   const route = useUrlRoute();
+  const showApiTestPanel = shouldShowApiTestPanel();
   const routeProjectId = 'projectId' in route ? route.projectId : undefined;
   const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking');
   const [localPreviewActive, setLocalPreviewActive] = useState(false);
@@ -1251,15 +1254,18 @@ export function App() {
   if (authState === 'anonymous' || route.name === 'login' || !session) {
     return (
       <>
-        <BackendApiStatusBar
-          checkedAt={pageApiActivity.checkedAt}
-          checks={pageApiActivity.checks}
-          className="login-api-status"
-          endpointLabel={backendApiBaseLabel}
-          latencyMs={pageApiActivity.latencyMs}
-          message={pageApiActivity.message}
-          status={pageApiActivity.status}
-        />
+        {showApiTestPanel ? (
+          <ApiTestPanel className="login-api-test-panel">
+            <BackendApiStatusBar
+              checkedAt={pageApiActivity.checkedAt}
+              checks={pageApiActivity.checks}
+              endpointLabel={backendApiBaseLabel}
+              latencyMs={pageApiActivity.latencyMs}
+              message={pageApiActivity.message}
+              status={pageApiActivity.status}
+            />
+          </ApiTestPanel>
+        ) : null}
         <LoginPage
           error={loginError}
           isSubmitting={authSubmitting}
@@ -1328,17 +1334,20 @@ export function App() {
       taskCount={activeTaskCount}
       user={session.user}
     >
-      <BackendApiStatusBar
-        checkedAt={pageApiActivity.checkedAt}
-        checks={pageApiActivity.checks}
-        className="page-api-status"
-        endpointLabel={localPreviewActive
-          ? '未调用真实 API'
-          : `${backendApiBaseLabel} · 企业 #${session.enterpriseId} · ${session.user.displayName}`}
-        latencyMs={pageApiActivity.latencyMs}
-        message={backendActivityMessage}
-        status={pageApiActivity.status}
-      />
+      {showApiTestPanel ? (
+        <ApiTestPanel className="page-api-test-panel">
+          <BackendApiStatusBar
+            checkedAt={pageApiActivity.checkedAt}
+            checks={pageApiActivity.checks}
+            endpointLabel={localPreviewActive
+              ? '未调用真实 API'
+              : `${backendApiBaseLabel} · 企业 #${session.enterpriseId} · ${session.user.displayName}`}
+            latencyMs={pageApiActivity.latencyMs}
+            message={backendActivityMessage}
+            status={pageApiActivity.status}
+          />
+        </ApiTestPanel>
+      ) : null}
       {localPreviewActive && localPreviewProjectId ? (
         <aside className="local-preview-banner" aria-label="本地只读预览状态">
           <div>
