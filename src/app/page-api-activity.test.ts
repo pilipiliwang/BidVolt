@@ -77,6 +77,26 @@ describe('page API activity', () => {
       .toMatchObject({ status: 'unavailable', callCount: 0 });
   });
 
+  it('reports backend task endpoints that the frontend has not integrated yet', () => {
+    const definitions = pageApiCatalog({ name: 'project-overview', projectId: '7' });
+    const result = buildPageApiActivity(definitions, [requestEvent()]);
+
+    expect(result.status).toBe('degraded');
+    expect(result.checks.find((check) => check.id === 'task-status')).toMatchObject({
+      status: 'not-integrated',
+      callCount: 0,
+      method: 'GET',
+      path: '/tasks/{taskId}',
+    });
+    expect(result.checks.find((check) => check.id === 'task-stream')).toMatchObject({
+      status: 'not-integrated',
+      callCount: 0,
+      method: 'GET',
+      path: '/tasks/{taskId}/stream',
+    });
+    expect(result.message).toContain('前端未接入 2 项');
+  });
+
   it('shows unexpected runtime requests instead of silently dropping them', () => {
     const result = buildPageApiActivity(pageApiCatalog({ name: 'projects' }), [
       requestEvent({
@@ -106,5 +126,7 @@ describe('page API activity', () => {
     });
     expect(result.checks.find((check) => check.id === 'requirement-confirm')?.status)
       .toBe('unavailable');
+    expect(result.checks.find((check) => check.id === 'task-status')?.status)
+      .toBe('not-integrated');
   });
 });

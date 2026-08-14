@@ -26,6 +26,19 @@ function checkFromEvents(
   definition: PageApiOperation,
   events: readonly BackendApiRequestEvent[],
 ): BackendApiCheck {
+  if (definition.notIntegratedReason) {
+    return {
+      id: definition.id,
+      feature: definition.feature,
+      trigger: definition.trigger,
+      method: definition.method,
+      path: definition.path,
+      status: 'not-integrated',
+      callCount: 0,
+      detail: definition.notIntegratedReason,
+    };
+  }
+
   if (definition.unavailableReason) {
     return {
       id: definition.id,
@@ -113,7 +126,7 @@ export function buildPageApiActivity(
       checkedAt: null,
       latencyMs: null,
       message: '当前是本地只读预览；下表仅列出页面接口需求，未执行任何真实后端 API 调用。',
-      checks: checks.map((check) => check.status === 'unavailable'
+      checks: checks.map((check) => check.status === 'unavailable' || check.status === 'not-integrated'
         ? check
         : {
             ...check,
@@ -135,9 +148,12 @@ export function buildPageApiActivity(
     failed: 0,
     checking: 0,
     'not-run': 0,
+    'not-integrated': 0,
     unavailable: 0,
   });
-  const status: BackendApiStatus = countByStatus.failed > 0 || countByStatus.unavailable > 0
+  const status: BackendApiStatus = countByStatus.failed > 0
+    || countByStatus.unavailable > 0
+    || countByStatus['not-integrated'] > 0
     ? 'degraded'
     : countByStatus.checking > 0 || events.length === 0
       ? 'checking'
@@ -146,7 +162,7 @@ export function buildPageApiActivity(
         : 'disconnected';
   const message = events.length === 0
     ? '已列出当前页面需要的接口，正在等待页面自动加载或用户操作触发真实请求。'
-    : `已捕获 ${events.length} 次真实 API 调用：成功 ${countByStatus.success} 项、失败 ${countByStatus.failed} 项、调用中 ${countByStatus.checking} 项、未触发 ${countByStatus['not-run']} 项、后端未提供 ${countByStatus.unavailable} 项。`;
+    : `已捕获 ${events.length} 次真实 API 调用：成功 ${countByStatus.success} 项、失败 ${countByStatus.failed} 项、调用中 ${countByStatus.checking} 项、未触发 ${countByStatus['not-run']} 项、前端未接入 ${countByStatus['not-integrated']} 项、后端未提供 ${countByStatus.unavailable} 项。`;
 
   return {
     status,
