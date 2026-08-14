@@ -93,7 +93,7 @@ describe('App local read-only preview', () => {
     expect(screen.getByRole('region', { name: '当前招标材料' })).toBeInTheDocument();
     expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('补充上传当前项目资料')).toBeInTheDocument();
+    expect(screen.getByLabelText('添加当前项目文件')).toBeInTheDocument();
     expect(screen.getByText('上传企业资料')).toBeInTheDocument();
     expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
     expect(screen.queryByText('已有成果编制任务正在排队')).not.toBeInTheDocument();

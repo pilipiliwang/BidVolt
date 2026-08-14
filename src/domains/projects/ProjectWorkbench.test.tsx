@@ -45,15 +45,15 @@ describe('ProjectWorkbench', () => {
     );
   });
 
-  it('routes source-rail and bottom-assistant uploads to their dedicated handlers', async () => {
+  it('routes enterprise-rail and bottom-assistant uploads to their dedicated handlers', async () => {
     const user = userEvent.setup();
-    const onAddFiles = vi.fn();
+    const onAddEnterpriseFiles = vi.fn();
     const onAssistantAddFiles = vi.fn();
     render(
       <ProjectWorkbench
         enterpriseMaterials={[]}
         materials={projectMaterials}
-        onAddFiles={onAddFiles}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
         onAssistantAddFiles={onAssistantAddFiles}
         rightRail={<div>Review</div>}
       >
@@ -61,9 +61,9 @@ describe('ProjectWorkbench', () => {
       </ProjectWorkbench>,
     );
 
-    const railFile = new File(['rail'], '左栏材料.pdf', { type: 'application/pdf' });
-    await user.upload(screen.getByLabelText('补充上传当前项目资料'), railFile);
-    expect(onAddFiles).toHaveBeenCalledWith([railFile]);
+    const railFile = new File(['rail'], '企业资质.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('上传企业资料并同步资料库'), railFile);
+    expect(onAddEnterpriseFiles).toHaveBeenCalledWith([railFile]);
     expect(onAssistantAddFiles).not.toHaveBeenCalled();
 
     const assistantFile = new File(['assistant'], '助手补充资料.docx', {
@@ -71,7 +71,7 @@ describe('ProjectWorkbench', () => {
     });
     await user.upload(screen.getByLabelText('添加当前项目文件'), assistantFile);
     expect(onAssistantAddFiles).toHaveBeenCalledWith([assistantFile]);
-    expect(onAddFiles).toHaveBeenCalledTimes(1);
+    expect(onAddEnterpriseFiles).toHaveBeenCalledTimes(1);
   });
 });
 

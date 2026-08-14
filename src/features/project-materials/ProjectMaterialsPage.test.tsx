@@ -222,9 +222,9 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    const railFile = new File(['rail'], '左栏补遗.pdf', { type: 'application/pdf' });
-    await user.upload(screen.getByLabelText('补充上传当前项目资料'), railFile);
-    expect(onUpload).toHaveBeenCalledWith('BV-2026-0088', [railFile]);
+    const tenderFile = new File(['tender'], '招标补遗.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText(/选择或拖拽招标材料/), tenderFile);
+    expect(onUpload).toHaveBeenCalledWith('BV-2026-0088', [tenderFile]);
     expect(onAssistantAddFiles).not.toHaveBeenCalled();
 
     const assistantFile = new File(['assistant'], '设备清单.xlsx', {
