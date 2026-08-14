@@ -133,6 +133,13 @@
 .bv-overview-empty--error > svg,
 .bv-overview-empty[data-task-status='failed'] > svg { color: #ba3945; }
 .bv-overview-empty[data-task-status='succeeded'] > svg { color: #0a9a58; }
+.bv-overview-empty[data-task-status='queued'],
+.bv-overview-empty[data-task-status='running'] {
+  border-color: #b7dfc9;
+  background: #f7fcf9;
+}
+.bv-overview-empty[data-task-status='queued'] > svg,
+.bv-overview-empty[data-task-status='running'] > svg { color: #009a55; }
 .bv-overview-empty--task > svg { color: #a96c07; }
 .bv-overview-empty__task {
   display: grid;
@@ -146,10 +153,11 @@
   background: #fff9e9;
   text-align: left;
 }
+.bv-overview-empty__task--queued,
 .bv-overview-empty__task--running {
-  border-color: #bfd8ec;
-  color: #285d86;
-  background: #f2f8fd;
+  border-color: #a9dcbf;
+  color: #087747;
+  background: #effaf4;
 }
 .bv-overview-empty__task--retrying,
 .bv-overview-empty__task--failed {
@@ -206,6 +214,14 @@
   border-radius: inherit;
   background: currentcolor;
 }
+.bv-overview-empty__task--queued .bv-overview-empty__progress,
+.bv-overview-empty__task--running .bv-overview-empty__progress {
+  background: #d7efe2;
+}
+.bv-overview-empty__task--queued .bv-overview-empty__progress > span,
+.bv-overview-empty__task--running .bv-overview-empty__progress > span {
+  background: #009a55;
+}
 .bv-overview-empty .bv-overview-empty__task-message {
   max-width: none;
   margin: 0;
@@ -232,6 +248,14 @@
   outline: 3px solid rgb(42 118 82 / 20%);
   outline-offset: 2px;
 }
+.bv-overview-empty__task--queued button,
+.bv-overview-empty__task--running button {
+  border-color: #009a55;
+  color: #fff;
+  background: #009a55;
+}
+.bv-overview-empty__task--queued button:hover,
+.bv-overview-empty__task--running button:hover { background: #007d46; }
 .bv-review-summary__empty {
   min-height: 310px;
   align-content: center;

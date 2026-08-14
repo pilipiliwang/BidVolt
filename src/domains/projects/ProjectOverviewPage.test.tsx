@@ -108,16 +108,21 @@ describe('ProjectOverviewPage', () => {
     );
 
     const emptyState = screen.getByRole('status', {
-      name: '成果生成任务等待执行',
+      name: '成果生成正在执行',
     });
     expect(emptyState).toHaveAttribute('data-request-status', 'success');
     expect(emptyState).toHaveAttribute('data-task-status', 'queued');
-    expect(within(emptyState).getByText('任务已进入队列，系统将在可用资源就绪后自动开始生成。')).toBeInTheDocument();
-    expect(within(emptyState).getByText('排队中 · 等待系统处理')).toBeInTheDocument();
-    expect(within(emptyState).getByText('任务已经入队，尚未被 worker 领取。')).toBeInTheDocument();
+    expect(within(emptyState).getByText('系统正在根据当前项目材料生成成果，请留意任务进度。')).toBeInTheDocument();
+    expect(within(emptyState).getByText('执行中')).toBeInTheDocument();
+    expect(within(emptyState).getByText('任务已提交，系统正在处理，请留意任务进度。')).toBeInTheDocument();
+    expect(within(emptyState).queryByText('任务已经入队，尚未被 worker 领取。')).not.toBeInTheDocument();
     expect(within(emptyState).getByRole('progressbar', { name: '成果生成任务进度' }))
       .toHaveAttribute('aria-valuenow', '0');
+    expect(within(emptyState).getByRole('progressbar', { name: '成果生成任务进度' }))
+      .toHaveAttribute('aria-valuetext', '0% · 执行中');
     expect(within(emptyState).getByText('0%')).toBeInTheDocument();
+    expect(within(emptyState).getByText('执行中').closest('.bv-overview-empty__task'))
+      .toHaveClass('bv-overview-empty__task--queued');
     expect(within(emptyState).queryByText('/api/v1/deliverables?project_id=1')).not.toBeInTheDocument();
     expect(emptyState).not.toHaveTextContent(/接口调用成功|返回 0 项|虚拟成果卡片|GET \/api/);
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -168,7 +173,7 @@ describe('ProjectOverviewPage', () => {
   });
 
   it.each([
-    ['running', 42, '正在生成标书成果', '生成中', '后端正在根据当前项目材料生成成果，请留意任务进度。'],
+    ['running', 42, '成果生成正在执行', '执行中', '系统正在根据当前项目材料生成成果，请留意任务进度。'],
     ['retrying', 35, '成果生成任务正在重试', '等待重试', '上次执行尚未完成，系统正在等待下一次重试。'],
     ['waiting_user', 50, '成果生成等待您的处理', '等待用户处理', '请查看任务详情并完成所需操作，任务随后才能继续。'],
     ['succeeded', 100, '成果生成任务已完成', '任务已完成', '任务已完成，成果列表正在更新；如长时间未显示，请查看任务详情。'],
@@ -203,6 +208,13 @@ describe('ProjectOverviewPage', () => {
       );
       expect(within(emptyState).getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
       expect(emptyState).not.toHaveTextContent('/private/debug/path');
+      if (status === 'running') {
+        expect(within(emptyState).getByText('任务已提交，系统正在处理，请留意任务进度。'))
+          .toBeInTheDocument();
+        expect(within(emptyState).queryByText('这是后端公开任务说明。')).not.toBeInTheDocument();
+      } else {
+        expect(within(emptyState).getByText('这是后端公开任务说明。')).toBeInTheDocument();
+      }
     },
   );
 

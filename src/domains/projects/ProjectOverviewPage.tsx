@@ -318,7 +318,9 @@ function DeliverablesEmptyState({
               <span style={{ width: `${taskPercent}%` }} />
             </div>
           )}
-          <p className="bv-overview-empty__task-message">{taskSummary.message}</p>
+          <p className="bv-overview-empty__task-message">
+            {taskContent?.message ?? taskSummary.message}
+          </p>
           <button onClick={onOpenTasks} type="button">查看任务进度</button>
         </div>
       ) : null}
@@ -374,6 +376,7 @@ function formatVersionNumber(versionId: string) {
 
 type EmptyStateContent = {
   description: string;
+  message?: string;
   statusLabel?: string;
   title: string;
 };
@@ -405,14 +408,16 @@ const genericTaskEmptyStateContent: EmptyStateContent = {
 
 const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
   queued: {
-    title: '成果生成任务等待执行',
-    description: '任务已进入队列，系统将在可用资源就绪后自动开始生成。',
-    statusLabel: '排队中 · 等待系统处理',
+    title: '成果生成正在执行',
+    description: '系统正在根据当前项目材料生成成果，请留意任务进度。',
+    message: '任务已提交，系统正在处理，请留意任务进度。',
+    statusLabel: '执行中',
   },
   running: {
-    title: '正在生成标书成果',
-    description: '后端正在根据当前项目材料生成成果，请留意任务进度。',
-    statusLabel: '生成中',
+    title: '成果生成正在执行',
+    description: '系统正在根据当前项目材料生成成果，请留意任务进度。',
+    message: '任务已提交，系统正在处理，请留意任务进度。',
+    statusLabel: '执行中',
   },
   retrying: {
     title: '成果生成任务正在重试',
