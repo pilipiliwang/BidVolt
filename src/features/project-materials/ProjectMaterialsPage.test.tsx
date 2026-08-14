@@ -253,6 +253,88 @@ describe('ProjectMaterialsPage', () => {
     expect(onStartTask).toHaveBeenCalledWith('BV-2026-0088', 'generate');
   });
 
+  it('keeps the narrow review scoreboard readable without changing its real values', () => {
+    render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={materials}
+        onStartTask={vi.fn()}
+        requirements={requirements}
+        snapshots={snapshots}
+      />,
+    );
+
+    const coreMetrics = screen.getByRole('list', { name: '材料识别核心指标' });
+    const coreItems = within(coreMetrics).getAllByRole('listitem');
+    expect(coreItems).toHaveLength(4);
+    expect(within(coreMetrics).getByText('已识别评分项').closest('[role="listitem"]'))
+      .toHaveTextContent('0项');
+    expect(within(coreMetrics).getByText('已识别否决条款').closest('[role="listitem"]'))
+      .toHaveTextContent('0项');
+    expect(within(coreMetrics).getByText('需要交材料').closest('[role="listitem"]'))
+      .toHaveTextContent('0项');
+    expect(within(coreMetrics).getByText('已识别 Requirement').closest('[role="listitem"]'))
+      .toHaveTextContent('2项');
+
+    const parseSummary = screen.getByRole('list', { name: '材料解析状态' });
+    const summaryItems = within(parseSummary).getAllByRole('listitem');
+    expect(summaryItems).toHaveLength(3);
+    expect(within(parseSummary).getByText('材料解析完成').closest('[role="listitem"]'))
+      .toHaveTextContent('1 / 2 项');
+    expect(within(parseSummary).getByText('待人工确认').closest('[role="listitem"]'))
+      .toHaveTextContent('1 项');
+    expect(within(parseSummary).getByText('解析完成率').closest('[role="listitem"]'))
+      .toHaveClass('project-review-summary__rate');
+    expect(within(parseSummary).getByText('解析完成率').closest('[role="listitem"]'))
+      .toHaveTextContent('50%');
+  });
+
+  it('derives recognition status from parsed materials and preserves zero percent', () => {
+    const onStartTask = vi.fn();
+    const { rerender } = render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={materials}
+        onStartTask={onStartTask}
+        requirements={requirements}
+        snapshots={snapshots}
+      />,
+    );
+
+    expect(screen.getByText('部分完成')).toHaveAttribute('data-status', 'partial');
+
+    rerender(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={[materials[1]]}
+        onStartTask={onStartTask}
+        requirements={[]}
+        snapshots={[]}
+      />,
+    );
+
+    expect(screen.getByText('识别进行中')).toHaveAttribute('data-status', 'in-progress');
+    const zeroRate = screen.getByText('解析完成率').closest('[role="listitem"]');
+    expect(zeroRate).toHaveTextContent('0%');
+
+    rerender(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={[materials[0]]}
+        onStartTask={onStartTask}
+        requirements={requirements}
+        snapshots={snapshots}
+      />,
+    );
+
+    expect(screen.getByText('识别完成')).toHaveAttribute('data-status', 'complete');
+    expect(screen.getByText('解析完成率').closest('[role="listitem"]')).toHaveTextContent('100%');
+  });
+
   it('does not add a completed bid name when its upload rejects', async () => {
     const user = userEvent.setup();
     const onUpload = vi.fn().mockRejectedValue(new Error('技术标.docx：文件内容无法读取'));

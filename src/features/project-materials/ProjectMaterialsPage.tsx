@@ -212,6 +212,12 @@ function SimulatedReviewPanel({
   ).length;
   const identifiedRequirementCount = requirements.length;
   const parseRate = materialCount > 0 ? Math.round((parsedCount / materialCount) * 100) : 0;
+  const recognitionStatus = parsedCount === materialCount
+    ? { key: 'complete', label: '识别完成', Icon: CheckCircle2 }
+    : parsedCount === 0
+      ? { key: 'in-progress', label: '识别进行中', Icon: LoaderCircle }
+      : { key: 'partial', label: '部分完成', Icon: LoaderCircle };
+  const RecognitionStatusIcon = recognitionStatus.Icon;
 
   return (
     <section className="project-review-preview">
@@ -220,15 +226,15 @@ function SimulatedReviewPanel({
           <h2>模拟评标</h2>
           <p>材料识别概览</p>
         </div>
-        <span>
-          <CheckCircle2 aria-hidden="true" size={15} />
-          识别完成
+        <span data-status={recognitionStatus.key}>
+          <RecognitionStatusIcon aria-hidden="true" size={15} />
+          {recognitionStatus.label}
         </span>
       </div>
 
-      <div className="project-review-metrics">
-        <article>
-          <span className="project-review-metric-icon project-review-metric-icon--green">
+      <div className="project-review-metrics" aria-label="材料识别核心指标" role="list">
+        <article role="listitem">
+          <span className="project-review-metric-icon">
             <BadgeCheck aria-hidden="true" size={23} />
           </span>
           <div>
@@ -236,8 +242,8 @@ function SimulatedReviewPanel({
             <strong>{scoreRuleCount}<em>项</em></strong>
           </div>
         </article>
-        <article>
-          <span className="project-review-metric-icon project-review-metric-icon--orange">
+        <article role="listitem">
+          <span className="project-review-metric-icon">
             <ShieldAlert aria-hidden="true" size={23} />
           </span>
           <div>
@@ -245,8 +251,8 @@ function SimulatedReviewPanel({
             <strong>{rejectClauseCount}<em>项</em></strong>
           </div>
         </article>
-        <article>
-          <span className="project-review-metric-icon project-review-metric-icon--blue">
+        <article role="listitem">
+          <span className="project-review-metric-icon">
             <FolderCheck aria-hidden="true" size={23} />
           </span>
           <div>
@@ -254,8 +260,8 @@ function SimulatedReviewPanel({
             <strong>{materialChecklistCount}<em>项</em></strong>
           </div>
         </article>
-        <article>
-          <span className="project-review-metric-icon project-review-metric-icon--green">
+        <article role="listitem">
+          <span className="project-review-metric-icon">
             <FileCheck2 aria-hidden="true" size={23} />
           </span>
           <div>
@@ -265,16 +271,16 @@ function SimulatedReviewPanel({
         </article>
       </div>
 
-      <div className="project-review-summary">
-        <article>
+      <div className="project-review-summary" aria-label="材料解析状态" role="list">
+        <article role="listitem">
           <BadgeCheck aria-hidden="true" size={20} />
           <span><small>材料解析完成</small><strong>{parsedCount} / {materialCount} 项</strong></span>
         </article>
-        <article>
+        <article className="project-review-summary__pending" role="listitem">
           <ShieldAlert aria-hidden="true" size={20} />
           <span><small>待人工确认</small><strong>{pendingRequirementCount} 项</strong></span>
         </article>
-        <article>
+        <article className="project-review-summary__rate" role="listitem">
           <span className="project-match-ring" style={{ '--match': `${parseRate * 3.6}deg` } as React.CSSProperties}>
             {parseRate}%
           </span>
