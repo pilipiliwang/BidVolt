@@ -1322,18 +1322,7 @@ export function App() {
     : pageApiActivity.message;
 
   return (
-    <AppShell
-      currentProjectId={routeProjectId}
-      currentRoute={route.name}
-      eyebrow={pageMeta.eyebrow}
-      enterpriseName={session.enterpriseName}
-      title={pageMeta.title}
-      onLogout={() => void handleLogout()}
-      onOpenTasks={() => routeProjectId && setTaskDrawerProjectId(routeProjectId)}
-      projectSummary={activeProject}
-      taskCount={activeTaskCount}
-      user={session.user}
-    >
+    <>
       {showApiTestPanel ? (
         <ApiTestPanel className="page-api-test-panel">
           <BackendApiStatusBar
@@ -1348,6 +1337,18 @@ export function App() {
           />
         </ApiTestPanel>
       ) : null}
+      <AppShell
+        currentProjectId={routeProjectId}
+        currentRoute={route.name}
+        eyebrow={pageMeta.eyebrow}
+        enterpriseName={session.enterpriseName}
+        title={pageMeta.title}
+        onLogout={() => void handleLogout()}
+        onOpenTasks={() => routeProjectId && setTaskDrawerProjectId(routeProjectId)}
+        projectSummary={activeProject}
+        taskCount={activeTaskCount}
+        user={session.user}
+      >
       {localPreviewActive && localPreviewProjectId ? (
         <aside className="local-preview-banner" aria-label="本地只读预览状态">
           <div>
@@ -1572,7 +1573,8 @@ export function App() {
         />
       ) : null}
       {snapshotDetail ? <SnapshotDialog detail={snapshotDetail} onClose={() => setSnapshotDetail(null)} /> : null}
-    </AppShell>
+      </AppShell>
+    </>
   );
 }
 

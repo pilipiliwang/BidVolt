@@ -28,6 +28,9 @@ describe('App local read-only preview', () => {
     expect(screen.getByLabelText('本地只读预览状态')).toHaveTextContent('无真实后端');
     const testPanel = screen.getByRole('region', { name: 'API 联调测试框' });
     expect(testPanel).toHaveTextContent('仅测试环境');
+    const appShell = document.querySelector('.app-shell');
+    expect(appShell).not.toBeNull();
+    expect(testPanel.compareDocumentPosition(appShell!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     const apiPanel = testPanel.querySelector('[data-status="preview"]');
     expect(apiPanel).toBeInTheDocument();
     expect(apiPanel).toHaveTextContent('/auth/me');
