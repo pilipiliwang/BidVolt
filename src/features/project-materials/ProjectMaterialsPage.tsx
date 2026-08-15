@@ -244,9 +244,6 @@ export function ProjectMaterialsPage({
     [materials],
   );
   const hasUnclassifiedMaterials = unclassifiedMaterials.length > 0;
-  const currentMaterialGroupTitle = hasUnclassifiedMaterials
-    ? '项目文件（用途待分类）'
-    : '当前招标材料';
   const workspaceMaterials = useMemo(
     () =>
       materials.map((material) => ({
@@ -322,10 +319,10 @@ export function ProjectMaterialsPage({
               icon={<FileLock2 aria-hidden="true" size={14} />}
               onToggle={() => setCurrentTenderExpanded((current) => !current)}
               panelId={currentTenderPanelId}
-              title={currentMaterialGroupTitle}
+              title="当前招标材料"
               titleId="project-current-material-list-title"
             >
-              <nav className="project-material-subviews" aria-label="项目文件内容">
+              <nav className="project-material-subviews" aria-label="当前招标材料内容">
                 <button
                   aria-current={activeTab === 'materials' ? 'page' : undefined}
                   type="button"

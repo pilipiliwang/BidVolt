@@ -107,7 +107,7 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText('项目助手添加文件')).not.toBeInTheDocument();
     expect(screen.queryByText('招标材料识别结果')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: '当前项目材料视图' })).not.toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: '项目文件内容' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: '当前招标材料内容' })).toBeInTheDocument();
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
     expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' }))
       .toHaveAttribute('aria-current', 'page');
@@ -334,8 +334,8 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '项目文件（用途待分类）' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '当前招标材料' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '当前招标材料' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '项目文件（用途待分类）' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '展开补充资料，数量待接口提供' }))
       .toBeInTheDocument();
     expect(screen.getByText(/不会根据本次操作或文件名伪造补充资料分类/)).toBeInTheDocument();
