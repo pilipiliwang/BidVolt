@@ -75,6 +75,7 @@ import {
   type JsonObject,
   type MeResponse,
   type ScoreSummary,
+  type TenderNoticeImportJob,
 } from '../shared/backend-api';
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
 import { ApiTestPanel } from './ApiTestPanel';
@@ -117,6 +118,7 @@ import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
 import { createEditorSaveGate } from './editor-save-gate';
 import { buildPageApiActivity } from './page-api-activity';
 import { pageApiCatalog } from './page-api-catalog';
+import { tenderNoticeImportErrorMessage } from './backend-capability-errors';
 import {
   buildProjectOverviewVersionOptions,
   loadDeliverableVersionLists,
@@ -1133,7 +1135,15 @@ export function App() {
   const handleImportTenderNoticeUrl = async (projectId: string, url: string) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('导入招标公告网址');
     const generation = tenantGuardRef.current.capture();
-    const job = await backendApi.tenderNotices.importFromUrl(projectId, url);
+    let job: TenderNoticeImportJob;
+    try {
+      job = await backendApi.tenderNotices.importFromUrl(projectId, url);
+    } catch (error) {
+      throw new Error(
+        tenderNoticeImportErrorMessage(error, '招标公告网址导入失败。'),
+        { cause: error },
+      );
+    }
     if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('会话已切换，已忽略旧企业的导入结果。');
     if (job.status === 'succeeded') {
       await loadProject(projectId);
@@ -1237,8 +1247,16 @@ export function App() {
   const handleRunReview = async (projectId: string, providerId: string) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('执行外部评审');
     const generation = tenantGuardRef.current.capture();
+    const selectedProvider = reviewProviders.find((provider) => provider.id === providerId);
+    if (!selectedProvider || selectedProvider.description !== 'builtin_completeness') {
+      const error = new Error(
+        '当前后端 evaluate 接口尚未接收所选外部评审机制，只能运行“成果完整性检查（内置）”。已保留外部机制入口，等待后端补齐 Provider 执行契约。',
+      );
+      setStatusMessage({ tone: 'error', text: error.message });
+      throw error;
+    }
     try {
-      await backendApi.review.evaluate(projectId, { provider_id: providerId });
+      await backendApi.review.evaluate(projectId);
       if (!tenantGuardRef.current.isCurrent(generation)) return;
       await loadProject(projectId);
     } catch (error) {
@@ -2068,7 +2086,10 @@ async function pollTenderImport(
       }
     } catch (error) {
       guard.commit(generation, () => {
-        setStatus({ tone: 'error', text: readableError(error, '招标公告导入状态查询失败。') });
+        setStatus({
+          tone: 'error',
+          text: tenderNoticeImportErrorMessage(error, '招标公告导入状态查询失败。'),
+        });
       });
       return;
     }

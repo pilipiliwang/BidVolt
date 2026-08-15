@@ -55,6 +55,10 @@ describe('page API catalog', () => {
     ]));
     expect(catalog.find((item) => item.id === 'requirement-confirm')?.unavailableReason)
       .toContain('尚未提供');
+    expect(catalog.find((item) => item.id === 'tender-notice-import')?.unavailableReason)
+      .toContain('最新后端 main');
+    expect(catalog.find((item) => item.id === 'tender-notice-import-status')?.unavailableReason)
+      .toContain('尚未提供');
     expect(catalog.find((item) => item.id === 'completed-bid-purpose')?.unavailableReason)
       .toContain('刷新后无法恢复');
     expect(catalog.find((item) => item.id === 'completed-bid-summary')).toMatchObject({
@@ -165,6 +169,17 @@ describe('page API catalog', () => {
       'editor-cancel',
       'deliverable-download',
     ]));
+  });
+
+  it('separates the working built-in review call from unsupported Provider selection', () => {
+    const catalog = pageApiCatalog({ name: 'review-center', projectId: '7' });
+    expect(catalog.find((item) => item.id === 'review-evaluate')).toMatchObject({
+      feature: '运行内置评审',
+      method: 'POST',
+      path: '/projects/7/evaluate',
+    });
+    expect(catalog.find((item) => item.id === 'review-provider-selection')?.unavailableReason)
+      .toContain('忽略 provider_id');
   });
 
   it('marks login password recovery and enterprise revision content as unavailable', () => {

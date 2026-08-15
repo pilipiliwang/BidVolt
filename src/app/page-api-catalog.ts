@@ -263,9 +263,12 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'project-materials') {
     return [
       ...base,
-      operation('tender-notice-import', '从网址导入招标公告', '操作：粘贴网址并提交', 'POST', `${projectPath}/tender-notices/import-url`),
+      operation('tender-notice-import', '从网址导入招标公告', '操作：粘贴网址并提交', 'POST', `${projectPath}/tender-notices/import-url`, {
+        unavailableReason: '最新后端 main 尚未提供招标公告网址导入接口；页面保留入口和手动上传能力，不会伪造导入成功。',
+      }),
       operation('tender-notice-import-status', '查询招标公告导入状态', '条件自动：网址导入尚未完成时每 2 秒', 'GET', `${projectPath}/tender-notices/imports/{importId}`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/tender-notices/imports/[^/]+$`),
+        unavailableReason: '最新后端 main 尚未提供招标公告网址导入记录详情接口。',
       }),
       operation('snapshot-detail', '查看冻结快照详情', '操作：点击快照记录', 'GET', `${projectPath}/snapshots/{snapshotId}`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/snapshots/[^/]+$`),
@@ -291,7 +294,10 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'review-center') {
     return [
       ...base,
-      operation('review-evaluate', '运行外部评审', '操作：选择评审机制并运行', 'POST', `${projectPath}/evaluate`),
+      operation('review-evaluate', '运行内置评审', '操作：选择内置成果完整性检查并运行', 'POST', `${projectPath}/evaluate`),
+      operation('review-provider-selection', '按所选外部评审机制运行', '操作：选择文档、代码或 API 评审机制', 'POST', `${projectPath}/evaluate`, {
+        unavailableReason: '最新后端 evaluate 接口没有 requestBody，当前会忽略 provider_id 并固定运行内置 Provider。',
+      }),
       operation('review-update-suggestion', '保存编辑后的评审建议', '操作：确认编辑建议', 'PUT', `${projectPath}/scores/{scoreId}/items/{findingId}/suggestion`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/scores/[^/]+/items/[^/]+/suggestion$`),
       }),

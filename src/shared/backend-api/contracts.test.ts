@@ -88,12 +88,12 @@ describe('real backend endpoint contracts', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ run_id: 6 }));
     const api = createBackendApi({ baseUrl: '/api/v1', fetchImpl });
 
-    await api.review.evaluate(3, { provider_id: 12 });
+    await api.review.evaluate(3);
 
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('/api/v1/projects/3/evaluate');
     expect(init?.method).toBe('POST');
-    expect(JSON.parse(String(init?.body))).toEqual({ provider_id: 12 });
+    expect(init?.body).toBeUndefined();
   });
 
   it('addresses deliverable versions by backend version_no', async () => {
