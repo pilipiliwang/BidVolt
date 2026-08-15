@@ -92,10 +92,12 @@ function rowTotal(row: QuoteSheetRow) {
 }
 
 function quoteTotal(rows: readonly QuoteSheetRow[]) {
+  if (rows.length === 0) return Number.NaN;
   return rows.reduce((total, row) => total + rowTotal(row), 0);
 }
 
 function tenderTotal(rows: readonly QuoteSheetRow[]) {
+  if (rows.length === 0) return Number.NaN;
   return rows.reduce((total, row) => total + row.quantity * row.tenderPrice, 0);
 }
 
@@ -108,13 +110,18 @@ function cellValue(row: QuoteSheetRow, field: SheetField) {
 }
 
 function sourcePriceDisplay(value: number, unavailableLabel: '待查询' | '待计算') {
-  return value > 0 ? numberFormatter.format(value) : unavailableLabel;
+  return Number.isFinite(value) && value > 0 ? numberFormatter.format(value) : unavailableLabel;
+}
+
+function editablePriceDisplay(value: number) {
+  return Number.isFinite(value) ? numberFormatter.format(value) : '待提供';
 }
 
 function selectedCellDisplay(row: QuoteSheetRow, field: SheetField) {
   if (field === 'historyPrice') return row.historyPrice > 0 ? String(row.historyPrice) : '待查询';
   if (field === 'suggestedPrice') return row.suggestedPrice > 0 ? String(row.suggestedPrice) : '待计算';
-  return String(cellValue(row, field));
+  const value = cellValue(row, field);
+  return typeof value === 'number' && !Number.isFinite(value) ? '待提供' : String(value);
 }
 
 function inputLabel(row: QuoteSheetRow, field: EditableField) {
@@ -365,11 +372,11 @@ export function SpreadsheetEditor({
         `物料名称：${selectedRow.name}`,
         `规格型号：${selectedRow.specification}`,
         `数量：${integerFormatter.format(selectedRow.quantity)} ${selectedRow.unit}`,
-        `招标限价（元）：${numberFormatter.format(selectedRow.tenderPrice)}`,
+        `招标限价（元）：${editablePriceDisplay(selectedRow.tenderPrice)}`,
         `历史中标价（元）：${sourcePriceDisplay(selectedRow.historyPrice, '待查询')}（只读外部数据）`,
         `算法建议单价（元）：${sourcePriceDisplay(selectedRow.suggestedPrice, '待计算')}（只读算法输出）`,
-        `用户报价（元）：${numberFormatter.format(selectedRow.userPrice)}`,
-        `合价（元）：${numberFormatter.format(rowTotal(selectedRow))}`,
+        `用户报价（元）：${editablePriceDisplay(selectedRow.userPrice)}`,
+        `合价（元）：${editablePriceDisplay(rowTotal(selectedRow))}`,
       ].join('\n'));
       setNotice('已填入项目助手输入框，请补充修改要求');
       return;
@@ -525,7 +532,7 @@ export function SpreadsheetEditor({
         0,
       );
     }
-    setSumResult(`自动求和：${label} = ${numberFormatter.format(total)}`);
+    setSumResult(`自动求和：${label} = ${Number.isFinite(total) ? numberFormatter.format(total) : '待提供'}`);
   };
 
   const applySuggestedPrices = () => {
@@ -552,7 +559,7 @@ export function SpreadsheetEditor({
   const total = quoteTotal(editorRows);
   const limitTotal = tenderTotal(editorRows);
   const totalQuantity = editorRows.reduce((sum, row) => sum + row.quantity, 0);
-  const weightedUnitPrice = totalQuantity ? total / totalQuantity : 0;
+  const weightedUnitPrice = totalQuantity && Number.isFinite(total) ? total / totalQuantity : Number.NaN;
   const eligibleSuggestionCount = editorRows.filter((row) => row.suggestedPrice > 0).length;
   const canApplySuggestions = eligibleSuggestionCount > 0;
   const canUndo = undoStackRef.current.length > 0;
@@ -569,10 +576,11 @@ export function SpreadsheetEditor({
         className={isNumeric ? 'office-sheet-cell-input office-sheet-cell-input--number' : 'office-sheet-cell-input'}
         readOnly={readOnly}
         min={field === 'quantity' ? '0.01' : isNumeric ? '0' : undefined}
+        placeholder={!isNumeric && !String(row[field]).trim() ? '待提供，请补充' : undefined}
         step={isNumeric ? '0.01' : undefined}
         title={validationErrors[key]}
         type={isNumeric ? 'number' : 'text'}
-        value={drafts[key] ?? String(row[field])}
+        value={drafts[key] ?? (isNumeric && !Number.isFinite(row[field]) ? '' : String(row[field]))}
         onBlur={() => finishCellEdit(row.id, field)}
         onChange={(event) => updateCell(row.id, field, event.currentTarget.value)}
         onFocus={() => selectCell(row.id, field)}
@@ -748,7 +756,7 @@ export function SpreadsheetEditor({
                               ? sourcePriceDisplay(row.historyPrice, '待查询')
                               : column.field === 'suggestedPrice'
                                 ? sourcePriceDisplay(row.suggestedPrice, '待计算')
-                                : numberFormatter.format(Number(cellValue(row, column.field)))}
+                                : editablePriceDisplay(Number(cellValue(row, column.field)))}
                           </td>
                         );
                       }
@@ -772,7 +780,7 @@ export function SpreadsheetEditor({
                 <th colSpan={3}>当前视图合计</th>
                 <td>{integerFormatter.format(visibleRows.reduce((sum, row) => sum + row.quantity, 0))}</td>
                 <td colSpan={5} />
-                <td>¥ {numberFormatter.format(quoteTotal(visibleRows))}</td>
+                <td>{Number.isFinite(quoteTotal(visibleRows)) ? `¥ ${numberFormatter.format(quoteTotal(visibleRows))}` : '待提供'}</td>
               </tr>
             </tfoot>
           </table>
@@ -788,12 +796,12 @@ export function SpreadsheetEditor({
         <div aria-labelledby="sheet-tab-summary" className="office-sheet-report" id="sheet-panel-summary" role="tabpanel">
           <header><h3>报价汇总</h3><p>基于当前 {editorRows.length} 条报价明细实时计算</p></header>
           <div className="office-sheet-summary-cards">
-            <article><span>报价总额</span><strong>¥ {numberFormatter.format(total)}</strong></article>
-            <article><span>招标限价总额</span><strong>¥ {numberFormatter.format(limitTotal)}</strong></article>
-            <article><span>限价节省</span><strong>¥ {numberFormatter.format(limitTotal - total)}</strong></article>
+            <article><span>报价总额</span><strong>{Number.isFinite(total) ? `¥ ${numberFormatter.format(total)}` : '待提供'}</strong></article>
+            <article><span>招标限价总额</span><strong>{Number.isFinite(limitTotal) ? `¥ ${numberFormatter.format(limitTotal)}` : '待提供'}</strong></article>
+            <article><span>限价节省</span><strong>{Number.isFinite(limitTotal - total) ? `¥ ${numberFormatter.format(limitTotal - total)}` : '待提供'}</strong></article>
             <article><span>物料总数量</span><strong>{integerFormatter.format(totalQuantity)}</strong></article>
-            <article><span>加权平均单价</span><strong>¥ {numberFormatter.format(weightedUnitPrice)}</strong></article>
-            <article><span>限价使用率</span><strong>{limitTotal ? `${((total / limitTotal) * 100).toFixed(2)}%` : '--'}</strong></article>
+            <article><span>加权平均单价</span><strong>{Number.isFinite(weightedUnitPrice) ? `¥ ${numberFormatter.format(weightedUnitPrice)}` : '待提供'}</strong></article>
+            <article><span>限价使用率</span><strong>{Number.isFinite(total) && Number.isFinite(limitTotal) && limitTotal > 0 ? `${((total / limitTotal) * 100).toFixed(2)}%` : '--'}</strong></article>
           </div>
         </div>
       ) : null}
@@ -807,8 +815,8 @@ export function SpreadsheetEditor({
               {costGroups.map(([unit, group]) => (
                 <tr key={unit}>
                   <td>{unit}</td><td>{group.count}</td><td>{integerFormatter.format(group.quantity)}</td>
-                  <td>¥ {numberFormatter.format(group.total)}</td>
-                  <td>{total ? `${((group.total / total) * 100).toFixed(2)}%` : '0.00%'}</td>
+                  <td>{Number.isFinite(group.total) ? `¥ ${numberFormatter.format(group.total)}` : '待提供'}</td>
+                  <td>{Number.isFinite(total) && Number.isFinite(group.total) && total > 0 ? `${((group.total / total) * 100).toFixed(2)}%` : '--'}</td>
                 </tr>
               ))}
             </tbody>
@@ -823,14 +831,17 @@ export function SpreadsheetEditor({
             <thead><tr><th>物料</th><th>招标限价</th><th>历史价</th><th>算法建议价</th><th>用户报价</th><th>较建议价偏差</th></tr></thead>
             <tbody>
               {editorRows.map((row) => {
-                const deviation = row.suggestedPrice ? ((row.userPrice - row.suggestedPrice) / row.suggestedPrice) * 100 : 0;
+                const hasSuggestionComparison = Number.isFinite(row.userPrice) && row.suggestedPrice > 0;
+                const deviation = hasSuggestionComparison
+                  ? ((row.userPrice - row.suggestedPrice) / row.suggestedPrice) * 100
+                  : Number.NaN;
                 return (
                   <tr key={row.id}>
-                    <td>{row.name}</td><td>{numberFormatter.format(row.tenderPrice)}</td>
+                    <td>{row.name}</td><td>{editablePriceDisplay(row.tenderPrice)}</td>
                     <td>{sourcePriceDisplay(row.historyPrice, '待查询')}</td><td>{sourcePriceDisplay(row.suggestedPrice, '待计算')}</td>
-                    <td>{numberFormatter.format(row.userPrice)}</td>
-                    <td className={row.suggestedPrice <= 0 ? undefined : deviation > 0 ? 'is-over' : 'is-under'}>
-                      {row.suggestedPrice > 0 ? `${deviation > 0 ? '+' : ''}${deviation.toFixed(2)}%` : '待计算'}
+                    <td>{editablePriceDisplay(row.userPrice)}</td>
+                    <td className={!hasSuggestionComparison ? undefined : deviation > 0 ? 'is-over' : 'is-under'}>
+                      {hasSuggestionComparison ? `${deviation > 0 ? '+' : ''}${deviation.toFixed(2)}%` : '待计算'}
                     </td>
                   </tr>
                 );

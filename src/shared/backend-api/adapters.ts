@@ -10,6 +10,7 @@ import type {
 import type {
   ProjectMaterial as ProjectMaterialView,
   ProjectMaterialKind,
+  ProjectMaterialPurpose,
   ProjectRequirement as ProjectRequirementView,
   ProjectSnapshot as ProjectSnapshotView,
   RequirementType,
@@ -67,11 +68,10 @@ const projectStageByStatus: Record<number, ProjectStage> = {
   9: '待提交',
 };
 
-const projectProgressByStatus: Record<number, number> = { 1: 10, 2: 45, 3: 75, 4: 100, 9: 100 };
-
 export type ProjectAdapterStats = {
   buyer?: string;
   materialCount?: number;
+  progress?: number;
   riskCount?: number;
 };
 
@@ -90,14 +90,14 @@ export function adaptBackendProject(
 ): ProjectSummary {
   return {
     id: String(project.project_id),
-    code: project.tender_no?.trim() || `项目-${project.project_id}`,
+    code: project.tender_no?.trim() || '招标编号未提供',
     title: project.name,
     buyer: stats.buyer?.trim() || buyerFromProjectNote(project.note) || '招标人待补充',
-    stage: projectStageByStatus[project.status] ?? '材料解析',
-    progress: projectProgressByStatus[project.status] ?? 0,
+    stage: projectStageByStatus[project.status] ?? '状态未知',
     deadline: project.deadline ?? '截止时间待补充',
-    materialCount: stats.materialCount ?? 0,
-    riskCount: stats.riskCount ?? 0,
+    ...(stats.progress === undefined ? {} : { progress: stats.progress }),
+    ...(stats.materialCount === undefined ? {} : { materialCount: stats.materialCount }),
+    ...(stats.riskCount === undefined ? {} : { riskCount: stats.riskCount }),
     updatedAt: project.updated_at,
   };
 }
@@ -111,31 +111,62 @@ export function adaptBackendProjects(
   );
 }
 
+const materialKindByBackendCategory: Readonly<Record<string, ProjectMaterialKind>> = {
+  tender_notice: 'tender_notice',
+  '招标公告': 'tender_notice',
+  tender_document: 'tender_document',
+  '招标文件': 'tender_document',
+  technical_specification: 'technical_specification',
+  '技术规范书': 'technical_specification',
+  scoring_rules: 'scoring_rules',
+  score_rule: 'scoring_rules',
+  '评标办法': 'scoring_rules',
+  quote_template: 'quote_template',
+  '报价模板': 'quote_template',
+  clarification: 'clarification',
+  '澄清补遗': 'clarification',
+  drawing: 'drawing',
+  '图纸清单': 'drawing',
+  other: 'other',
+};
+
 const materialKindFromFile = (file: BackendFile): ProjectMaterialKind => {
-  const label = `${file.category ?? ''} ${file.name}`.toLocaleLowerCase();
-  if (/澄清|补遗/.test(label)) return 'clarification';
-  if (/报价|工程量清单/.test(label)) return 'quote_template';
-  if (/评标|评审|评分/.test(label)) return 'scoring_rules';
-  if (/技术规范|技术要求/.test(label)) return 'technical_specification';
-  if (/招标公告|公告/.test(label)) return 'tender_notice';
-  if (/招标文件|招标书/.test(label)) return 'tender_document';
-  if (/图纸|图册/.test(label)) return 'drawing';
-  return 'other';
+  const category = file.category?.trim().toLocaleLowerCase();
+  return category ? materialKindByBackendCategory[category] ?? 'other' : 'other';
 };
 
 const parseState = (status: number): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
+  if (status === 1) return { parseStatus: 'queued' };
   if (status === 2) return { parseStatus: 'parsing' };
   if (status === 3) return { parseProgress: 100, parseStatus: 'parsed' };
   if (status === 4) return { parseStatus: 'failed' };
-  return { parseStatus: 'queued' };
+  return { parseStatus: 'unknown' };
+};
+
+const materialPurposeAliases: Readonly<Record<string, ProjectMaterialPurpose>> = {
+  current_tender: 'current_tender',
+  tender_material: 'current_tender',
+  tender_notice: 'current_tender',
+  tender_document: 'current_tender',
+  supplemental: 'supplemental',
+  supplemental_material: 'supplemental',
+  assistant_supplement: 'supplemental',
+  completed_bid: 'completed_bid',
+};
+
+const materialPurposeFromFile = (file: BackendFile): ProjectMaterialPurpose | undefined => {
+  const rawPurpose = file.document_role ?? file.purpose;
+  const purpose = rawPurpose?.trim().toLocaleLowerCase();
+  return purpose ? materialPurposeAliases[purpose] : undefined;
 };
 
 export function adaptBackendFile(file: BackendFile): ProjectMaterialView {
+  const purpose = materialPurposeFromFile(file);
   return {
     id: String(file.file_id),
     name: file.name,
     kind: materialKindFromFile(file),
-    revisionNo: 1,
+    ...(purpose ? { purpose } : {}),
     ...parseState(file.status),
     // FileObject list currently omits timestamps and material revision metadata.
     uploadedAt: '上传时间未提供',
@@ -237,8 +268,8 @@ export function adaptBackendEnterpriseAsset(
       id: String(revision.revision_id),
       revisionNo: revision.revision_no,
       createdAt: revision.created_at ?? '创建时间未提供',
-      createdBy: revision.created_by === null ? '系统' : `用户 #${revision.created_by}`,
-      changeNote: revision.revision_no === 1 ? '初次入库' : '企业资料版本更新',
+      createdBy: revision.created_by === null ? '创建人未提供' : `用户 #${revision.created_by}`,
+      changeNote: '变更说明未提供',
       isCurrent: revision.revision_no === latestRevisionNo,
     })),
   };
@@ -286,6 +317,7 @@ const requirementLabels: Record<RequirementType, string> = {
   quote_rule: '报价规则',
   material_checklist: '材料清单',
   attachment: '附件要求',
+  unknown: '要求类型未提供',
 };
 
 type RequirementAdapterOptions = {
@@ -301,7 +333,7 @@ export function adaptBackendRequirement(
   requirement: Requirement,
   options: RequirementAdapterOptions = {},
 ): ProjectRequirementView {
-  const type = requirementTypeAliases[requirement.req_type] ?? 'attachment';
+  const type = requirementTypeAliases[requirement.req_type] ?? 'unknown';
   const structured = asRecord(requirement.structured);
   const coordinate = firstCoordinate(requirement.coordinates);
   const sourceFileId =
@@ -319,8 +351,9 @@ export function adaptBackendRequirement(
       requirementLabels[type],
     content: requirement.content,
     confidence: requirement.confidence ?? undefined,
-    // Backend has no confirmation state or confirmation mutation endpoint.
-    confirmationStatus: 'needs_confirmation',
+    // The backend response does not expose confirmation state. Do not present
+    // absence as either a confirmed or pending business decision.
+    confirmationStatus: 'unavailable',
     revisionNo: requirement.revision,
     coordinate: {
       fileName,
@@ -337,10 +370,10 @@ export const adaptBackendRequirements = (
 ): ProjectRequirementView[] =>
   requirements.map((requirement) => adaptBackendRequirement(requirement, options));
 
-const collectionSize = (value: unknown): number => {
+const collectionSize = (value: unknown): number | undefined => {
   if (Array.isArray(value)) return value.length;
   const record = asRecord(value);
-  return record ? Object.keys(record).length : 0;
+  return record ? Object.keys(record).length : undefined;
 };
 
 export function adaptBackendSnapshots(snapshots: readonly SnapshotSummary[]): ProjectSnapshotView[] {
@@ -349,14 +382,15 @@ export function adaptBackendSnapshots(snapshots: readonly SnapshotSummary[]): Pr
     const materialRefs =
       inputRefs.materials ?? inputRefs.material_ids ?? inputRefs.project_materials;
     const requirementRefs = inputRefs.requirements ?? inputRefs.requirement_revisions;
+    const materialRevisionCount = collectionSize(materialRefs);
+    const requirementRevisionNo =
+      asNumber(inputRefs.requirement_revision_no) ?? collectionSize(requirementRefs);
     return {
       id: String(snapshot.snapshot_id),
       label: `${snapshot.snapshot_type || '项目'}快照 #${snapshot.snapshot_id}`,
       createdAt: snapshot.created_at ?? '创建时间未提供',
-      materialRevisionCount: collectionSize(materialRefs),
-      requirementRevisionNo:
-        asNumber(inputRefs.requirement_revision_no) ?? collectionSize(requirementRefs),
-      isCurrent: false,
+      ...(materialRevisionCount === undefined ? {} : { materialRevisionCount }),
+      ...(requirementRevisionNo === undefined ? {} : { requirementRevisionNo }),
     };
   });
 }
@@ -373,7 +407,12 @@ const taskStatus = (task: BackendTask): PublicTaskEvent['status'] => {
   const statusMap: Record<number, PublicTaskEvent['status']> = {
     1: 'queued', 2: 'running', 3: 'succeeded', 4: 'retrying', 5: 'cancelled', 6: 'failed',
   };
-  return statusMap[task.status] ?? 'queued';
+  return statusMap[task.status] ?? 'unknown';
+};
+
+const taskErrorCode = (error: BackendTask['error']): string | null => {
+  const record = asRecord(error);
+  return asString(record?.error_code) ?? asString(record?.code) ?? null;
 };
 
 export type TaskEventAdapterOptions = {
@@ -387,21 +426,11 @@ export function adaptBackendTaskEvent(
   { projectId, sequence = 0, occurredAt }: TaskEventAdapterOptions,
 ): PublicTaskEvent {
   const status = taskStatus(task);
-  const fallbackMessage: Record<PublicTaskEvent['status'], string> = {
-    queued: '任务已提交，等待后端执行器领取',
-    running: '任务正在由后端执行器处理',
-    retrying: '任务正在重试',
-    waiting_user: '任务等待用户补充信息',
-    cancel_requested: '已请求中断任务',
-    cancelled: '任务已取消',
-    succeeded: '任务已完成',
-    failed: '任务执行失败',
-  };
   const message =
     asString(task.progress.current_work) ??
     asString(task.progress.summary) ??
     asString(task.progress.hint) ??
-    fallbackMessage[status];
+    '后端未提供任务进度说明';
   const percent = asNumber(task.progress.percent);
   return {
     schema_version: '1',
@@ -414,8 +443,8 @@ export function adaptBackendTaskEvent(
     status,
     percent: percent === undefined ? null : Math.max(0, Math.min(100, Math.round(percent))),
     public_message: message,
-    error_code: status === 'failed' ? 'BACKEND_TASK_FAILED' : null,
-    occurred_at: occurredAt ?? task.created_at ?? new Date().toISOString(),
+    error_code: taskErrorCode(task.error),
+    occurred_at: occurredAt ?? task.created_at ?? '时间未提供',
   };
 }
 

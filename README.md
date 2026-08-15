@@ -1,6 +1,6 @@
 # AI电网投标助手
 
-AI电网投标助手的独立 Web 前端仓库。这里只维护浏览器端页面、前端领域模型、Mock 服务、接口契约和测试；不包含 Electron、桌面客户端、原生移动端或后端实现。
+AI电网投标助手的独立 Web 前端仓库。这里只维护浏览器端页面、前端领域模型、真实 API client/DTO 适配、接口契约和测试；不包含 Electron、桌面客户端、原生移动端或后端实现。
 
 ## 产品边界
 
@@ -41,7 +41,7 @@ npm run api:check
 
 开发默认使用真实后端模式。接口根地址通过 `VITE_API_BASE_URL` 配置，本地跨域由 `VITE_API_PROXY_TARGET` 同源代理处理。
 
-当前页面数据使用显式的演示 Session，并按 `enterpriseId + projectId` 分区保存；全局页面不会隐式继承“上一次项目”。真实后端接入时，认证与租户/项目资源归属校验仍必须由服务端完成。
+默认与 `backend` 模式下的业务数据只来自真实后端 API；请求失败会显示错误/空态，不会回退到演示列表。仅 `dev:local-preview` 会在本机开发态加载明确标记的只读界面快照，该快照不进入 `backend` 生产构建。认证与租户/项目资源归属校验必须由服务端完成。
 
 ## 当前 Web MVP
 
@@ -66,13 +66,12 @@ npm run api:check
 - 登录、上传与在线编辑联调草案：[`docs/api/FRONTEND_INTEGRATION.md`](docs/api/FRONTEND_INTEGRATION.md)
 - 在线编辑 P0/P1 能力边界：[`docs/product/ONLINE_EDITOR_CAPABILITIES.md`](docs/product/ONLINE_EDITOR_CAPABILITIES.md)
 - 真实后端 API client 与 DTO 适配：[`src/shared/backend-api`](src/shared/backend-api)
-- API 到页面模型的穷尽适配层：[`src/shared/view-model-adapters`](src/shared/view-model-adapters)
-- 本地 Mock：[`src/mocks`](src/mocks)
+- API 到页面模型的适配层：[`src/shared/backend-api/adapters.ts`](src/shared/backend-api/adapters.ts)
+- 开发态只读界面快照：[`src/app/local-preview.ts`](src/app/local-preview.ts)（不在 `backend` 生产构建中加载）
 
 修改接口时必须同步更新后端运行时 OpenAPI、真实 client、DTO 适配器和 Contract 测试，再运行：
 
 ```bash
-npm run api:generate
 npm run api:check
 npm run test
 ```

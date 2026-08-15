@@ -113,7 +113,7 @@ export function DeliverableEditorPage({
     [deliverableId, draftScopeId, versionId],
   );
   const [quoteRows, setQuoteRows] = useState<QuoteSheetRow[]>(() =>
-    loadQuoteRows(quoteDraftKey, initialBackendQuoteRows),
+    loadQuoteRows(quoteDraftKey, initialBackendQuoteRows, !isBackendConnected),
   );
   const [saveState, setSaveState] = useState<SaveState>('ready');
   const [assistantDraft, setAssistantDraft] = useState('');
@@ -125,11 +125,11 @@ export function DeliverableEditorPage({
   );
 
   useEffect(() => {
-    setQuoteRows(loadQuoteRows(quoteDraftKey, initialBackendQuoteRows));
+    setQuoteRows(loadQuoteRows(quoteDraftKey, initialBackendQuoteRows, !isBackendConnected));
     setSaveState('ready');
     setAssistantDraft('');
     setAssistantFocusRequest(0);
-  }, [initialBackendQuoteRows, quoteDraftKey]);
+  }, [initialBackendQuoteRows, isBackendConnected, quoteDraftKey]);
 
   if (!project) {
     return (
@@ -146,12 +146,19 @@ export function DeliverableEditorPage({
       setSaveState('error');
       return;
     }
+    if (
+      payload.kind === 'spreadsheet'
+      && (!Number.isFinite(payload.total) || !payload.rows.every(isQuoteSheetWritableRow))
+    ) {
+      setSaveState('error');
+      return;
+    }
     if (saveFlightRef.current) return saveFlightRef.current;
     setSaveState('saving');
     const saveFlight = (async () => {
       try {
         await onSave?.(payload);
-        if (payload.kind === 'spreadsheet') {
+        if (payload.kind === 'spreadsheet' && !isBackendConnected) {
           saveQuoteRows(quoteDraftKey, quoteRows);
         }
         setSaveState('saved');
@@ -166,10 +173,10 @@ export function DeliverableEditorPage({
     return trackedFlight;
   };
 
-  const total = quoteRows.reduce(
-    (sum, row) => sum + row.quantity * row.userPrice,
-    0,
-  );
+  const total = quoteRows.length > 0
+    && quoteRows.every((row) => Number.isFinite(row.quantity) && Number.isFinite(row.userPrice))
+    ? quoteRows.reduce((sum, row) => sum + row.quantity * row.userPrice, 0)
+    : Number.NaN;
   const sendSelectionToAssistant = (selection: string) => {
     const selectedText = selection
       .replace(/\r\n?/g, '\n')
@@ -293,7 +300,9 @@ export function DeliverableEditorPage({
               downloadLabel={downloadLabel ?? `下载${definition.title}`}
               onDownload={onDownload}
               readOnly={isReadOnly}
-              storageKey={officeDraftStorageKey(draftScopeId, deliverableId, versionId)}
+              storageKey={isBackendConnected
+                ? undefined
+                : officeDraftStorageKey(draftScopeId, deliverableId, versionId)}
               initialHtml={extractWordHtml(editorContent)}
               onDirty={() => setSaveState('dirty')}
               onSendSelectionToAssistant={sendSelectionToAssistant}
@@ -397,29 +406,32 @@ export function backendQuoteRows(content: unknown): QuoteSheetRow[] | undefined 
   const rows = dataRows.flatMap((rawRow, index) => {
     const values = rawRow as unknown[];
     const isExpandedFormat = values.length >= 7;
-    const code = typeof values[0] === 'string' ? values[0] : '';
-    const name = isExpandedFormat && typeof values[1] === 'string'
-      ? values[1]
-      : code;
+    const code = isExpandedFormat && typeof values[0] === 'string' ? values[0] : '';
+    const name = typeof values[isExpandedFormat ? 1 : 0] === 'string'
+      ? String(values[isExpandedFormat ? 1 : 0])
+      : '';
     const specification = isExpandedFormat && typeof values[2] === 'string'
       ? values[2]
-      : '后端成果未提供规格';
+      : '';
     const quantity = Number(values[isExpandedFormat ? 3 : 1]);
-    const unit = isExpandedFormat && typeof values[4] === 'string' ? values[4] : '项';
-    const tenderPrice = Number(values[isExpandedFormat ? 5 : 2]);
+    const unit = isExpandedFormat && typeof values[4] === 'string' ? values[4] : '';
+    const tenderPrice = isExpandedFormat ? Number(values[5]) : Number.NaN;
     const userPrice = Number(values[isExpandedFormat ? 6 : 2]);
     if (!name || !Number.isFinite(quantity)) return [];
     return [{
       id: `backend-row-${index + 1}`,
-      code: code || name,
+      code,
       name,
       specification,
       quantity,
       unit,
-      tenderPrice: Number.isFinite(tenderPrice) ? tenderPrice : 0,
+      tenderPrice: Number.isFinite(tenderPrice) ? tenderPrice : Number.NaN,
       historyPrice: 0,
-      suggestedPrice: Number.isFinite(userPrice) ? userPrice : 0,
-      userPrice: Number.isFinite(userPrice) ? userPrice : 0,
+      // The saved quote sheet contains the user's price, not a server-side
+      // algorithm recommendation. Keep the suggestion unavailable until an
+      // explicit backend field is returned.
+      suggestedPrice: 0,
+      userPrice: Number.isFinite(userPrice) ? userPrice : Number.NaN,
     }];
   });
   return rows.length > 0 ? rows : undefined;
@@ -429,24 +441,26 @@ function quoteRowFromRecord(candidate: unknown, index: number): QuoteSheetRow[] 
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
   const row = candidate as Record<string, unknown>;
   const code = typeof row.code === 'string' ? row.code : '';
-  const name = typeof row.name === 'string' ? row.name : code;
-  const specification = typeof row.specification === 'string' ? row.specification : '后端成果未提供规格';
-  const unit = typeof row.unit === 'string' ? row.unit : '项';
+  const name = typeof row.name === 'string' ? row.name : '';
+  const specification = typeof row.specification === 'string' ? row.specification : '';
+  const unit = typeof row.unit === 'string' ? row.unit : '';
   const quantity = Number(row.quantity);
   const tenderPrice = Number(row.tenderPrice ?? row.tender_price);
+  const historyPrice = Number(row.historyPrice ?? row.history_price);
+  const suggestedPrice = Number(row.suggestedPrice ?? row.suggested_price);
   const userPrice = Number(row.userPrice ?? row.user_price);
   if (!name || !Number.isFinite(quantity)) return [];
   return [{
     id: typeof row.id === 'string' && row.id ? row.id : `backend-row-${index + 1}`,
-    code: code || name,
+    code,
     name,
     specification,
     quantity,
     unit,
-    tenderPrice: Number.isFinite(tenderPrice) ? tenderPrice : 0,
-    historyPrice: 0,
-    suggestedPrice: Number.isFinite(userPrice) ? userPrice : 0,
-    userPrice: Number.isFinite(userPrice) ? userPrice : 0,
+    tenderPrice: Number.isFinite(tenderPrice) ? tenderPrice : Number.NaN,
+    historyPrice: Number.isFinite(historyPrice) ? historyPrice : 0,
+    suggestedPrice: Number.isFinite(suggestedPrice) ? suggestedPrice : 0,
+    userPrice: Number.isFinite(userPrice) ? userPrice : Number.NaN,
   }];
 }
 
@@ -481,8 +495,12 @@ function officeDraftStorageKey(
   ].join(':');
 }
 
-function loadQuoteRows(storageKey: string, fallbackRows?: readonly QuoteSheetRow[]) {
-  if (typeof window === 'undefined') return cloneQuoteRows(fallbackRows);
+function loadQuoteRows(
+  storageKey: string,
+  fallbackRows?: readonly QuoteSheetRow[],
+  allowLocalDraft = true,
+) {
+  if (!allowLocalDraft || typeof window === 'undefined') return cloneQuoteRows(fallbackRows);
 
   try {
     const stored = window.localStorage.getItem(storageKey);
@@ -556,7 +574,7 @@ function saveStateLabel(state: SaveState) {
     dirty: '有未保存的修改',
     saving: '正在保存修改…',
     saved: '修改已保存到当前成果版本',
-    error: '保存失败，请重试',
+    error: '保存失败，请检查必填字段或后端连接后重试',
   };
   return labels[state];
 }
@@ -618,28 +636,36 @@ function QuoteOverview({
   rows: QuoteSheetRow[];
   total: number;
 }) {
-  const tenderLimit = rows.reduce(
-    (sum, row) => sum + row.quantity * row.tenderPrice,
-    0,
+  const hasCompleteTenderLimit = rows.length > 0 && rows.every(
+    (row) => Number.isFinite(row.quantity) && Number.isFinite(row.tenderPrice),
   );
-  const abnormalCount = rows.filter(
-    (row) => row.userPrice <= 0 || row.userPrice > row.tenderPrice,
+  const hasCompleteUserQuote = rows.length > 0 && rows.every(
+    (row) => Number.isFinite(row.quantity) && Number.isFinite(row.userPrice),
+  );
+  const tenderLimit = hasCompleteTenderLimit
+    ? rows.reduce((sum, row) => sum + row.quantity * row.tenderPrice, 0)
+    : Number.NaN;
+  const abnormalCount = hasCompleteTenderLimit && hasCompleteUserQuote
+    ? rows.filter((row) => row.userPrice <= 0 || row.userPrice > row.tenderPrice).length
+    : null;
+  const missingEvidenceCount = rows.filter(
+    (row) => !Number.isFinite(row.historyPrice) || row.historyPrice <= 0,
   ).length;
-  const missingEvidenceCount = rows.filter((row) => row.historyPrice <= 0).length;
+  const hasComparableTotals = Number.isFinite(total) && Number.isFinite(tenderLimit);
 
   return (
     <section className="office-quote-rail" aria-label="报价概览">
       <header><h2>报价概览</h2><RefreshCw aria-hidden="true" size={17} /></header>
       <p className="office-review-rail__demo">随当前表格重算；得分与毛利以服务端测算为准</p>
       <dl>
-        <div><dt>当前投标总价（元）</dt><dd>{currency.format(total)}</dd></div>
-        <div><dt>当前明细限价（元）</dt><dd>{currency.format(tenderLimit)}</dd></div>
+        <div><dt>当前投标总价（元）</dt><dd>{Number.isFinite(total) ? currency.format(total) : '待提供'}</dd></div>
+        <div><dt>当前明细限价（元）</dt><dd>{Number.isFinite(tenderLimit) ? currency.format(tenderLimit) : '待提供'}</dd></div>
         <div><dt>预计报价得分</dt><dd><small>待服务端测算</small></dd></div>
         <div><dt>预计毛利率</dt><dd><small>待服务端测算</small></dd></div>
       </dl>
       <ul>
-        <li><ShieldCheck aria-hidden="true" size={17} /><span>超限价风险</span><strong>{total > tenderLimit ? '高' : '低'}</strong></li>
-        <li><AlertTriangle aria-hidden="true" size={17} /><span>异常价格数量</span><strong>{abnormalCount} 项</strong></li>
+        <li><ShieldCheck aria-hidden="true" size={17} /><span>超限价风险</span><strong>{hasComparableTotals ? total > tenderLimit ? '高' : '低' : '待提供'}</strong></li>
+        <li><AlertTriangle aria-hidden="true" size={17} /><span>异常价格数量</span><strong>{abnormalCount === null ? '待提供' : `${abnormalCount} 项`}</strong></li>
         <li><TrendingUp aria-hidden="true" size={17} /><span>缺少报价依据数量</span><strong>{missingEvidenceCount} 项</strong></li>
       </ul>
       <AppLink to={`/projects/${encodeURIComponent(projectId)}/pricing`}>

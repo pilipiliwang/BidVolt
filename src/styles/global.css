@@ -1670,6 +1670,12 @@ a {
   background: #e8f8f6;
 }
 
+.event-status--unknown {
+  color: #64748b;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
 .event-stream li > div {
   padding-top: 3px;
 }

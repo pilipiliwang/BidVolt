@@ -21,7 +21,6 @@ describe('tenant state isolation', () => {
     const second = createEmptyTenantDomainState();
 
     expect(second).toEqual({
-      completedBidMaterialIdsByScope: {},
       editor: null,
       enterpriseAssets: [],
       enterpriseCategories: [],
@@ -34,7 +33,6 @@ describe('tenant state isolation', () => {
       reviewProviders: [],
       snapshotDetail: null,
       statusMessage: null,
-      supplementalMaterialIdsByScope: {},
       taskDrawerProjectId: null,
     });
     expect(second.projects).not.toBe(first.projects);

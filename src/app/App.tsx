@@ -65,7 +65,6 @@ import {
   scoreSummaryForOverview,
   subscribeToBackendApiRequests,
   type BackendApiRequestEvent,
-  type BackendFile,
   type BackendTask,
   type BackendTaskStreamUpdate,
   type Deliverable,
@@ -87,7 +86,6 @@ import {
   clearBackendSession,
   getBackendAccessToken,
   getBackendRefreshToken,
-  getRememberedEnterpriseName,
   saveBackendSession,
 } from './backend-session';
 import { AppLink, deliverableEditorPath, navigate, type DeliverableRouteId, useUrlRoute } from './router';
@@ -105,14 +103,6 @@ import {
   type ProjectResourceKey,
 } from './project-resource-state';
 import { getEditorDraftScopeKey, type AppSession } from './session';
-import {
-  getCompletedBidMaterialIds,
-  getSupplementalMaterialIds,
-  recordCompletedBidMaterialFiles,
-  recordSupplementalMaterialFiles,
-  type CompletedBidMaterialIdsByScope,
-  type SupplementalMaterialIdsByScope,
-} from './supplemental-material-state';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
 import { createEditorSaveGate } from './editor-save-gate';
@@ -276,8 +266,6 @@ export function App() {
   const [projectRouteFailure, setProjectRouteFailure] = useState<ProjectRouteFailure | null>(null);
   const [projectRetryNonce, setProjectRetryNonce] = useState(0);
   const [projectResourceErrors, setProjectResourceErrors] = useState<Record<string, ProjectResourceErrors>>({});
-  const [completedBidMaterialIdsByScope, setCompletedBidMaterialIdsByScope] = useState<CompletedBidMaterialIdsByScope>({});
-  const [supplementalMaterialIdsByScope, setSupplementalMaterialIdsByScope] = useState<SupplementalMaterialIdsByScope>({});
   const [backendRequestEvents, setBackendRequestEvents] = useState<Record<string, BackendApiRequestEvent>>({});
   const editorLoadKeyRef = useRef('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
@@ -318,8 +306,6 @@ export function App() {
     setMissingProjectId(null);
     setProjectRouteFailure(null);
     setProjectResourceErrors({});
-    setCompletedBidMaterialIdsByScope(empty.completedBidMaterialIdsByScope);
-    setSupplementalMaterialIdsByScope(empty.supplementalMaterialIdsByScope);
     apiRouteStartedAtRef.current = Date.now();
     setBackendRequestEvents({});
     setStatusMessage(empty.statusMessage);
@@ -377,7 +363,7 @@ export function App() {
     const profile = me ?? await backendApi.auth.me();
     const nextSession: AppSession = {
       enterpriseId: String(profile.enterprise_id),
-      enterpriseName: profile.enterprise_name || getRememberedEnterpriseName() || `企业 #${profile.enterprise_id}`,
+      enterpriseName: profile.enterprise_name || '企业名称未提供',
       userId: String(profile.user_id),
       user: {
         displayName: profile.email || `用户 #${profile.user_id}`,
@@ -435,12 +421,12 @@ export function App() {
     const [categories, assets, ingestionResponse] = await Promise.all([
       backendApi.enterprise.listCategories(),
       backendApi.enterprise.listAssets(),
-      backendApi.enterprise.listIngestions().catch(() => ({ items: [] as EnterpriseIngestion[] })),
+      backendApi.enterprise.listIngestions(),
     ]);
     const bundles = await Promise.all(assets.map(async (asset) => {
       const [detail, revisions] = await Promise.all([
-        backendApi.enterprise.getAsset(asset.asset_id).catch(() => undefined),
-        backendApi.enterprise.listRevisions(asset.asset_id).then((response) => response.items).catch(() => []),
+        backendApi.enterprise.getAsset(asset.asset_id),
+        backendApi.enterprise.listRevisions(asset.asset_id).then((response) => response.items),
       ]);
       return { asset, detail, revisions };
     }));
@@ -737,11 +723,9 @@ export function App() {
       signal: controller.signal,
       onUpdate: (update) => {
         if (!isCurrentSubscription() || update.taskId !== taskId) return;
-        const occurredAt = new Date().toISOString();
         const previous = taskEventsRef.current[projectId] ?? [];
         const next = mergeTaskStreamUpdate(previous, update, {
           projectId,
-          occurredAt,
           // The backend sends a terminal progress frame immediately before the
           // terminal event. Keep the task subscribed until GET /tasks/{id}
           // confirms that terminal state.
@@ -771,7 +755,6 @@ export function App() {
         const converged = adaptBackendTaskEvent(detail, {
           projectId,
           sequence: existing.sequence,
-          occurredAt: new Date().toISOString(),
         });
         const next = previous.map((event) => event === existing ? converged : event);
         taskEventsRef.current[projectId] = next;
@@ -1054,7 +1037,6 @@ export function App() {
     projectId: string,
     files: File[],
     options: {
-      onUploaded?: (uploaded: BackendFile[]) => void;
       outcomeLabel?: string;
       successMessage?: (uploadedCount: number) => string;
     } = {},
@@ -1079,9 +1061,6 @@ export function App() {
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     if (uploaded.length > 0) await loadProject(projectId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    if (uploaded.length > 0 && options.onUploaded) {
-      tenantGuardRef.current.commit(generation, () => options.onUploaded?.(uploaded));
-    }
     const outcomeError = uploadOutcomeError(
       options.outcomeLabel ?? '当前项目材料',
       uploaded.length,
@@ -1099,36 +1078,16 @@ export function App() {
   };
 
   const handleProjectSupplementalUpload = async (projectId: string, files: File[]) => {
-    if (!session) throw new Error('当前登录会话不可用，请重新登录后再添加文件。');
-    const enterpriseId = session.enterpriseId;
     await handleProjectUpload(projectId, files, {
-      onUploaded: (uploaded) => {
-        setSupplementalMaterialIdsByScope((current) => recordSupplementalMaterialFiles(
-          current,
-          enterpriseId,
-          projectId,
-          uploaded,
-        ));
-      },
-      outcomeLabel: '补充资料',
-      successMessage: (uploadedCount) => `已通过项目助手添加 ${uploadedCount} 份补充资料。该分组将在当前登录会话中保留。`,
+      outcomeLabel: '项目文件',
+      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份项目文件。后端尚未返回文件用途，页面不会将其伪归类为补充资料。`,
     });
   };
 
   const handleCompletedBidUpload = async (projectId: string, files: File[]) => {
-    if (!session) throw new Error('当前登录会话不可用，请重新登录后再上传已完成标书。');
-    const enterpriseId = session.enterpriseId;
     await handleProjectUpload(projectId, files, {
-      onUploaded: (uploaded) => {
-        setCompletedBidMaterialIdsByScope((current) => recordCompletedBidMaterialFiles(
-          current,
-          enterpriseId,
-          projectId,
-          uploaded,
-        ));
-      },
-      outcomeLabel: '已完成标书材料',
-      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份已完成标书材料，可用于后续校核。`,
+      outcomeLabel: '项目文件',
+      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份项目文件。后端尚未返回文件用途，页面不会将其伪归类为已完成标书。`,
     });
   };
 
@@ -1541,12 +1500,6 @@ export function App() {
     return !latest || event.sequence > latest.sequence ? event : latest;
   }, undefined);
   const latestSubmissionTask = findCurrentProjectSubmissionTask(taskEvents);
-  const supplementalMaterialIds = routeProjectId && session
-    ? getSupplementalMaterialIds(supplementalMaterialIdsByScope, session.enterpriseId, routeProjectId)
-    : [];
-  const completedBidMaterialIds = routeProjectId && session
-    ? getCompletedBidMaterialIds(completedBidMaterialIdsByScope, session.enterpriseId, routeProjectId)
-    : [];
   const projectTasksState = !activeData || loadingProjectId === routeProjectId
     ? 'loading'
     : routeProjectId && projectResourceErrors[routeProjectId]?.tasks
@@ -1773,7 +1726,6 @@ export function App() {
       ) : null}
       {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
-          completedBidMaterialIds={completedBidMaterialIds}
           enterpriseCategories={enterpriseCategories}
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
@@ -1804,7 +1756,6 @@ export function App() {
           requirements={activeData?.requirements ?? []}
           reviewSidebar={projectReviewSidebar}
           snapshots={activeData?.snapshots ?? []}
-          supplementalMaterialIds={supplementalMaterialIds}
           taskStatus={latestSubmissionTask?.status}
         />
       ) : null}
@@ -1977,7 +1928,7 @@ function deliverableTypeLabel(id: DeliverableRouteId) {
 
 function toWorkspaceMaterials(materials: ProjectMaterial[]): WorkspaceMaterial[] {
   const statuses: Record<ProjectMaterial['parseStatus'], string> = {
-    failed: '解析失败', needs_confirmation: '待确认', parsed: '已识别', parsing: '解析中', queued: '待解析',
+    failed: '解析失败', needs_confirmation: '待确认', parsed: '已识别', parsing: '解析中', queued: '待解析', unknown: '解析状态未提供',
   };
   return materials.map((material) => ({
     id: material.id,

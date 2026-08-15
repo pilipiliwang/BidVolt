@@ -83,11 +83,9 @@ export function mergeTaskStreamUpdate(
   update: BackendTaskStreamUpdate,
   {
     projectId,
-    occurredAt = new Date().toISOString(),
     holdTerminalStatus = false,
   }: {
     projectId: string;
-    occurredAt?: string;
     holdTerminalStatus?: boolean;
   },
 ): PublicTaskEvent[] {
@@ -109,13 +107,10 @@ export function mergeTaskStreamUpdate(
     ?? current.public_message;
   const nextEvent: PublicTaskEvent = {
     ...current,
-    event_id: `${current.task_id}-stream-${occurredAt}`,
     phase: update.progress.phase,
     status,
     percent: Math.max(0, Math.min(100, Math.round(update.progress.percent))),
     public_message: message,
-    error_code: status === 'failed' ? 'BACKEND_TASK_FAILED' : null,
-    occurred_at: occurredAt,
   };
   const next = [...previous];
   next[index] = nextEvent;

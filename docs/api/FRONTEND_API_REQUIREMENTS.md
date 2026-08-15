@@ -895,8 +895,7 @@ Word 已有选区时点击“AI针对性修改”直接填入并聚焦输入框�
 本文件是前端需求清单，不代表接口已经上线。接口确认后需要同步：
 
 1. docs/api/openapi.yaml。
-2. src/shared/api 下的运行时 Schema 和请求封装。
-3. src/mocks 下的 fixtures 与 handlers。
-4. Contract 测试和页面集成测试。
+2. src/shared/backend-api 下的请求封装、DTO 与适配器。
+3. Contract 测试和页面集成测试。
 
 页面新增、删除或改变用户动作时，应先更新本文件中的“页面与接口总表”，再调整正式 OpenAPI 契约。

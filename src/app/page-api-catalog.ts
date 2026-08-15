@@ -279,6 +279,9 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       operation('requirement-confirm', '确认招标要求原文', '操作：点击确认原文', 'POST', `${projectPath}/requirements/{requirementId}/confirm`, {
         unavailableReason: '当前后端尚未提供 Requirement 确认接口。',
       }),
+      operation('project-file-purpose', '按项目文件用途持久化并读取分类', '自动：进入材料页及上传文件后刷新', 'GET', `/files?target=project&project_id=${encodeURIComponent(projectId)}&document_role={role}`, {
+        unavailableReason: '当前后端文件列表没有 document_role/purpose 字段；前端不会按文件名或当前会话操作伪造“当前招标材料/补充资料/已完成标书”分类。',
+      }),
       operation('completed-bid-purpose', '按“已完成标书”用途持久化上传文件', '操作：上传已制作完成的标书', 'POST', `${projectPath}/completed-bids/uploads`, {
         unavailableReason: '当前只能复用普通项目材料上传，后端没有已完成标书的用途或类型字段，刷新后无法恢复该分类。',
       }),

@@ -82,6 +82,24 @@ describe('TaskProgressDrawer', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
+  it('shows an explicit neutral state when the backend task status and time are unavailable', () => {
+    render(
+      <TaskProgressDrawer
+        events={[{
+          ...publicEvents[0],
+          event_id: 'event-unknown',
+          status: 'unknown',
+          occurred_at: '时间未提供',
+        }]}
+        isOpen
+        onClose={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText('时间未提供').tagName).toBe('SPAN');
+    expect(document.querySelector('.event-status--unknown')).toBeInTheDocument();
+  });
+
   it('traps focus, closes with Escape, and restores focus to the trigger', async () => {
     const user = userEvent.setup();
     render(<DrawerHarness />);

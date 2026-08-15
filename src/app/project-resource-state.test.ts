@@ -192,10 +192,7 @@ describe('project resource state', () => {
       },
     };
 
-    const merged = mergeTaskStreamUpdate([generation, other], update, {
-      projectId: '1',
-      occurredAt: '2026-08-14T10:00:00.000Z',
-    });
+    const merged = mergeTaskStreamUpdate([generation, other], update, { projectId: '1' });
 
     expect(merged[0]).toMatchObject({
       task_id: '5',
@@ -204,7 +201,9 @@ describe('project resource state', () => {
       status: 'running',
       percent: 48,
       public_message: '正在生成技术标',
-      occurred_at: '2026-08-14T10:00:00.000Z',
+      occurred_at: '2026-08-14T00:00:00Z',
+      error_code: null,
+      event_id: '5-queued',
     });
     expect(merged[1]).toBe(other);
     expect(mergeTaskStreamUpdate([generation], { ...update, taskId: '999' }, { projectId: '1' }))
@@ -227,5 +226,26 @@ describe('project resource state', () => {
     }, { projectId: '1', holdTerminalStatus: true });
 
     expect(merged[0]).toMatchObject({ status: 'running', percent: 100, public_message: '完成' });
+  });
+
+  it('does not invent a timestamp or backend error code from a stream-only failure status', () => {
+    const generation = {
+      ...task('5', 'running'),
+      project_id: '1',
+      phase: 'bid_generate',
+      task_type: 'bid_generate',
+    };
+    const merged = mergeTaskStreamUpdate([generation], {
+      type: 'progress',
+      taskId: '5',
+      progress: { phase: 'bid_generate', status: 'failed', percent: 58, summary: '执行失败' },
+    }, { projectId: '1' });
+
+    expect(merged[0]).toMatchObject({
+      status: 'failed',
+      error_code: null,
+      occurred_at: '2026-08-14T00:00:00Z',
+      event_id: '5-running',
+    });
   });
 });

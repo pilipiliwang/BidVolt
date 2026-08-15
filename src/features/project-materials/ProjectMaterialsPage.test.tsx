@@ -13,6 +13,7 @@ const materials: ProjectMaterial[] = [
     kind: 'tender_document',
     revisionNo: 3,
     parseStatus: 'parsed',
+    purpose: 'current_tender',
     parseProgress: 100,
     blocksCount: 1286,
     uploadedAt: '2026-08-05 10:08',
@@ -24,10 +25,17 @@ const materials: ProjectMaterial[] = [
     kind: 'clarification',
     revisionNo: 1,
     parseStatus: 'parsing',
+    purpose: 'current_tender',
     parseProgress: 58,
     uploadedAt: '2026-08-05 10:16',
   },
 ];
+
+const materialsWithSupplemental = materials.map((material): ProjectMaterial =>
+  material.id === 'material-2' ? { ...material, purpose: 'supplemental' } : material);
+
+const materialsWithCompletedBid = materials.map((material): ProjectMaterial =>
+  material.id === 'material-2' ? { ...material, purpose: 'completed_bid' } : material);
 
 const requirements: ProjectRequirement[] = [
   {
@@ -99,7 +107,7 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText('项目助手添加文件')).not.toBeInTheDocument();
     expect(screen.queryByText('招标材料识别结果')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: '当前项目材料视图' })).not.toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: '当前招标材料内容' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: '项目文件内容' })).toBeInTheDocument();
     const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区页面' });
     expect(within(workspaceNavigation).getByRole('link', { name: '项目资料' }))
       .toHaveAttribute('aria-current', 'page');
@@ -172,12 +180,11 @@ describe('ProjectMaterialsPage', () => {
       <ProjectMaterialsPage
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
-        materials={materials}
+        materials={materialsWithSupplemental}
         requirements={requirements}
         snapshots={snapshots}
         onStartTask={vi.fn()}
         onUpload={vi.fn()}
-        supplementalMaterialIds={['material-2']}
       />,
     );
 
@@ -226,19 +233,19 @@ describe('ProjectMaterialsPage', () => {
     const baseProps = {
       projectId: 'BV-2026-0088',
       projectName: '海上升压站设备采购项目',
-      materials,
+      materials: materialsWithSupplemental,
       requirements,
       snapshots,
       onStartTask: vi.fn(),
-      supplementalMaterialIds: ['material-2'],
     } as const;
-    const { rerender } = render(
-      <ProjectMaterialsPage {...baseProps} completedBidMaterialIds={['missing-file-id']} />,
-    );
+    const { rerender } = render(<ProjectMaterialsPage {...baseProps} />);
 
     expect(screen.queryByRole('heading', { name: '已完成标书材料' })).not.toBeInTheDocument();
 
-    rerender(<ProjectMaterialsPage {...baseProps} completedBidMaterialIds={['material-2']} />);
+    rerender(<ProjectMaterialsPage
+      {...baseProps}
+      materials={materialsWithCompletedBid}
+    />);
 
     expect(screen.getByRole('heading', { name: '已完成标书材料' })).toBeInTheDocument();
     const collapsedCompletedBidRegion = screen.getByRole('region', { name: '已完成标书材料' });
@@ -289,17 +296,16 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.getByRole('region', { name: '当前招标材料' })).toBeInTheDocument();
   });
 
-  it('groups materials only by the supplied real file ids and keeps supplemental files above tender files', async () => {
+  it('groups materials only by backend purpose and keeps supplemental files above tender files', async () => {
     const user = userEvent.setup();
     render(
       <ProjectMaterialsPage
         projectId="BV-2026-0088"
         projectName="海上升压站设备采购项目"
-        materials={materials}
+        materials={materialsWithSupplemental}
         requirements={requirements}
         snapshots={snapshots}
         onStartTask={vi.fn()}
-        supplementalMaterialIds={['material-2']}
       />,
     );
 
@@ -313,6 +319,28 @@ describe('ProjectMaterialsPage', () => {
     expect(within(supplementalRegion).queryByText('海上升压站招标文件.pdf')).not.toBeInTheDocument();
     expect(within(tenderRegion).getByText('海上升压站招标文件.pdf')).toBeInTheDocument();
     expect(within(tenderRegion).queryByText('补遗文件一.pdf')).not.toBeInTheDocument();
+  });
+
+  it('keeps API files unclassified when the backend does not return a persisted purpose', async () => {
+    const unclassifiedMaterials = materials.map(({ purpose: _purpose, ...material }) => material);
+    render(
+      <ProjectMaterialsPage
+        projectId="BV-2026-0088"
+        projectName="海上升压站设备采购项目"
+        materials={unclassifiedMaterials}
+        requirements={requirements}
+        snapshots={snapshots}
+        onStartTask={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '项目文件（用途待分类）' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '当前招标材料' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '展开补充资料，数量待接口提供' }))
+      .toBeInTheDocument();
+    expect(screen.getByText(/不会根据本次操作或文件名伪造补充资料分类/)).toBeInTheDocument();
+    expect(screen.getByText('海上升压站招标文件.pdf')).toBeInTheDocument();
+    expect(screen.getByText('补遗文件一.pdf')).toBeInTheDocument();
   });
 
   it('routes only the bottom assistant attachment input to supplemental upload handling', async () => {

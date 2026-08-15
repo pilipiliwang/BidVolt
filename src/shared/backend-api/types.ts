@@ -22,6 +22,8 @@ export type ProjectWrite = {
 export type BackendFile = {
   file_id: number; name: string; size: number; mime: string; status: number; sha256?: string;
   category?: string | null; project_id?: number | null;
+  /** Forward-compatible fields; the current backend does not return either one yet. */
+  document_role?: string | null; purpose?: string | null;
 };
 export type FailedUpload = { name: string | null; error: string };
 export type UploadResult = { files: Array<BackendFile | FailedUpload> };

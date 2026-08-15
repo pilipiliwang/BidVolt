@@ -11,6 +11,7 @@ const requirementTypeLabel: Record<RequirementType, string> = {
   quote_rule: '报价规则',
   material_checklist: '材料清单',
   attachment: '附件说明',
+  unknown: '类型未提供',
 };
 
 interface RequirementsPanelProps {
@@ -31,6 +32,9 @@ export function RequirementsPanel({
   const pendingCount = requirements.filter(
     (requirement) => requirement.confirmationStatus === 'needs_confirmation',
   ).length;
+  const unavailableCount = requirements.filter(
+    (requirement) => requirement.confirmationStatus === 'unavailable',
+  ).length;
 
   return (
     <section className="project-requirements" aria-labelledby="project-requirements-title">
@@ -40,9 +44,13 @@ export function RequirementsPanel({
           <h2 id="project-requirements-title">Requirement 基线</h2>
           <p>每条要求都绑定当前项目材料版本和原文坐标。</p>
         </div>
-        <span className={pendingCount ? 'project-attention' : 'project-complete'}>
-          {pendingCount ? <AlertTriangle aria-hidden="true" size={16} /> : <CheckCircle2 aria-hidden="true" size={16} />}
-          {pendingCount ? `${pendingCount} 条待确认` : '全部已确认'}
+        <span className={pendingCount || unavailableCount ? 'project-attention' : 'project-complete'}>
+          {pendingCount || unavailableCount ? <AlertTriangle aria-hidden="true" size={16} /> : <CheckCircle2 aria-hidden="true" size={16} />}
+          {pendingCount
+            ? `${pendingCount} 条待确认`
+            : unavailableCount
+              ? '后端未提供确认状态'
+              : '全部已确认'}
         </span>
       </header>
 
@@ -89,11 +97,13 @@ export function RequirementsPanel({
                 >
                   确认原文
                 </button>
-              ) : (
+              ) : requirement.confirmationStatus === 'confirmed' ? (
                 <span className="project-confirmed">
                   <CheckCircle2 aria-hidden="true" size={15} />
                   已确认
                 </span>
+              ) : (
+                <span className="project-attention">确认状态未提供</span>
               )}
             </article>
           );

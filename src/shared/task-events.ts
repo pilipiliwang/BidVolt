@@ -14,7 +14,8 @@ export type PublicTaskEvent = {
     | 'cancel_requested'
     | 'cancelled'
     | 'succeeded'
-    | 'failed';
+    | 'failed'
+    | 'unknown';
   percent: number | null;
   public_message: string;
   error_code: string | null;

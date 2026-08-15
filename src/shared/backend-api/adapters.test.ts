@@ -36,14 +36,11 @@ describe('backend DTO adapters', () => {
 
     expect(adaptBackendProject(project)).toEqual({
       id: '18',
-      code: '项目-18',
+      code: '招标编号未提供',
       title: '海上平台电气设备采购项目',
       buyer: '招标人待补充',
       stage: '方案编制',
-      progress: 45,
       deadline: '截止时间待补充',
-      materialCount: 0,
-      riskCount: 0,
       updatedAt: '2026-08-14T00:00:00Z',
     });
   });
@@ -64,22 +61,60 @@ describe('backend DTO adapters', () => {
       .toBe('招标人待补充');
   });
 
-  it('maps backend file status and infers a UI material category only from its labels', () => {
-    expect(adaptBackendFile({
+  it('preserves aggregate zero values only when a caller supplies them from an API', () => {
+    const project: ProjectResponse = {
+      project_id: 20,
+      name: '零统计项目',
+      tender_no: 'ZERO-20',
+      deadline: null,
+      status: 1,
+      note: null,
+      updated_at: '2026-08-14T00:00:00Z',
+    };
+
+    expect(adaptBackendProject(project, {
+      materialCount: 0,
+      progress: 0,
+      riskCount: 0,
+    })).toMatchObject({ materialCount: 0, progress: 0, riskCount: 0 });
+  });
+
+  it('maps backend file status without inferring business category or version from its name', () => {
+    const material = adaptBackendFile({
       file_id: 9,
       name: '附件 3：技术规范书.docx',
       size: 42,
       mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       status: 3,
       category: null,
-    })).toMatchObject({
+    });
+    expect(material).toMatchObject({
       id: '9',
-      kind: 'technical_specification',
+      kind: 'other',
       parseStatus: 'parsed',
       parseProgress: 100,
-      revisionNo: 1,
       uploadedAt: '上传时间未提供',
     });
+    expect(material).not.toHaveProperty('revisionNo');
+    expect(material).not.toHaveProperty('purpose');
+  });
+
+  it('uses an explicit backend file category but keeps an unknown parse status neutral', () => {
+    const material = adaptBackendFile({
+      file_id: 10,
+      name: '普通附件.docx',
+      size: 42,
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      status: 99,
+      category: 'technical_specification',
+      document_role: 'assistant_supplement',
+    });
+    expect(material).toMatchObject({
+      kind: 'technical_specification',
+      parseStatus: 'unknown',
+      purpose: 'supplemental',
+    });
+    expect(material).not.toHaveProperty('parseProgress');
   });
 
   it('does not turn absent deliverable and score metrics into real zero values', () => {
@@ -222,7 +257,7 @@ describe('backend DTO adapters', () => {
       title: '技术参数响应',
       content: '技术参数满分 20 分',
       confidence: 0.87,
-      confirmationStatus: 'needs_confirmation',
+      confirmationStatus: 'unavailable',
       revisionNo: 2,
       coordinate: {
         fileName: '招标文件.pdf',
@@ -277,7 +312,7 @@ describe('backend DTO adapters', () => {
     ]);
   });
 
-  it('distinguishes a queued task from a task that is already executing', () => {
+  it('keeps a backend queued task while using a neutral message when no message was returned', () => {
     expect(adaptBackendTaskEvent({
       task_id: 22,
       task_type: 'bid_review',
@@ -286,7 +321,24 @@ describe('backend DTO adapters', () => {
       progress: {},
     }, { projectId: '18' })).toMatchObject({
       status: 'queued',
-      public_message: '任务已提交，等待后端执行器领取',
+      public_message: '后端未提供任务进度说明',
+      occurred_at: '时间未提供',
+    });
+  });
+
+  it('does not turn an unknown backend task status into queued or invent failure metadata', () => {
+    expect(adaptBackendTaskEvent({
+      task_id: 24,
+      task_type: 'bid_generate',
+      status: 99,
+      retry_count: 0,
+      progress: {},
+      error: { code: 'WORKER_UNAVAILABLE' },
+    }, { projectId: '18' })).toMatchObject({
+      status: 'unknown',
+      error_code: 'WORKER_UNAVAILABLE',
+      public_message: '后端未提供任务进度说明',
+      occurred_at: '时间未提供',
     });
   });
 
@@ -321,9 +373,16 @@ describe('backend DTO adapters', () => {
         rules_version: {},
       },
     ])).toMatchObject([
-      { id: '2', isCurrent: false, materialRevisionCount: 2, requirementRevisionNo: 3 },
-      { id: '1', isCurrent: false },
+      { id: '2', materialRevisionCount: 2, requirementRevisionNo: 3 },
+      { id: '1' },
     ]);
+    expect(adaptBackendSnapshots([{
+      snapshot_id: 3,
+      snapshot_type: 'review',
+      created_at: null,
+      input_refs: {},
+      rules_version: {},
+    }])[0]).not.toHaveProperty('materialRevisionCount');
   });
 
   it('hides unverified backend review evidence instead of rendering internal evidence fields', () => {

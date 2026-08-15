@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Check, Clock3, LoaderCircle, X } from 'lucide-react';
+import { Check, CircleHelp, Clock3, LoaderCircle, X } from 'lucide-react';
 
 import type { PublicTaskEvent } from '../task-events';
 
@@ -33,6 +33,10 @@ function StatusIcon({ status }: { status: PublicTaskEvent['status'] }) {
     return <LoaderCircle aria-hidden="true" className="spin" size={15} />;
   }
 
+  if (status === 'unknown') {
+    return <CircleHelp aria-hidden="true" size={15} />;
+  }
+
   return <Clock3 aria-hidden="true" size={15} />;
 }
 
@@ -41,6 +45,7 @@ function statusClass(status: PublicTaskEvent['status']) {
   if (status === 'running' || status === 'retrying' || status === 'cancel_requested') {
     return 'running';
   }
+  if (status === 'unknown') return 'unknown';
   return 'waiting';
 }
 
@@ -174,7 +179,9 @@ export function TaskProgressDrawer({
                     <small>
                       {event.percent === null ? '进度待更新' : `${event.percent}%`}
                       {' · '}
-                      <time dateTime={event.occurred_at}>{event.occurred_at}</time>
+                      {event.occurred_at === '时间未提供'
+                        ? <span>时间未提供</span>
+                        : <time dateTime={event.occurred_at}>{event.occurred_at}</time>}
                     </small>
                   </div>
                 </li>

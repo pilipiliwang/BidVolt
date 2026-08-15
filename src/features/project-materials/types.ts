@@ -16,7 +16,13 @@ export type ProjectMaterialParseStatus =
   | 'parsing'
   | 'parsed'
   | 'needs_confirmation'
-  | 'failed';
+  | 'failed'
+  | 'unknown';
+
+export type ProjectMaterialPurpose =
+  | 'current_tender'
+  | 'supplemental'
+  | 'completed_bid';
 
 export type RequirementType =
   | 'basic_info'
@@ -26,14 +32,17 @@ export type RequirementType =
   | 'tech_requirement'
   | 'quote_rule'
   | 'material_checklist'
-  | 'attachment';
+  | 'attachment'
+  | 'unknown';
 
 export interface ProjectMaterial {
   id: string;
   name: string;
   kind: ProjectMaterialKind;
-  revisionNo: number;
+  revisionNo?: number;
   parseStatus: ProjectMaterialParseStatus;
+  /** Persisted backend role only. Missing means the API did not classify the file purpose. */
+  purpose?: ProjectMaterialPurpose;
   parseProgress?: number;
   blocksCount?: number;
   uploadedAt: string;
@@ -53,7 +62,7 @@ export interface ProjectRequirement {
   title: string;
   content: string;
   confidence?: number;
-  confirmationStatus: 'confirmed' | 'needs_confirmation';
+  confirmationStatus: 'confirmed' | 'needs_confirmation' | 'unavailable';
   revisionNo: number;
   coordinate: RequirementCoordinate;
 }
@@ -62,9 +71,9 @@ export interface ProjectSnapshot {
   id: string;
   label: string;
   createdAt: string;
-  materialRevisionCount: number;
+  materialRevisionCount?: number;
   requirementRevisionNo?: number;
-  isCurrent: boolean;
+  isCurrent?: boolean;
 }
 
 export interface ProjectMaterialUploadProps {
@@ -74,7 +83,6 @@ export interface ProjectMaterialUploadProps {
 }
 
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
-  completedBidMaterialIds?: readonly string[];
   enterpriseCategories?: import('../enterprise-assets').EnterpriseAssetCategoryFolder[];
   enterpriseLibraryKey?: string;
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
@@ -90,7 +98,6 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   requirements: ProjectRequirement[];
   reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];
-  supplementalMaterialIds?: readonly string[];
   taskStatus?: PublicTaskEvent['status'];
   onConfirmRequirement?: (projectId: string, requirementId: string) => void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;

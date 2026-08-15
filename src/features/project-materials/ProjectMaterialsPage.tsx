@@ -44,6 +44,7 @@ const statusLabel: Record<ProjectMaterialParseStatus, string> = {
   parsed: '已识别',
   needs_confirmation: '需要确认',
   failed: '解析失败',
+  unknown: '解析状态未提供',
 };
 
 type ProjectMaterialsTab = 'materials' | 'requirements' | 'snapshots';
@@ -78,7 +79,7 @@ function ProjectMaterialRows({
               <div className="project-material-row__title">
                 <strong>{material.name}</strong>
                 <span>{kindLabel[material.kind]}</span>
-                <span>文件版本 {material.revisionNo}</span>
+                <span>{material.revisionNo === undefined ? '文件版本未提供' : `文件版本 ${material.revisionNo}`}</span>
               </div>
               <div className="project-material-row__meta">
                 <span>上传于 {material.uploadedAt}</span>
@@ -135,7 +136,7 @@ function CollapsibleMaterialGroup({
   titleId,
 }: {
   children: ReactNode;
-  count: number;
+  count: number | '—';
   description: string;
   expanded: boolean;
   icon: ReactNode;
@@ -144,6 +145,7 @@ function CollapsibleMaterialGroup({
   title: string;
   titleId: string;
 }) {
+  const countText = count === '—' ? '接口待提供' : `${count} 项`;
   return (
     <section
       aria-labelledby={titleId}
@@ -158,12 +160,12 @@ function CollapsibleMaterialGroup({
         <div className="project-section-heading__actions">
           <span className="project-project-only-badge">
             {icon}
-            {count} 项
+            {countText}
           </span>
           <button
             aria-controls={panelId}
             aria-expanded={expanded}
-            aria-label={`${expanded ? '收起' : '展开'}${title}，${count}项`}
+            aria-label={`${expanded ? '收起' : '展开'}${title}，${count === '—' ? '数量待接口提供' : `${count}项`}`}
             className="project-section-heading__toggle"
             onClick={onToggle}
             type="button"
@@ -204,8 +206,6 @@ export function ProjectMaterialsPage({
   materials,
   requirements,
   snapshots,
-  completedBidMaterialIds = [],
-  supplementalMaterialIds = [],
   onUpload,
   onConfirmRequirement,
   onOpenSnapshot,
@@ -225,32 +225,28 @@ export function ProjectMaterialsPage({
     message: string;
     status: 'error' | 'idle' | 'loading';
   }>({ message: '', status: 'idle' });
-  const supplementalMaterialIdSet = useMemo(
-    () => new Set(supplementalMaterialIds.map(String)),
-    [supplementalMaterialIds],
-  );
-  const completedBidMaterialIdSet = useMemo(
-    () => new Set(completedBidMaterialIds.map(String)),
-    [completedBidMaterialIds],
-  );
   const supplementalMaterials = useMemo(
-    () => materials.filter(
-      (material) => supplementalMaterialIdSet.has(material.id)
-        && !completedBidMaterialIdSet.has(material.id),
-    ),
-    [completedBidMaterialIdSet, materials, supplementalMaterialIdSet],
+    () => materials.filter((material) => material.purpose === 'supplemental'),
+    [materials],
   );
   const completedBidMaterials = useMemo(
-    () => materials.filter((material) => completedBidMaterialIdSet.has(material.id)),
-    [completedBidMaterialIdSet, materials],
+    () => materials.filter((material) => material.purpose === 'completed_bid'),
+    [materials],
   );
-  const currentTenderMaterials = useMemo(
+  const unclassifiedMaterials = useMemo(
+    () => materials.filter((material) => material.purpose === undefined),
+    [materials],
+  );
+  const currentProjectMaterials = useMemo(
     () => materials.filter(
-      (material) => !supplementalMaterialIdSet.has(material.id)
-        && !completedBidMaterialIdSet.has(material.id),
+      (material) => material.purpose === 'current_tender' || material.purpose === undefined,
     ),
-    [completedBidMaterialIdSet, materials, supplementalMaterialIdSet],
+    [materials],
   );
+  const hasUnclassifiedMaterials = unclassifiedMaterials.length > 0;
+  const currentMaterialGroupTitle = hasUnclassifiedMaterials
+    ? '项目文件（用途待分类）'
+    : '当前招标材料';
   const workspaceMaterials = useMemo(
     () =>
       materials.map((material) => ({
@@ -299,8 +295,10 @@ export function ProjectMaterialsPage({
         <div className="project-material-content">
           <div className="project-material-flow">
             <CollapsibleMaterialGroup
-              count={supplementalMaterials.length}
-              description="仅展示当前登录会话内，通过页面底部“添加文件”成功上传的文件；刷新后分组可能无法恢复。"
+              count={hasUnclassifiedMaterials ? '—' : supplementalMaterials.length}
+              description={hasUnclassifiedMaterials
+                ? '后端文件列表尚未返回用途字段，前端不会根据本次操作或文件名伪造补充资料分类。'
+                : '仅展示后端明确标记为补充资料的项目文件。'}
               expanded={isSupplementalExpanded}
               icon={<FolderCheck aria-hidden="true" size={14} />}
               onToggle={() => setSupplementalExpanded((current) => !current)}
@@ -316,16 +314,18 @@ export function ProjectMaterialsPage({
             </CollapsibleMaterialGroup>
 
             <CollapsibleMaterialGroup
-              count={currentTenderMaterials.length}
-              description="主上传区和招标公告网址导入的文件保留在本区，解析状态来自后端。"
+              count={currentProjectMaterials.length}
+              description={hasUnclassifiedMaterials
+                ? '下列文件均来自真实项目文件接口；因后端未返回用途字段，暂不宣称它们全部属于当前招标材料。'
+                : '仅展示后端明确标记为当前招标材料的文件，解析状态来自后端。'}
               expanded={isCurrentTenderExpanded}
               icon={<FileLock2 aria-hidden="true" size={14} />}
               onToggle={() => setCurrentTenderExpanded((current) => !current)}
               panelId={currentTenderPanelId}
-              title="当前招标材料"
+              title={currentMaterialGroupTitle}
               titleId="project-current-material-list-title"
             >
-              <nav className="project-material-subviews" aria-label="当前招标材料内容">
+              <nav className="project-material-subviews" aria-label="项目文件内容">
                 <button
                   aria-current={activeTab === 'materials' ? 'page' : undefined}
                   type="button"
@@ -333,7 +333,7 @@ export function ProjectMaterialsPage({
                 >
                   <FileText aria-hidden="true" size={16} />
                   材料清单
-                  <span>{currentTenderMaterials.length}</span>
+                  <span>{currentProjectMaterials.length}</span>
                 </button>
                 <button
                   aria-current={activeTab === 'requirements' ? 'page' : undefined}
@@ -373,10 +373,10 @@ export function ProjectMaterialsPage({
                   <ProjectMaterialRows
                     emptyDescription="当前招标材料是启动解析、生成或校核任务的必传输入。"
                     emptyTitle="请先上传当前招标材料"
-                    materials={currentTenderMaterials}
+                    materials={currentProjectMaterials}
                   />
 
-                  {currentTenderMaterials.length > 0 && !taskBlocksActions ? (
+                  {currentProjectMaterials.length > 0 && !taskBlocksActions ? (
                     <div className="project-start-task-wrap">
                       <fieldset className="project-task-mode">
                         <legend>选择本次任务</legend>

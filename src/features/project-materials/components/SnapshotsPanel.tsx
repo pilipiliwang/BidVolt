@@ -41,7 +41,7 @@ export function SnapshotsPanel({ projectId, snapshots, onOpenSnapshot }: Snapsho
                 <small>{snapshot.createdAt}</small>
               </span>
               <span className="project-snapshot__stats">
-                <small>{snapshot.materialRevisionCount} 份材料版本</small>
+                <small>{snapshot.materialRevisionCount === undefined ? '材料版本数量未提供' : `${snapshot.materialRevisionCount} 份材料版本`}</small>
                 <small>{snapshot.requirementRevisionNo === undefined ? 'Requirement 版本未提供' : `Requirement v${snapshot.requirementRevisionNo}`}</small>
               </span>
               {snapshot.isCurrent && (

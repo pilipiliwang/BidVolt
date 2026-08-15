@@ -25,7 +25,6 @@ export function createTenantGenerationGuard(initialGeneration = 0): TenantGenera
 
 export function createEmptyTenantDomainState() {
   return {
-    completedBidMaterialIdsByScope: {},
     editor: null,
     enterpriseAssets: [],
     enterpriseCategories: [],
@@ -38,7 +37,6 @@ export function createEmptyTenantDomainState() {
     reviewProviders: [],
     snapshotDetail: null,
     statusMessage: null,
-    supplementalMaterialIdsByScope: {},
     taskDrawerProjectId: null,
   };
 }

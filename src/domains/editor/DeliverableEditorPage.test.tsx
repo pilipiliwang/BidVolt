@@ -207,12 +207,56 @@ describe('DeliverableEditorPage', () => {
         name: '测试设备',
         specification: 'TEST',
         quantity: 3,
+        historyPrice: 0,
+        suggestedPrice: 0,
         tenderPrice: 16000,
         userPrice: 14600,
       }),
     ]);
-    expect(backendQuoteRows({ sheets: [{ rows: [['名称', '数量', '单价'], ['旧设备', 2, 99]] }] }))
-      .toEqual([expect.objectContaining({ name: '旧设备', quantity: 2, userPrice: 99 })]);
+    const legacyRows = backendQuoteRows({ sheets: [{ rows: [['名称', '数量', '单价'], ['旧设备', 2, 99]] }] });
+    expect(legacyRows).toHaveLength(1);
+    expect(legacyRows?.[0]).toMatchObject({
+      code: '',
+      name: '旧设备',
+      specification: '',
+      quantity: 2,
+      unit: '',
+      suggestedPrice: 0,
+      userPrice: 99,
+    });
+    expect(legacyRows?.[0].tenderPrice).toBeNaN();
+    expect(backendQuoteRows({ rows: [{ name: '服务端报价', quantity: 1, suggested_price: 88, user_price: 90 }] }))
+      .toEqual([expect.objectContaining({ name: '服务端报价', suggestedPrice: 88, userPrice: 90 })]);
+  });
+
+  it('shows missing backend quote fields as unavailable and blocks saving until completed', async () => {
+    const rows = backendQuoteRows({
+      sheets: [{ rows: [['名称', '数量', '用户报价'], ['旧设备', 2, 99]] }],
+    });
+    const onSave = vi.fn();
+    render(
+      <DeliverableEditorPage
+        deliverableId="quote"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        initialQuoteRows={rows}
+        isBackendConnected
+        materials={projectMaterials}
+        onSave={onSave}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="4"
+      />,
+    );
+
+    expect(screen.getByRole('spinbutton', { name: '旧设备招标限价（元）' })).toHaveValue(null);
+    expect(screen.getByRole('spinbutton', { name: '旧设备用户报价' })).toHaveValue(99);
+    expect(screen.getByRole('textbox', { name: '旧设备物料编码' })).toHaveAttribute('placeholder', '待提供，请补充');
+    expect(screen.getByRole('textbox', { name: '旧设备单位' })).toHaveAttribute('placeholder', '待提供，请补充');
+    expect(screen.getAllByText('待提供').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('保存失败，请检查必填字段');
   });
 
   it('fills and focuses the project assistant with the selected Word text', async () => {
@@ -409,6 +453,87 @@ describe('DeliverableEditorPage', () => {
     expect(screen.getByLabelText('测试设备算法建议单价（元）')).toHaveTextContent(
       '14,680.00',
     );
+  });
+
+  it('never lets browser drafts override backend Word or quote versions', async () => {
+    const wordStorageKey = [
+      'bidvolt:office-draft:v1',
+      encodeURIComponent(draftScopeId),
+      'technical',
+      '6',
+    ].join(':');
+    window.localStorage.setItem(wordStorageKey, JSON.stringify({
+      html: '<p>浏览器里的旧技术标草稿</p>',
+      comments: [],
+    }));
+    const wordSave = vi.fn();
+    const wordView = render(
+      <DeliverableEditorPage
+        deliverableId="technical"
+        draftScopeId={draftScopeId}
+        editorContent={{ html: '<p>后端技术标版本正文</p>' }}
+        enterpriseMaterials={enterpriseMaterials}
+        isBackendConnected
+        materials={projectMaterials}
+        onSave={wordSave}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="6"
+      />,
+    );
+
+    const wordEditor = screen.getByRole('textbox', { name: '技术标文档内容' });
+    expect(wordEditor).toHaveTextContent('后端技术标版本正文');
+    expect(wordEditor).not.toHaveTextContent('浏览器里的旧技术标草稿');
+    wordEditor.textContent = '用户本次修改的技术标正文';
+    fireEvent.input(wordEditor);
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    await waitFor(() => expect(wordSave).toHaveBeenCalledTimes(1));
+    expect(window.localStorage.getItem(wordStorageKey)).toContain('浏览器里的旧技术标草稿');
+    wordView.unmount();
+
+    const quoteStorageKey = [
+      'bidvolt:office-draft:v1',
+      encodeURIComponent(draftScopeId),
+      'quote',
+      'quote-v4',
+    ].join(':');
+    window.localStorage.setItem(quoteStorageKey, JSON.stringify({
+      schemaVersion: 1,
+      rows: [{
+        id: 'row-1',
+        code: 'A-001',
+        name: '测试设备',
+        specification: 'TEST',
+        quantity: 3,
+        unit: '台',
+        tenderPrice: 16000,
+        userPrice: 15100,
+      }],
+    }));
+    const quoteSave = vi.fn();
+    render(
+      <DeliverableEditorPage
+        deliverableId="quote"
+        draftScopeId={draftScopeId}
+        enterpriseMaterials={enterpriseMaterials}
+        initialQuoteRows={quoteRows}
+        isBackendConnected
+        materials={projectMaterials}
+        onSave={quoteSave}
+        project={project}
+        projectId="BV-2026-018"
+        versionId="quote-v4"
+      />,
+    );
+
+    const userPrice = screen.getByRole('spinbutton', { name: '测试设备用户报价' });
+    expect(userPrice).toHaveValue(14600);
+    fireEvent.change(userPrice, { target: { value: '14900' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    await waitFor(() => expect(quoteSave).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(window.localStorage.getItem(quoteStorageKey) ?? '{}').rows[0].userPrice)
+      .toBe(15100);
   });
 
   it('rejects a malformed or out-of-range local quote draft', () => {

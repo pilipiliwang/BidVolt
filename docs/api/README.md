@@ -49,7 +49,7 @@
   均为无效请求。
 - 前端不传 `enterprise_id`；租户只能由后端认证上下文确定。
 - POST/PUT/PATCH 等可重试写请求使用 `Idempotency-Key`。
-- 每个 OpenAPI 操作使用稳定且唯一的 `operationId`；生成 SDK、Mock 和查询键时不得另造名称。
+- 每个 OpenAPI 操作使用稳定且唯一的 `operationId`；请求封装、Contract 测试和查询键不得另造名称。
 - 跨租户对象统一返回 404，避免泄露对象是否存在。
 
 写接口并发约束：
@@ -139,16 +139,11 @@ Agent 抽取结果。项目快照通过 `/projects/{project_id}/snapshots` 查�
   正式保存由 QuoteEngine 复算。外部历史报价、历史价和算法建议价只读，网页和文档服务均无写入权限；用户只能
   修改明确允许的报价输入字段。
 
-## Mock 模式
+## 运行时数据源
 
-在 `.env.local` 中设置：
-
-```bash
-VITE_API_MODE=mock
-```
-
-应用启动时会动态加载 `src/mocks/browser.ts`。Node/Vitest 可使用
-`src/mocks/server.ts`。Mock 数据先经过与生产响应相同的 Zod Schema 校验。
+默认与 `backend` 模式只使用 `src/shared/backend-api` 请求真实后端，不注册 MSW/Service Worker，
+也不在请求失败时回退业务演示数据。`npm run dev:local-preview` 是另行的 localhost 开发态只读
+界面快照；它不替换 API client，写操作全部失败关闭，且快照数据不进入 `backend` 生产构建。
 
 ## SSE
 
@@ -164,8 +159,7 @@ VITE_API_MODE=mock
 接口变更至少同时更新：
 
 1. `docs/api/openapi.yaml`
-2. `src/shared/api` 对应 Zod Schema/API
-3. `src/mocks/fixtures.ts` 和 `src/mocks/handlers.ts`
-4. Contract 测试
+2. `src/shared/backend-api` 对应请求封装、DTO 与适配器
+3. Contract 测试和必要的页面集成测试
 
 破坏性变更需升级公开事件 `schema_version` 或 API 版本，不允许静默改变字段语义。
