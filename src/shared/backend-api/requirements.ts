@@ -1,5 +1,7 @@
 import { idPath, queryString, type BackendApiClient } from './client';
-import type { BackendId, Requirement } from './types';
+import type {
+  BackendId, ConfirmRequirementRequest, CorrectRequirementRequest, Requirement,
+} from './types';
 
 export const createRequirementsApi = (client: BackendApiClient) => ({
   list: (projectId: BackendId) =>
@@ -9,4 +11,20 @@ export const createRequirementsApi = (client: BackendApiClient) => ({
     client.request<{ created: number[]; count: number }>(`/projects/${idPath(projectId)}/requirements/upsert`, {
       method: 'POST', body: { requirements },
     }),
+  confirm: (
+    projectId: BackendId,
+    requirementId: BackendId,
+    body: ConfirmRequirementRequest,
+  ) => client.request<Requirement>(
+    `/projects/${idPath(projectId)}/requirements/${idPath(requirementId)}/confirm`,
+    { method: 'PUT', body },
+  ),
+  correct: (
+    projectId: BackendId,
+    requirementId: BackendId,
+    body: CorrectRequirementRequest,
+  ) => client.request<Requirement>(
+    `/projects/${idPath(projectId)}/requirements/${idPath(requirementId)}/correct`,
+    { method: 'PUT', body },
+  ),
 });

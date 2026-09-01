@@ -208,6 +208,7 @@ export function ProjectMaterialsPage({
   snapshots,
   onUpload,
   onConfirmRequirement,
+  onCorrectRequirement,
   onOpenSnapshot,
   onStartTask,
   taskStatus,
@@ -433,6 +434,7 @@ export function ProjectMaterialsPage({
                   projectId={projectId}
                   requirements={requirements}
                   onConfirmRequirement={onConfirmRequirement}
+                  onCorrectRequirement={onCorrectRequirement}
                 />
               ) : null}
 

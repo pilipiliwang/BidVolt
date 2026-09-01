@@ -17,6 +17,7 @@ import type {
 } from '../../features/project-materials/types';
 import type { PublicTaskEvent } from '../task-events';
 import type {
+  AgentRunStatus,
   BackendFile,
   BackendTask,
   Deliverable,
@@ -26,6 +27,7 @@ import type {
   EnterpriseCategory,
   JsonObject,
   JsonValue,
+  ProjectMaterial as BackendProjectMaterial,
   ProjectResponse,
   Requirement,
   ReviewItem,
@@ -135,7 +137,7 @@ const materialKindFromFile = (file: BackendFile): ProjectMaterialKind => {
   return category ? materialKindByBackendCategory[category] ?? 'other' : 'other';
 };
 
-const parseState = (status: number): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
+const parseState = (status?: number): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
   if (status === 1) return { parseStatus: 'queued' };
   if (status === 2) return { parseStatus: 'parsing' };
   if (status === 3) return { parseProgress: 100, parseStatus: 'parsed' };
@@ -152,6 +154,10 @@ const materialPurposeAliases: Readonly<Record<string, ProjectMaterialPurpose>> =
   supplemental_material: 'supplemental',
   assistant_supplement: 'supplemental',
   completed_bid: 'completed_bid',
+  '招标公告': 'current_tender',
+  '招标文件': 'current_tender',
+  '补充材料': 'supplemental',
+  '已完成标书': 'completed_bid',
 };
 
 const materialPurposeFromFile = (file: BackendFile): ProjectMaterialPurpose | undefined => {
@@ -175,6 +181,47 @@ export function adaptBackendFile(file: BackendFile): ProjectMaterialView {
 
 export const adaptBackendFiles = (files: readonly BackendFile[]): ProjectMaterialView[] =>
   files.map(adaptBackendFile);
+
+export function adaptBackendProjectMaterial(
+  material: BackendProjectMaterial,
+  file?: BackendFile,
+  inheritedPurpose?: ProjectMaterialPurpose,
+): ProjectMaterialView {
+  const purpose = (file ? materialPurposeFromFile(file) : undefined) ?? inheritedPurpose;
+  return {
+    id: String(material.file_id),
+    name: material.archive_path?.trim() || material.file_name?.trim() || `文件 #${material.file_id}`,
+    kind: file ? materialKindFromFile(file) : 'other',
+    ...(purpose ? { purpose } : {}),
+    ...parseState(material.status),
+    blocksCount: material.block_count,
+    uploadedAt: '上传时间未提供',
+  };
+}
+
+export const adaptBackendProjectMaterials = (
+  materials: readonly BackendProjectMaterial[],
+  filesById: Readonly<Record<string, BackendFile>> = {},
+): ProjectMaterialView[] => {
+  const materialsByFileId = new Map(materials.map((material) => [material.file_id, material]));
+  const inheritedArchivePurpose = (material: BackendProjectMaterial) => {
+    const visited = new Set<number>();
+    let archiveId = material.source_archive_id;
+    while (archiveId !== null && !visited.has(archiveId)) {
+      visited.add(archiveId);
+      const archiveFile = filesById[String(archiveId)];
+      const purpose = archiveFile ? materialPurposeFromFile(archiveFile) : undefined;
+      if (purpose) return purpose;
+      archiveId = materialsByFileId.get(archiveId)?.source_archive_id ?? null;
+    }
+    return undefined;
+  };
+  return materials.map((material) => adaptBackendProjectMaterial(
+    material,
+    filesById[String(material.file_id)],
+    inheritedArchivePurpose(material),
+  ));
+};
 
 const categoryAliases: Record<string, EnterpriseAssetCategory> = {
   '证照': 'license',
@@ -351,9 +398,11 @@ export function adaptBackendRequirement(
       requirementLabels[type],
     content: requirement.content,
     confidence: requirement.confidence ?? undefined,
-    // The backend response does not expose confirmation state. Do not present
-    // absence as either a confirmed or pending business decision.
-    confirmationStatus: 'unavailable',
+    confirmationStatus: requirement.confirm_status === 'confirmed'
+      ? 'confirmed'
+      : requirement.confirm_status === 'unconfirmed' || requirement.confirm_status === 'rejected'
+        ? 'needs_confirmation'
+        : 'unavailable',
     revisionNo: requirement.revision,
     coordinate: {
       fileName,
@@ -396,6 +445,9 @@ export function adaptBackendSnapshots(snapshots: readonly SnapshotSummary[]): Pr
 }
 
 const taskStatus = (task: BackendTask): PublicTaskEvent['status'] => {
+  // Agent status 4 is a terminal retryable failure. Its progress payload can
+  // still say "retrying", but the UI must not poll it forever as a legacy task.
+  if (task.task_type === 'agent_pipeline' && task.status === 4) return 'failed';
   const progressStatus = asString(task.progress.status)?.toLocaleLowerCase();
   if (progressStatus === 'done' || progressStatus === 'succeeded') return 'succeeded';
   if (progressStatus === 'retrying') return 'retrying';
@@ -446,6 +498,23 @@ export function adaptBackendTaskEvent(
     error_code: taskErrorCode(task.error),
     occurred_at: occurredAt ?? task.created_at ?? '时间未提供',
   };
+}
+
+export function adaptAgentRunTaskEvent(
+  run: AgentRunStatus,
+  options: TaskEventAdapterOptions,
+): PublicTaskEvent {
+  return adaptBackendTaskEvent({
+    task_id: run.task_id,
+    task_type: run.task_type,
+    status: run.status,
+    retry_count: 0,
+    progress: Object.fromEntries(
+      Object.entries(run.progress).filter((entry): entry is [string, JsonValue] => entry[1] !== undefined),
+    ),
+    result: run.result as unknown as JsonValue,
+    error: run.error,
+  }, options);
 }
 
 const deliverableRouteByType: Record<number, ProjectDeliverableView['id']> = {
@@ -548,7 +617,7 @@ export function adaptBackendReviewProvider(provider: ReviewProvider): ReviewProv
     type: providerType(provider.provider_type),
     version: provider.provider_version,
     description: provider.provider_code,
-    available: provider.enabled,
+    available: provider.enabled === true,
   };
 }
 
@@ -645,38 +714,65 @@ export function adaptBackendReviewRun(run: ReviewRunDetail): ReviewRunView {
 export type BackendHistorySample = {
   sample_id?: number | string;
   material_ref?: string;
-  material_name: string;
+  material_name?: string | null;
+  package_name?: string | null;
+  category?: string | null;
   material_code?: string | null;
   spec?: string | null;
   region?: string | null;
+  publisher?: string | null;
+  price_mode?: string | null;
   win_price: number | string;
   currency?: string;
   tax_included?: boolean;
-  win_date: string;
+  win_date?: string | null;
+  publish_date?: string | null;
   provider_id?: string;
   source_hash?: string;
+  source?: 'public' | 'private';
+  notice_id?: string | null;
 };
 
 export function adaptBackendHistorySamples(
   samples: readonly BackendHistorySample[],
   snapshotIds: readonly (number | string)[] = [],
 ): HistoryPriceSample[] {
-  return samples.map((sample, index) => ({
-    id: String(sample.sample_id ?? snapshotIds[index] ?? `${sample.material_ref ?? 'sample'}-${index}`),
-    materialRef: sample.material_ref,
-    materialName: sample.material_name,
-    materialCode: sample.material_code ?? sample.material_ref,
-    specification: sample.spec ?? '规格未提供',
-    region: sample.region ?? undefined,
-    price: String(sample.win_price),
-    currency: sample.currency ?? 'CNY',
-    taxIncluded: sample.tax_included,
-    occurredAt: sample.win_date,
-    sourceLabel: sample.provider_id ?? '外部历史报价库',
-    sourceHash: sample.source_hash,
-    usable: sample.tax_included !== undefined,
-    excludedReason: sample.tax_included === undefined ? '税口径未提供，不能直接用于测算' : undefined,
-  }));
+  return samples.map((sample, index) => {
+    const materialName = sample.material_name?.trim()
+      || sample.package_name?.trim()
+      || sample.category?.trim()
+      || '样本名称未提供';
+    const materialRef = sample.material_ref?.trim()
+      || sample.category?.trim()
+      || sample.package_name?.trim();
+    const backendLibrarySample = sample.source === 'public' || sample.source === 'private';
+    return {
+      id: String(
+        sample.sample_id
+        ?? snapshotIds[index]
+        ?? sample.notice_id
+        ?? `${materialRef ?? 'sample'}-${sample.publish_date ?? sample.win_date ?? index}`,
+      ),
+      materialRef,
+      materialName,
+      materialCode: sample.material_code ?? materialRef,
+      specification: sample.spec ?? sample.price_mode ?? sample.category ?? '规格未提供',
+      region: sample.region ?? sample.publisher ?? undefined,
+      price: String(sample.win_price),
+      currency: sample.currency ?? 'CNY',
+      taxIncluded: sample.tax_included,
+      occurredAt: sample.win_date ?? sample.publish_date ?? '日期未提供',
+      sourceLabel: sample.provider_id
+        ?? (sample.source === 'public' ? '公共历史中标价行情库' : undefined)
+        ?? (sample.source === 'private' ? '企业私有历史中标价库' : undefined)
+        ?? '外部历史报价库',
+      sourceHash: sample.source_hash,
+      usable: backendLibrarySample || sample.tax_included !== undefined,
+      excludedReason: backendLibrarySample || sample.tax_included !== undefined
+        ? undefined
+        : '税口径未提供，不能直接用于测算',
+    };
+  });
 }
 
 export type BackendQuoteStrategyResult = {

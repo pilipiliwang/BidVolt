@@ -1,4 +1,5 @@
 import { createAuthApi } from './auth';
+import { createAgentApi } from './agent';
 import {
   BackendApiError,
   createBackendApiClient,
@@ -16,6 +17,7 @@ import { createDeliverablesApi } from './deliverables';
 import { createEditorApi } from './editor';
 import { createEnterpriseApi } from './enterprise';
 import { createFilesApi } from './files';
+import { createProjectExportsApi } from './exports';
 import { createProjectsApi } from './projects';
 import { createQuotesApi } from './quotes';
 import { createRequirementsApi } from './requirements';
@@ -40,6 +42,18 @@ export type {
 export type * from './types';
 export type { QuoteCalculationBody } from './quotes';
 export type { EditorSession } from './editor';
+export type { AgentRunStreamOptions } from './agent';
+export {
+  AgentRunStreamProtocolError,
+  consumeAgentRunStream,
+  parseAgentRunStreamEvent,
+} from './agent-stream';
+export type {
+  AgentRunStreamEnd,
+  AgentRunStreamEvent,
+  AgentRunStreamMessage,
+  ConsumeAgentRunStreamOptions,
+} from './agent-stream';
 export { isBackendTaskTerminal, pollBackendTask } from './tasks';
 export type {
   BackendTaskGetter,
@@ -77,12 +91,14 @@ export const createBackendApi = ({
   });
   return {
     client,
+    agent: createAgentApi(client),
     auth: createAuthApi(client), projects: createProjectsApi(client), files: createFilesApi(client),
     enterprise: createEnterpriseApi(client), requirements: createRequirementsApi(client),
     snapshots: createSnapshotsApi(client), tasks: createTasksApi(client),
     tenderNotices: createTenderNoticesApi(client),
     deliverables: createDeliverablesApi(client), editor: createEditorApi(client), review: createReviewApi(client),
     quotes: createQuotesApi(client), chat: createChatApi(client),
+    exports: createProjectExportsApi(client),
   };
 };
 

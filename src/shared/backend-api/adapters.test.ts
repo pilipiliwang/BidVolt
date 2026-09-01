@@ -13,6 +13,8 @@ import {
   adaptBackendDeliverableCards,
   adaptBackendFile,
   adaptBackendHistorySamples,
+  adaptBackendProjectMaterial,
+  adaptBackendProjectMaterials,
   adaptBackendProject,
   adaptBackendProjectOverview,
   adaptBackendQuoteCalculation,
@@ -20,6 +22,7 @@ import {
   adaptBackendReviewRun,
   adaptBackendSnapshots,
   adaptBackendTaskEvent,
+  adaptAgentRunTaskEvent,
 } from './adapters';
 
 describe('backend DTO adapters', () => {
@@ -115,6 +118,85 @@ describe('backend DTO adapters', () => {
       purpose: 'supplemental',
     });
     expect(material).not.toHaveProperty('parseProgress');
+  });
+
+  it('maps current Chinese document roles and rich project-material fields', () => {
+    const material = adaptBackendProjectMaterial({
+      material_id: 3,
+      file_id: 10,
+      file_name: '技术规范.docx',
+      ext: '.docx',
+      status: 3,
+      parse_status: null,
+      block_count: 88,
+      block_stats: { paragraph: 80, table: 8 },
+      media_count: 2,
+      image_count: 2,
+      image_described_count: 1,
+      source_archive_id: 9,
+      source_archive_name: '招标文件.zip',
+      archive_path: '01_招标文件/技术规范.docx',
+      expanded_count: 0,
+    }, {
+      file_id: 10,
+      name: '技术规范.docx',
+      size: 42,
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      status: 3,
+      category: 'technical_specification',
+      document_role: '招标公告',
+    });
+
+    expect(material).toMatchObject({
+      id: '10',
+      name: '01_招标文件/技术规范.docx',
+      kind: 'technical_specification',
+      purpose: 'current_tender',
+      parseStatus: 'parsed',
+      parseProgress: 100,
+      blocksCount: 88,
+    });
+  });
+
+  it('inherits a persisted document role through nested ZIP archive materials', () => {
+    const material = (fileId: number, sourceArchiveId: number | null) => ({
+      material_id: fileId,
+      file_id: fileId,
+      file_name: `file-${fileId}.docx`,
+      ext: '.docx',
+      status: 3,
+      parse_status: null,
+      block_count: 1,
+      block_stats: {},
+      media_count: 0,
+      image_count: 0,
+      image_described_count: 0,
+      source_archive_id: sourceArchiveId,
+      source_archive_name: null,
+      archive_path: null,
+      expanded_count: 0,
+    });
+    const adapted = adaptBackendProjectMaterials([
+      material(10, null),
+      material(11, 10),
+      material(12, 11),
+    ], {
+      10: {
+        file_id: 10,
+        name: '补充资料.zip',
+        size: 42,
+        status: 3,
+        document_role: 'supplemental',
+      },
+      11: { file_id: 11, name: '子目录.zip', size: 21, status: 3 },
+      12: { file_id: 12, name: '证明材料.docx', size: 12, status: 3 },
+    });
+
+    expect(adapted.map((item) => item.purpose)).toEqual([
+      'supplemental',
+      'supplemental',
+      'supplemental',
+    ]);
   });
 
   it('does not turn absent deliverable and score metrics into real zero values', () => {
@@ -356,6 +438,22 @@ describe('backend DTO adapters', () => {
     });
   });
 
+  it('treats agent pipeline status 4 as a terminal failure, not a retrying legacy task', () => {
+    expect(adaptAgentRunTaskEvent({
+      task_id: 40,
+      task_type: 'agent_pipeline',
+      status: 4,
+      progress: { phase: 'agent_pipeline', percent: 80, status: 'retrying' },
+      result: {},
+      error: { code: 'AGENT_EXITED' },
+      customer: { asks: [], action_list: [] },
+    }, { projectId: '18' })).toMatchObject({
+      status: 'failed',
+      task_type: 'agent_pipeline',
+      error_code: 'AGENT_EXITED',
+    });
+  });
+
   it('does not call the first backend snapshot current without an explicit marker', () => {
     expect(adaptBackendSnapshots([
       {
@@ -499,6 +597,27 @@ describe('backend DTO adapters', () => {
       taxIncluded: undefined,
       usable: false,
       excludedReason: '税口径未提供，不能直接用于测算',
+    })]);
+  });
+
+  it('adapts real history-library rows that use package/publish/source fields', () => {
+    expect(adaptBackendHistorySamples([{
+      source: 'public',
+      publisher: '某省电网公司',
+      category: '电缆',
+      package_name: 'YJV 电力电缆',
+      price_mode: '金额',
+      win_price: '118.5',
+      publish_date: '2026-08-20',
+      notice_id: 'NOTICE-1',
+    }])).toEqual([expect.objectContaining({
+      id: 'NOTICE-1',
+      materialRef: '电缆',
+      materialName: 'YJV 电力电缆',
+      region: '某省电网公司',
+      occurredAt: '2026-08-20',
+      sourceLabel: '公共历史中标价行情库',
+      usable: true,
     })]);
   });
 

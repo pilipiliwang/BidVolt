@@ -77,42 +77,42 @@ describe('page API activity', () => {
       .toMatchObject({ status: 'unavailable', callCount: 0 });
   });
 
-  it('shows integrated task streaming as untriggered, then captures its real request', () => {
+  it('shows Agent streaming as untriggered, then captures the real SSE request including since', () => {
     const definitions = pageApiCatalog({ name: 'project-overview', projectId: '7' });
     const withoutStream = buildPageApiActivity(definitions, [
       requestEvent(),
       requestEvent({
         requestId: 'request-task',
         sequence: 2,
-        path: '/tasks/31',
-        pathname: '/tasks/31',
+        path: '/projects/7/agent-run/31',
+        pathname: '/projects/7/agent-run/31',
       }),
     ]);
 
-    expect(withoutStream.checks.find((check) => check.id === 'task-status')).toMatchObject({
+    expect(withoutStream.checks.find((check) => check.id === 'agent-run-status')).toMatchObject({
       status: 'success',
       callCount: 1,
       isTask: true,
       method: 'GET',
-      path: '/tasks/{taskId}',
+      path: '/projects/7/agent-run/{taskId}',
     });
-    expect(withoutStream.checks.find((check) => check.id === 'task-stream')).toMatchObject({
+    expect(withoutStream.checks.find((check) => check.id === 'agent-run-stream')).toMatchObject({
       status: 'not-run',
       callCount: 0,
       method: 'GET',
-      path: '/tasks/{taskId}/stream',
+      path: '/projects/7/agent-run/{taskId}/stream?since={seq}',
     });
 
     const withStream = buildPageApiActivity(definitions, [
       requestEvent({
         requestId: 'request-stream',
         sequence: 3,
-        path: '/tasks/31/stream',
-        pathname: '/tasks/31/stream',
+        path: '/projects/7/agent-run/31/stream?since=22',
+        pathname: '/projects/7/agent-run/31/stream',
       }),
     ]);
-    expect(withStream.checks.find((check) => check.id === 'task-stream')).toMatchObject({
-      actualPath: '/tasks/31/stream',
+    expect(withStream.checks.find((check) => check.id === 'agent-run-stream')).toMatchObject({
+      actualPath: '/projects/7/agent-run/31/stream?since=22',
       status: 'success',
       callCount: 1,
     });
@@ -146,10 +146,29 @@ describe('page API activity', () => {
       callCount: 0,
     });
     expect(result.checks.find((check) => check.id === 'requirement-confirm')?.status)
-      .toBe('unavailable');
-    expect(result.checks.find((check) => check.id === 'task-stream')?.status)
       .toBe('not-run');
-    expect(result.checks.find((check) => check.id === 'task-status')?.status)
+    expect(result.checks.find((check) => check.id === 'agent-run-stream')?.status)
       .toBe('not-run');
+    expect(result.checks.find((check) => check.id === 'agent-run-status')?.status)
+      .toBe('not-run');
+  });
+
+  it('reports the latest-score 404 empty contract as success with a clear explanation', () => {
+    const definitions = pageApiCatalog({ name: 'project-overview', projectId: '7' })
+      .filter((definition) => definition.id === 'project-latest-score');
+    const result = buildPageApiActivity(definitions, [
+      requestEvent({
+        path: '/projects/7/scores',
+        pathname: '/projects/7/scores',
+        status: 'expected-empty',
+      }),
+    ]);
+
+    expect(result.status).toBe('connected');
+    expect(result.message).toContain('成功 1 项、失败 0 项');
+    expect(result.checks[0]).toMatchObject({
+      status: 'success',
+      detail: '正常空态：后端确认该项目尚未评标。',
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileSearch, MapPin } from 'lucide-react';
 
 import type { ProjectRequirement, RequirementType } from '../types';
@@ -17,7 +18,12 @@ const requirementTypeLabel: Record<RequirementType, string> = {
 interface RequirementsPanelProps {
   projectId: string;
   requirements: ProjectRequirement[];
-  onConfirmRequirement?: (projectId: string, requirementId: string) => void;
+  onConfirmRequirement?: (projectId: string, requirementId: string) => Promise<void> | void;
+  onCorrectRequirement?: (
+    projectId: string,
+    requirementId: string,
+    content: string,
+  ) => Promise<void> | void;
 }
 
 function confidencePercent(confidence: number) {
@@ -28,13 +34,136 @@ export function RequirementsPanel({
   projectId,
   requirements,
   onConfirmRequirement,
+  onCorrectRequirement,
 }: RequirementsPanelProps) {
+  const confirmingRequirementIdsRef = useRef(new Set<string>());
+  const correctingRequirementIdsRef = useRef(new Set<string>());
+  const [confirmingRequirementIds, setConfirmingRequirementIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [correctingRequirementIds, setCorrectingRequirementIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [correctionDrafts, setCorrectionDrafts] = useState<Record<string, string>>({});
+  const [confirmationErrors, setConfirmationErrors] = useState<Record<string, string>>({});
+  const [correctionErrors, setCorrectionErrors] = useState<Record<string, string>>({});
   const pendingCount = requirements.filter(
     (requirement) => requirement.confirmationStatus === 'needs_confirmation',
   ).length;
   const unavailableCount = requirements.filter(
     (requirement) => requirement.confirmationStatus === 'unavailable',
   ).length;
+
+  const handleConfirm = async (requirementId: string) => {
+    if (
+      !onConfirmRequirement
+      || confirmingRequirementIdsRef.current.has(requirementId)
+      || correctingRequirementIdsRef.current.has(requirementId)
+    ) return;
+
+    confirmingRequirementIdsRef.current.add(requirementId);
+    setConfirmingRequirementIds(new Set(confirmingRequirementIdsRef.current));
+    setConfirmationErrors((current) => {
+      if (!(requirementId in current)) return current;
+      const next = { ...current };
+      delete next[requirementId];
+      return next;
+    });
+
+    try {
+      await onConfirmRequirement(projectId, requirementId);
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : '服务暂时不可用，请稍后重试。';
+      setConfirmationErrors((current) => ({
+        ...current,
+        [requirementId]: `确认失败：${detail}`,
+      }));
+    } finally {
+      confirmingRequirementIdsRef.current.delete(requirementId);
+      setConfirmingRequirementIds(new Set(confirmingRequirementIdsRef.current));
+    }
+  };
+
+  const beginCorrection = (requirement: ProjectRequirement) => {
+    if (
+      !onCorrectRequirement
+      || correctingRequirementIdsRef.current.has(requirement.id)
+      || confirmingRequirementIdsRef.current.has(requirement.id)
+    ) return;
+    setCorrectionDrafts((current) => ({
+      ...current,
+      [requirement.id]: requirement.content,
+    }));
+    setCorrectionErrors((current) => {
+      if (!(requirement.id in current)) return current;
+      const next = { ...current };
+      delete next[requirement.id];
+      return next;
+    });
+  };
+
+  const cancelCorrection = (requirementId: string) => {
+    if (correctingRequirementIdsRef.current.has(requirementId)) return;
+    setCorrectionDrafts((current) => {
+      const next = { ...current };
+      delete next[requirementId];
+      return next;
+    });
+    setCorrectionErrors((current) => {
+      if (!(requirementId in current)) return current;
+      const next = { ...current };
+      delete next[requirementId];
+      return next;
+    });
+  };
+
+  const handleCorrect = async (requirementId: string) => {
+    if (
+      !onCorrectRequirement
+      || correctingRequirementIdsRef.current.has(requirementId)
+      || confirmingRequirementIdsRef.current.has(requirementId)
+    ) return;
+
+    const content = correctionDrafts[requirementId]?.trim() ?? '';
+    if (!content) {
+      setCorrectionErrors((current) => ({
+        ...current,
+        [requirementId]: '请输入纠正后的 Requirement 内容。',
+      }));
+      return;
+    }
+
+    correctingRequirementIdsRef.current.add(requirementId);
+    setCorrectingRequirementIds(new Set(correctingRequirementIdsRef.current));
+    setCorrectionErrors((current) => {
+      if (!(requirementId in current)) return current;
+      const next = { ...current };
+      delete next[requirementId];
+      return next;
+    });
+
+    try {
+      await onCorrectRequirement(projectId, requirementId, content);
+      setCorrectionDrafts((current) => {
+        const next = { ...current };
+        delete next[requirementId];
+        return next;
+      });
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : '服务暂时不可用，请稍后重试。';
+      setCorrectionErrors((current) => ({
+        ...current,
+        [requirementId]: `纠正失败：${detail}`,
+      }));
+    } finally {
+      correctingRequirementIdsRef.current.delete(requirementId);
+      setCorrectingRequirementIds(new Set(correctingRequirementIdsRef.current));
+    }
+  };
 
   return (
     <section className="project-requirements" aria-labelledby="project-requirements-title">
@@ -60,6 +189,11 @@ export function RequirementsPanel({
             ? undefined
             : confidencePercent(requirement.confidence);
           const needsConfirmation = requirement.confirmationStatus === 'needs_confirmation';
+          const isConfirming = confirmingRequirementIds.has(requirement.id);
+          const isCorrecting = correctingRequirementIds.has(requirement.id);
+          const isEditingCorrection = correctionDrafts[requirement.id] !== undefined;
+          const confirmationError = confirmationErrors[requirement.id];
+          const correctionError = correctionErrors[requirement.id];
           const { coordinate } = requirement;
 
           return (
@@ -88,23 +222,94 @@ export function RequirementsPanel({
                   </span>
                   <span>Requirement 版本 {requirement.revisionNo}</span>
                 </div>
+                {isEditingCorrection ? (
+                  <form
+                    className="project-requirement__correction"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleCorrect(requirement.id);
+                    }}
+                  >
+                    <label htmlFor={`requirement-correction-${requirement.id}`}>
+                      纠正后内容
+                    </label>
+                    <textarea
+                      id={`requirement-correction-${requirement.id}`}
+                      disabled={isCorrecting}
+                      rows={4}
+                      value={correctionDrafts[requirement.id] ?? ''}
+                      onChange={(event) => {
+                        const { value } = event.target;
+                        setCorrectionDrafts((current) => ({
+                          ...current,
+                          [requirement.id]: value,
+                        }));
+                      }}
+                    />
+                    <div className="project-requirement__correction-actions">
+                      <button
+                        className="project-primary-button"
+                        aria-busy={isCorrecting}
+                        disabled={isCorrecting}
+                        type="submit"
+                      >
+                        {isCorrecting ? '保存中…' : '保存纠正'}
+                      </button>
+                      <button
+                        className="project-requirement__cancel-button"
+                        disabled={isCorrecting}
+                        type="button"
+                        onClick={() => cancelCorrection(requirement.id)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                    {correctionError ? (
+                      <p className="project-requirement__error" role="alert">
+                        {correctionError}
+                      </p>
+                    ) : null}
+                  </form>
+                ) : null}
               </div>
-              {needsConfirmation ? (
-                <button
-                  className="project-primary-button"
-                  type="button"
-                  onClick={() => onConfirmRequirement?.(projectId, requirement.id)}
-                >
-                  确认原文
-                </button>
-              ) : requirement.confirmationStatus === 'confirmed' ? (
-                <span className="project-confirmed">
-                  <CheckCircle2 aria-hidden="true" size={15} />
-                  已确认
-                </span>
-              ) : (
-                <span className="project-attention">确认状态未提供</span>
-              )}
+              <div className="project-requirement__action">
+                {needsConfirmation ? (
+                  <>
+                    <button
+                      aria-busy={isConfirming}
+                      className="project-primary-button"
+                      disabled={isConfirming || isCorrecting}
+                      type="button"
+                      onClick={() => void handleConfirm(requirement.id)}
+                    >
+                      {isConfirming ? '确认中…' : '确认原文'}
+                    </button>
+                    {confirmationError ? (
+                      <p className="project-requirement__error" role="alert">
+                        {confirmationError}
+                      </p>
+                    ) : null}
+                  </>
+                ) : requirement.confirmationStatus === 'confirmed' ? (
+                  <span className="project-confirmed">
+                    <CheckCircle2 aria-hidden="true" size={15} />
+                    已确认
+                  </span>
+                ) : (
+                  <span className="project-attention">确认状态未提供</span>
+                )}
+                {onCorrectRequirement ? (
+                  <button
+                    aria-expanded={isEditingCorrection}
+                    className="project-requirement__correct-button"
+                    disabled={isConfirming || isCorrecting || isEditingCorrection}
+                    type="button"
+                    onClick={() => beginCorrection(requirement)}
+                  >
+                    纠正内容
+                  </button>
+                ) : null}
+              </div>
             </article>
           );
         })}

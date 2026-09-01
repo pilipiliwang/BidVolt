@@ -39,7 +39,8 @@ type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
   ) => Promise<TenderNoticeUrlImportResult | void>;
 };
 
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const BACKEND_UPLOAD_ACCEPT = '.pdf,.ofd,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.jpg,.jpeg,.png,.bmp,.tiff,.zip,.html,.htm';
 
 function validateUploadFiles(files: FileList, accept: string) {
   const acceptedExtensions = new Set(
@@ -57,7 +58,7 @@ function validateUploadFiles(files: FileList, accept: string) {
       throw new Error(`${file.name}：不支持该文件格式`);
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      throw new Error(`${file.name}：单个文件不能超过 200MB`);
+      throw new Error(`${file.name}：单个文件不能超过 500MB`);
     }
   }
 }
@@ -140,7 +141,7 @@ function UploadCard({
         </span>
         <span>
           <strong>点击或拖拽文件到此处上传</strong>
-          <small>支持 PDF、Word、Excel、PPT、ZIP、RAR、7Z 等格式，单个文件不超过 200MB</small>
+          <small>支持 PDF、Word、Excel、PPT、图片与 ZIP，单个文件不超过 500MB；RAR/7Z 暂不支持解包</small>
         </span>
         <em>选择文件</em>
       </label>
@@ -395,7 +396,7 @@ export function ProjectMaterialUpload({
           title="当前招标材料"
           description="上传本项目全部招标文件，AI 将自动识别并分类。"
           inputLabel="选择或拖拽招标材料"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.ofd,.png,.jpg,.jpeg,.zip,.rar,.7z"
+          accept={BACKEND_UPLOAD_ACCEPT}
           onFiles={dispatchProjectFiles}
         >
           <TenderNoticeUrlImporter
@@ -407,7 +408,7 @@ export function ProjectMaterialUpload({
           title="已制作完成的标书"
           description="如已有商务标、技术标或报价单，可上传后直接进入校核。"
           inputLabel="选择或拖拽已制作完成的标书"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.ofd,.zip,.rar,.7z"
+          accept={BACKEND_UPLOAD_ACCEPT}
           selectedNames={existingBidFileNames}
           onFiles={dispatchExistingBidFiles}
         />

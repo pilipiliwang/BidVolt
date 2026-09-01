@@ -39,6 +39,7 @@ const TERMINAL_PROGRESS_STATUSES = new Set([
 ]);
 
 export function isBackendTaskTerminal(task: BackendTask) {
+  if (task.task_type === 'agent_pipeline' && task.status === 4) return true;
   if (TERMINAL_TASK_STATUSES.has(task.status)) return true;
   const progressStatus = typeof task.progress.status === 'string'
     ? task.progress.status.toLocaleLowerCase()
@@ -149,11 +150,14 @@ export const createTasksApi = (client: BackendApiClient) => {
       { signal, onUpdate }: BackendTaskStreamOptions,
     ): Promise<BackendTaskStreamTerminal> => {
       const publicTaskId = String(taskId);
-      const response = await client.requestResponse(`/tasks/${idPath(taskId)}/stream`, {
-        headers: { Accept: 'text/event-stream' },
-        signal,
-      });
-      return consumeBackendTaskStream(response, { taskId: publicTaskId, signal, onUpdate });
+      return client.requestStream(
+        `/tasks/${idPath(taskId)}/stream`,
+        { headers: { Accept: 'text/event-stream' }, signal },
+        (response) => consumeBackendTaskStream(
+          response,
+          { taskId: publicTaskId, signal, onUpdate },
+        ),
+      );
     },
     streamUrl: (taskId: BackendId, baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1') =>
       `${baseUrl.replace(/\/+$/, '')}/tasks/${idPath(taskId)}/stream`,

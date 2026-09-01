@@ -1,12 +1,14 @@
-import { BackendApiError } from '../shared/backend-api';
+import { BackendApiError, type ImageDescribeProgress } from '../shared/backend-api';
 import type { BackendTaskStreamUpdate } from '../shared/backend-api';
-import type { PublicTaskEvent } from '../shared/task-events';
+import type { AgentRunCompletion, PublicTaskEvent } from '../shared/task-events';
 
 export type ProjectResourceKey =
   | 'materials'
   | 'requirements'
   | 'snapshots'
+  | 'tenderNotices'
   | 'tasks'
+  | 'agent'
   | 'deliverables'
   | 'review'
   | 'score'
@@ -28,10 +30,34 @@ const terminalTaskStatuses = new Set<PublicTaskEvent['status']>([
   'failed',
 ]);
 
-const projectSubmissionTaskTypes = new Set(['bid_generate', 'bid_review']);
+const projectSubmissionTaskTypes = new Set(['agent_pipeline', 'bid_generate', 'bid_review']);
 
 export function isActiveTaskStatus(status: PublicTaskEvent['status']) {
   return activeTaskStatuses.has(status);
+}
+
+export function shouldReloadProjectAfterAgentPoll(
+  previous: AgentRunCompletion,
+  next: AgentRunCompletion,
+  alreadyReloaded: boolean,
+) {
+  return !alreadyReloaded && previous === 'active' && next !== 'active';
+}
+
+export function shouldShowImageDescribeProgress(progress: ImageDescribeProgress | null) {
+  if (!progress) return false;
+  return progress.queued > 0
+    || progress.running > 0
+    || progress.remaining > 0
+    || progress.done > 0
+    || progress.failed_terminal > 0;
+}
+
+export function isImageDescribeProgressComplete(progress: ImageDescribeProgress) {
+  return progress.remaining === 0
+    && progress.queued === 0
+    && progress.running === 0
+    && progress.done + progress.failed_terminal > 0;
 }
 
 export function findLatestActiveBidGenerateTask(events: readonly PublicTaskEvent[]) {
@@ -41,6 +67,20 @@ export function findLatestActiveBidGenerateTask(events: readonly PublicTaskEvent
     }
     return !latest || event.sequence > latest.sequence ? event : latest;
   }, undefined);
+}
+
+/** Selects the latest new-pipeline task without changing the legacy SSE subscription helper. */
+export function findLatestAgentPipelineTask(events: readonly PublicTaskEvent[]) {
+  const pipelineTasks = events.filter((event) => (
+    (event.task_type ?? event.phase) === 'agent_pipeline'
+  ));
+  const latest = pipelineTasks.reduce<PublicTaskEvent | undefined>((candidate, event) => (
+    !candidate || event.sequence > candidate.sequence ? event : candidate
+  ), undefined);
+  return pipelineTasks.reduce<PublicTaskEvent | undefined>((candidate, event) => {
+    if (!activeTaskStatuses.has(event.status)) return candidate;
+    return !candidate || event.sequence > candidate.sequence ? event : candidate;
+  }, undefined) ?? latest;
 }
 
 const statusFromStreamUpdate = (
@@ -145,6 +185,7 @@ export function hasTaskEnteredTerminalState(
 
 export const TASK_POLL_INTERVAL_MS = 2_500;
 export const STREAM_CONVERGENCE_POLL_INTERVAL_MS = 15_000;
+export const AGENT_RUN_POLL_INTERVAL_MS = 8_000;
 
 export function resolveTaskPollingInterval({
   hasActiveBidGenerateTask,
@@ -180,7 +221,7 @@ export function isProjectNotFound(error: unknown) {
 
 export function isReviewScoreUnavailable(error: unknown) {
   if (!(error instanceof BackendApiError) || error.status !== 404) return false;
-  if (error.message.includes('尚未评标')) return true;
-  return typeof error.detail === 'string' && error.detail.includes('尚未评标');
+  if (error.message.trim() === '尚未评标') return true;
+  return typeof error.detail === 'string' && error.detail.trim() === '尚未评标';
 }
 

@@ -1,4 +1,7 @@
-import { startBackendApiRequestLifecycle } from './request-monitor';
+import {
+  normalizeBackendRequestPathname,
+  startBackendApiRequestLifecycle,
+} from './request-monitor';
 
 export type TokenProvider = () => string | null | undefined;
 export type BackendRequestOptions = {
@@ -6,6 +9,7 @@ export type BackendRequestOptions = {
   headers?: HeadersInit; signal?: AbortSignal; skipAuthRefresh?: boolean;
 };
 export type RefreshHandler = () => Promise<boolean>;
+export type BackendResponseConsumer<T> = (response: Response) => Promise<T> | T;
 export class BackendApiError extends Error {
   readonly status: number; readonly detail: unknown; readonly retryable: boolean;
   readonly accessToken?: string | null;
@@ -29,6 +33,15 @@ export type BackendApiClient = {
    * reserved for streaming endpoints whose body must be read incrementally.
    */
   requestResponse(path: string, options?: BackendRequestOptions): Promise<Response>;
+  /**
+   * Runs an authenticated streaming request and keeps its diagnostic lifecycle
+   * open until the supplied response consumer resolves or rejects.
+   */
+  requestStream<T>(
+    path: string,
+    options: BackendRequestOptions,
+    consumer: BackendResponseConsumer<T>,
+  ): Promise<T>;
 };
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -47,6 +60,22 @@ const validationMessage = (detail: unknown): string => {
   }
   return '后端请求失败';
 };
+
+/**
+ * Some read endpoints use a narrowly defined 404 as their empty-state
+ * contract. Keep this allowlist exact: the error is still thrown to the
+ * business layer, while diagnostics can distinguish it from a broken API.
+ */
+const isExpectedEmptyResponse = (
+  path: string,
+  options: BackendRequestOptions,
+  error: unknown,
+) => (options.method ?? 'GET') === 'GET'
+  && /^\/projects\/[^/]+\/scores$/.test(normalizeBackendRequestPathname(path))
+  && error instanceof BackendApiError
+  && error.status === 404
+  && typeof error.detail === 'string'
+  && error.detail.trim() === '尚未评标';
 const errorFromResponse = async (
   response: Response,
   accessToken?: string | null,
@@ -165,7 +194,8 @@ export const createBackendApiClient = ({
       lifecycle.succeeded();
       return result;
     } catch (error) {
-      lifecycle.failed();
+      if (isExpectedEmptyResponse(path, options, error)) lifecycle.expectedEmpty();
+      else lifecycle.failed();
       throw error;
     }
   };
@@ -203,6 +233,17 @@ export const createBackendApiClient = ({
         const result = await execute(path, options); const { response } = result;
         if (!response.ok) throw await errorFromResponse(response, result.accessToken);
         return response;
+      });
+    },
+    async requestStream<T>(
+      path: string,
+      options: BackendRequestOptions,
+      consumer: BackendResponseConsumer<T>,
+    ): Promise<T> {
+      return monitored(path, options, async () => {
+        const result = await execute(path, options); const { response } = result;
+        if (!response.ok) throw await errorFromResponse(response, result.accessToken);
+        return consumer(response);
       });
     },
   };

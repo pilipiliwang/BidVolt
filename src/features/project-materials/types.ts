@@ -99,7 +99,12 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];
   taskStatus?: PublicTaskEvent['status'];
-  onConfirmRequirement?: (projectId: string, requirementId: string) => void;
+  onConfirmRequirement?: (projectId: string, requirementId: string) => Promise<void> | void;
+  onCorrectRequirement?: (
+    projectId: string,
+    requirementId: string,
+    content: string,
+  ) => Promise<void> | void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
   onStartTask: (projectId: string, mode: 'generate' | 'validate') => Promise<void> | void;
 }

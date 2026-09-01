@@ -4,13 +4,17 @@ import { BackendApiError } from '../shared/backend-api';
 import type { PublicTaskEvent } from '../shared/task-events';
 import {
   findLatestActiveBidGenerateTask,
+  findLatestAgentPipelineTask,
   findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
+  isImageDescribeProgressComplete,
   isActiveTaskStatus,
   isProjectNotFound,
   isReviewScoreUnavailable,
   mergeTaskStreamUpdate,
   resolveTaskPollingInterval,
+  shouldReloadProjectAfterAgentPoll,
+  shouldShowImageDescribeProgress,
   STREAM_CONVERGENCE_POLL_INTERVAL_MS,
   TASK_POLL_INTERVAL_MS,
 } from './project-resource-state';
@@ -86,6 +90,10 @@ describe('project resource state', () => {
 
   it('treats the backend not-reviewed 404 as an empty review state', () => {
     expect(isReviewScoreUnavailable(new BackendApiError(404, '尚未评标'))).toBe(true);
+    expect(isReviewScoreUnavailable(new BackendApiError(404, ' 尚未评标 '))).toBe(true);
+    expect(isReviewScoreUnavailable(new BackendApiError(404, 'request failed', ' 尚未评标 '))).toBe(true);
+    expect(isReviewScoreUnavailable(new BackendApiError(404, '尚未评标结果不存在'))).toBe(false);
+    expect(isReviewScoreUnavailable(new BackendApiError(404, 'request failed', '尚未评标结果不存在'))).toBe(false);
     expect(isReviewScoreUnavailable(new BackendApiError(404, '项目不存在'))).toBe(false);
     expect(isReviewScoreUnavailable(new BackendApiError(500, '尚未评标'))).toBe(false);
   });
@@ -94,6 +102,29 @@ describe('project resource state', () => {
     expect(hasTaskEnteredTerminalState([task('7', 'running')], [task('7', 'succeeded')])).toBe(true);
     expect(hasTaskEnteredTerminalState([task('7', 'succeeded')], [task('7', 'succeeded')])).toBe(false);
     expect(hasTaskEnteredTerminalState([], [task('7', 'succeeded')])).toBe(false);
+  });
+
+  it('reloads project resources only once when Agent polling observes a terminal result', () => {
+    expect(shouldReloadProjectAfterAgentPoll('active', 'complete', false)).toBe(true);
+    expect(shouldReloadProjectAfterAgentPoll('active', 'incomplete', true)).toBe(false);
+    expect(shouldReloadProjectAfterAgentPoll('complete', 'complete', false)).toBe(false);
+    expect(shouldReloadProjectAfterAgentPoll('active', 'active', false)).toBe(false);
+  });
+
+  it('keeps the image-description bar visible after all background work finishes', () => {
+    const completed = {
+      queued: 0,
+      running: 0,
+      done: 4,
+      failed_terminal: 0,
+      remaining: 0,
+      described_images: 12,
+    };
+
+    expect(shouldShowImageDescribeProgress(completed)).toBe(true);
+    expect(isImageDescribeProgressComplete(completed)).toBe(true);
+    expect(shouldShowImageDescribeProgress({ ...completed, done: 0, described_images: 0 })).toBe(false);
+    expect(isImageDescribeProgressComplete({ ...completed, queued: 1, remaining: 1 })).toBe(false);
   });
 
   it('keeps cancel-requested tasks in the polling set', () => {
@@ -226,6 +257,31 @@ describe('project resource state', () => {
     }, { projectId: '1', holdTerminalStatus: true });
 
     expect(merged[0]).toMatchObject({ status: 'running', percent: 100, public_message: '完成' });
+  });
+
+  it('prefers an active Agent pipeline task and preserves a terminal task for result rendering', () => {
+    const legacyGeneration = {
+      ...task('generate-7', 'running'),
+      sequence: 7,
+      task_type: 'bid_generate',
+    };
+    const activeAgent = {
+      ...task('agent-10', 'running'),
+      phase: 'agent_pipeline',
+      sequence: 10,
+      task_type: 'agent_pipeline',
+    };
+    const terminalAgent = {
+      ...task('agent-11', 'succeeded'),
+      phase: 'package_response',
+      sequence: 11,
+      task_type: 'agent_pipeline',
+    };
+
+    expect(findLatestAgentPipelineTask([legacyGeneration, terminalAgent, activeAgent])).toBe(activeAgent);
+    expect(findLatestAgentPipelineTask([legacyGeneration, terminalAgent])).toBe(terminalAgent);
+    expect(findCurrentProjectSubmissionTask([legacyGeneration, terminalAgent, activeAgent]))
+      .toBe(activeAgent);
   });
 
   it('does not invent a timestamp or backend error code from a stream-only failure status', () => {

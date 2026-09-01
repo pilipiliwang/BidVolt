@@ -60,7 +60,7 @@ function checkFromEvents(
   const hasActiveRequest = matching.some((event) => event.status === 'started');
   const status = hasActiveRequest
     ? 'checking'
-    : latest?.status === 'succeeded'
+    : latest?.status === 'succeeded' || latest?.status === 'expected-empty'
       ? 'success'
       : latest?.status === 'failed'
         ? 'failed'
@@ -78,6 +78,9 @@ function checkFromEvents(
     callCount: matching.length,
     lastCalledAt: latest ? eventTime(latest) : null,
     latencyMs: latest?.latencyMs,
+    detail: latest?.status === 'expected-empty'
+      ? '正常空态：后端确认该项目尚未评标。'
+      : undefined,
   };
 }
 
@@ -97,7 +100,7 @@ function unknownChecks(
     const latest = latestEvent(group)!;
     const status = group.some((event) => event.status === 'started')
       ? 'checking'
-      : latest.status === 'succeeded'
+      : latest.status === 'succeeded' || latest.status === 'expected-empty'
         ? 'success'
         : 'failed';
     return {
@@ -111,6 +114,9 @@ function unknownChecks(
       callCount: group.length,
       lastCalledAt: eventTime(latest),
       latencyMs: latest.latencyMs,
+      detail: latest.status === 'expected-empty'
+        ? '正常空态：后端确认该项目尚未评标。'
+        : undefined,
     };
   });
 }

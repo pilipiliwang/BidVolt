@@ -28,6 +28,7 @@ const clientWithRequest = (request: BackendApiClient['request']): BackendApiClie
   request,
   requestBlob: vi.fn(),
   requestResponse: vi.fn(),
+  requestStream: vi.fn(),
   requestVoid: vi.fn(),
 });
 
@@ -40,6 +41,10 @@ describe('backend task polling', () => {
     expect(isBackendTaskTerminal(task(1, 'queued'))).toBe(false);
     expect(isBackendTaskTerminal(task(2, 'running', 80))).toBe(false);
     expect(isBackendTaskTerminal(task(4, 'retrying', 5))).toBe(false);
+    expect(isBackendTaskTerminal({
+      ...task(4, 'retrying', 5),
+      task_type: 'agent_pipeline',
+    })).toBe(true);
   });
 
   it('polls task detail until a terminal response and reports every update', async () => {
@@ -154,11 +159,16 @@ describe('backend task polling', () => {
         controller.close();
       },
     }), { headers: { 'Content-Type': 'text/event-stream' } });
-    const requestResponse = vi.fn().mockResolvedValue(response);
+    const requestStream = vi.fn(async (
+      _path: string,
+      _options: unknown,
+      consumer: (streamResponse: Response) => Promise<unknown>,
+    ) => consumer(response)) as unknown as BackendApiClient['requestStream'];
     const client: BackendApiClient = {
       request: vi.fn(),
       requestBlob: vi.fn(),
-      requestResponse,
+      requestResponse: vi.fn(),
+      requestStream,
       requestVoid: vi.fn(),
     };
     const api = createTasksApi(client);
@@ -168,10 +178,14 @@ describe('backend task polling', () => {
     await expect(api.stream(17, { signal: controller.signal, onUpdate }))
       .resolves.toEqual({ type: 'done', taskId: '17', status: 3 });
 
-    expect(requestResponse).toHaveBeenCalledWith('/tasks/17/stream', {
-      headers: { Accept: 'text/event-stream' },
-      signal: controller.signal,
-    });
+    expect(requestStream).toHaveBeenCalledWith(
+      '/tasks/17/stream',
+      {
+        headers: { Accept: 'text/event-stream' },
+        signal: controller.signal,
+      },
+      expect.any(Function),
+    );
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
       type: 'snapshot',
       taskId: '17',

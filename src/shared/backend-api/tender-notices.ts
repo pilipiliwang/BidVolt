@@ -7,12 +7,22 @@ export const createTenderNoticesApi = (client: BackendApiClient) => ({
       `/projects/${idPath(projectId)}/tender-notices/import-url`,
       { method: 'POST', body: { url } },
     ),
+  list: (projectId: BackendId) =>
+    client.request<{ items: TenderNoticeImportJob[] }>(
+      `/projects/${idPath(projectId)}/tender-notices`,
+    ),
+  get: (projectId: BackendId, noticeId: BackendId) =>
+    client.request<TenderNoticeImportJob>(
+      `/projects/${idPath(projectId)}/tender-notices/${idPath(noticeId)}`,
+    ),
+  /** @deprecated Use list. Kept while page call sites migrate from the old importer naming. */
   listImports: (projectId: BackendId) =>
     client.request<{ items: TenderNoticeImportJob[] }>(
-      `/projects/${idPath(projectId)}/tender-notices/imports`,
+      `/projects/${idPath(projectId)}/tender-notices`,
     ),
-  getImport: (projectId: BackendId, importId: BackendId) =>
+  /** @deprecated Use get. */
+  getImport: (projectId: BackendId, noticeId: BackendId) =>
     client.request<TenderNoticeImportJob>(
-      `/projects/${idPath(projectId)}/tender-notices/imports/${idPath(importId)}`,
+      `/projects/${idPath(projectId)}/tender-notices/${idPath(noticeId)}`,
     ),
 });

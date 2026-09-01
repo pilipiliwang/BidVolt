@@ -555,6 +555,36 @@
 .project-requirement__body > p { margin: 6px 0 9px; color: #435469; font-size: var(--font-size-sm); line-height: 1.6; }
 .project-requirement__source { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--project-muted); font-size: var(--font-size-xs); }
 .project-requirement__source svg { color: var(--project-accent); }
+.project-requirement__correction {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid #cfe4d8;
+  border-radius: 8px;
+  background: #fff;
+}
+.project-requirement__correction label { color: #263a31; font-size: var(--font-size-xs); font-weight: 800; }
+.project-requirement__correction textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid #cbd9d2;
+  border-radius: 6px;
+  color: var(--project-ink);
+  background: #fff;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+.project-requirement__correction textarea:focus {
+  border-color: var(--project-accent);
+  outline: 2px solid rgb(0 158 96 / 14%);
+  outline-offset: 1px;
+}
+.project-requirement__correction textarea:disabled { cursor: wait; opacity: 0.72; }
+.project-requirement__correction-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .project-primary-button {
   min-height: 30px;
   padding: 0 9px;
@@ -566,6 +596,24 @@
   font-weight: 800;
   cursor: pointer;
 }
+.project-primary-button:disabled { cursor: wait; opacity: 0.7; }
+.project-requirement__action { display: grid; justify-items: end; gap: 6px; max-width: 260px; }
+.project-requirement__correct-button,
+.project-requirement__cancel-button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #9fcdb4;
+  border-radius: 6px;
+  color: var(--project-accent-deep);
+  background: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  cursor: pointer;
+}
+.project-requirement__correct-button:disabled,
+.project-requirement__cancel-button:disabled { cursor: wait; opacity: 0.6; }
+.project-requirement__error { margin: 0; color: #b42318; font-size: var(--font-size-xs); line-height: 1.45; text-align: right; }
+.project-requirement__correction .project-requirement__error { text-align: left; }
 .project-confirmed { display: inline-flex; align-items: center; gap: 4px; padding-top: 4px; color: #147348; font-size: var(--font-size-xs); font-weight: 800; }
 
 .project-snapshot-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
@@ -627,6 +675,8 @@
   .project-requirement > :last-child,
   .project-snapshot > :nth-child(3),
   .project-snapshot > :last-child { grid-column: 2; justify-self: start; }
+  .project-requirement__action { justify-items: start; max-width: none; }
+  .project-requirement__error { text-align: left; }
 }
 
 @media (max-width: 520px) {

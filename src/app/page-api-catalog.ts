@@ -65,6 +65,13 @@ const commonAuthenticatedOperations = (): PageApiOperation[] => [
   operation('bootstrap-enterprise-assets', '全局预加载：企业资料列表', '自动：登录成功后；企业资料页刷新或上传后', 'GET', '/enterprise/assets'),
   operation('bootstrap-enterprise-ingestions', '全局预加载：企业归类任务', '自动：登录成功后；企业资料页刷新或上传后', 'GET', '/enterprise/ingest'),
   operation(
+    'image-describe-progress',
+    '后台图片识别进度',
+    '自动：登录后每 30 秒刷新后台识图进度',
+    'GET',
+    '/files/image-describe-progress',
+  ),
+  operation(
     'bootstrap-enterprise-asset-detail',
     '全局预加载：企业资料详情',
     '自动：每份企业资料加载详情',
@@ -95,8 +102,15 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
       '加载当前项目材料',
       '自动：进入项目；上传或任务完成后刷新',
       'GET',
-      `/files?target=project&project_id=${encoded}&page=1&size=100`,
-      { matchPathname: '/files', matchQuery: { target: 'project', project_id: projectId, page: '1', size: '100' } },
+      `/files?target=project&project_id=${encoded}&page={page}&size=100`,
+      { matchPathname: '/files', matchQuery: { target: 'project', project_id: projectId, size: '100' } },
+    ),
+    operation(
+      'project-materials-enriched',
+      '加载项目材料解析详情',
+      '自动：进入项目；与文件列表并发读取块统计、图片识别和压缩包来源',
+      'GET',
+      `/files/projects/${encoded}/materials`,
     ),
     operation(
       'project-requirements',
@@ -107,30 +121,13 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
       { matchPathname: '/requirements', matchQuery: { project_id: projectId } },
     ),
     operation('project-snapshots', '加载项目快照', '自动：进入项目；任务完成后刷新', 'GET', `${projectPath}/snapshots`),
-    operation('project-tasks', '加载及轮询任务进度', '自动：进入项目；有运行中任务时每 2.5 秒', 'GET', `${projectPath}/tasks`, {
-      isTask: true,
-    }),
     operation(
-      'task-status',
-      '查询单任务状态与结果',
-      '自动：发现待执行或执行中任务时，每 2.5 秒查询最近 8 个活动任务',
+      'project-file-image-descriptions',
+      '读取材料图片结构化描述',
+      '条件自动：查看包含图片的项目材料时',
       'GET',
-      '/tasks/{taskId}',
-      {
-        isTask: true,
-        matchPathname: /^\/tasks\/[^/]+$/,
-      },
-    ),
-    operation(
-      'task-stream',
-      '订阅单任务实时进度',
-      '自动：当前项目存在执行中的成果生成任务时，以 Bearer 鉴权订阅；断流后回退轮询',
-      'GET',
-      '/tasks/{taskId}/stream',
-      {
-        isTask: true,
-        matchPathname: /^\/tasks\/[^/]+\/stream$/,
-      },
+      '/files/{fileId}/image-descriptions',
+      { matchPathname: /^\/files\/[^/]+\/image-descriptions$/ },
     ),
     operation(
       'project-deliverables',
@@ -174,29 +171,195 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
       '/quotes/{calcId}',
       { matchPathname: /^\/quotes\/(?!history(?:\/|$)|calculate$|recalc$|strategies$|apply$)[^/]+$/ },
     ),
-  ];
-};
-
-const sharedProjectActions = (projectId: string): PageApiOperation[] => {
-  const encoded = encodeURIComponent(projectId);
-  const projectPath = `/projects/${encoded}`;
-  const projectPattern = escapeRegExp(projectPath);
-  return [
-    operation('project-upload', '上传项目材料或企业资料', '操作：点击任一上传文件按钮', 'POST', '/files/upload'),
-    operation('project-archive', '解包上传的 ZIP/RAR/7Z', '条件操作：上传压缩包成功后', 'POST', '/files/archive'),
-    operation('project-enterprise-ingest', '提交企业资料自动归类', '条件操作：企业资料上传并关联成功后', 'POST', '/enterprise/ingest'),
-    operation('assistant-conversations', '查询项目助手会话', '操作：发送项目助手问题', 'GET', `${projectPath}/conversations`),
-    operation('assistant-create-conversation', '创建项目助手会话', '条件操作：首次发送且没有现有会话', 'POST', `${projectPath}/conversations`),
     operation(
-      'assistant-send-message',
-      '发送项目助手消息',
-      '操作：发送项目助手问题',
-      'POST',
-      `${projectPath}/conversations/{conversationId}/messages`,
-      { matchPathname: new RegExp(`^${projectPattern}/conversations/[^/]+/messages$`) },
+      'project-task-history',
+      '恢复项目任务记录',
+      '自动：进入项目；兼容恢复历史任务和任务进度',
+      'GET',
+      `${projectPath}/tasks`,
+      { isTask: true },
     ),
   ];
 };
+
+const projectAgentOperations = (projectId: string): PageApiOperation[] => {
+  const projectPath = `/projects/${encodeURIComponent(projectId)}`;
+  const projectPattern = escapeRegExp(projectPath);
+
+  // `/assembly/*` and `POST .../asks` are tools used inside the Agent main
+  // session. Browser pages consume the run, question, package, and artifact
+  // contracts below, so the internal tool chain is intentionally not listed.
+  return [
+    operation(
+      'agent-run-start',
+      '启动 Agent 投标主任务',
+      '操作：点击开始生成；重复提交由 idempotency_key 复用原任务',
+      'POST',
+      `${projectPath}/agent-run`,
+      { isTask: true },
+    ),
+    operation(
+      'agent-run-status',
+      '读取 Agent 任务状态与真实进度',
+      '自动：存在当前 Agent 任务时每 8 秒轮询，直至终态',
+      'GET',
+      `${projectPath}/agent-run/{taskId}`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/agent-run/[^/]+$`),
+      },
+    ),
+    operation(
+      'agent-run-stream',
+      '订阅 Agent 主会话实时消息',
+      '自动：存在当前 Agent 任务时订阅 SSE；重连时通过 since 续传',
+      'GET',
+      `${projectPath}/agent-run/{taskId}/stream?since={seq}`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/agent-run/[^/]+/stream$`),
+      },
+    ),
+    operation(
+      'agent-run-questions',
+      '读取 Agent 客户问卡',
+      '自动：任务运行期间刷新待回答问题、倒计时和行动清单',
+      'GET',
+      `${projectPath}/agent-run/{taskId}/questions`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/agent-run/[^/]+/questions$`),
+      },
+    ),
+    operation(
+      'agent-run-answer',
+      '回答 Agent 客户问卡',
+      '操作：提交某组问卡答案',
+      'POST',
+      `${projectPath}/agent-run/{taskId}/asks/{askId}/answer`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/agent-run/[^/]+/asks/[^/]+/answer$`),
+      },
+    ),
+    operation(
+      'agent-run-chat',
+      '向 Agent 主会话发送消息',
+      '操作：在任务控制台排队消息或调整后续方向',
+      'POST',
+      `${projectPath}/agent-run/{taskId}/chat`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/agent-run/[^/]+/chat$`),
+      },
+    ),
+    operation(
+      'agent-pre-chat',
+      '任务开始前咨询项目资料',
+      '操作：尚未启动 Agent 任务时发送项目助手消息',
+      'POST',
+      `${projectPath}/pre-chat`,
+    ),
+    operation(
+      'project-response-package',
+      '下载 Agent 响应文件包',
+      '操作：Agent 完成打包后点击下载响应文件包',
+      'GET',
+      `${projectPath}/response-package`,
+    ),
+    operation(
+      'agent-artifact-download',
+      '下载 Agent 单项成果文件',
+      '操作：在成果清单点击下载单项文件',
+      'GET',
+      `${projectPath}/agent-artifact/{artifactId}/download`,
+      { matchPathname: new RegExp(`^${projectPattern}/agent-artifact/[^/]+/download$`) },
+    ),
+  ];
+};
+
+const projectCheckAndExportOperations = (projectId: string): PageApiOperation[] => {
+  const projectPath = `/projects/${encodeURIComponent(projectId)}`;
+  const projectPattern = escapeRegExp(projectPath);
+  return [
+    operation('project-final-check', '提交成果终检', '操作：在导出或交付前运行终检', 'POST', `${projectPath}/check`, {
+      isTask: true,
+    }),
+    operation(
+      'project-final-check-detail',
+      '读取成果终检结果',
+      '条件自动：提交终检后按 checkId 查询结果',
+      'GET',
+      `${projectPath}/check/{checkId}`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/check/[^/]+$`),
+      },
+    ),
+    operation('project-export', '提交项目导出任务', '操作：选择导出配置并提交', 'POST', `${projectPath}/export`, {
+      isTask: true,
+    }),
+    operation(
+      'project-export-status',
+      '读取项目导出状态',
+      '条件自动：导出任务运行期间按 jobId 轮询',
+      'GET',
+      `${projectPath}/export/{jobId}`,
+      {
+        isTask: true,
+        matchPathname: new RegExp(`^${projectPattern}/export/[^/]+$`),
+      },
+    ),
+    operation('project-delivery-package', '下载项目交付包', '操作：导出任务完成后下载交付包', 'GET', `${projectPath}/delivery-package`),
+  ];
+};
+
+const sharedProjectActions = (): PageApiOperation[] => [
+  operation(
+    'project-upload',
+    '上传项目材料或企业资料',
+    '操作：上传时传入 document_role；ZIP 由上传接口自动解包',
+    'POST',
+    '/files/upload',
+  ),
+  operation('project-archive', '存量 ZIP 补解包', '操作：对已入库但未展开的 ZIP 点击解包入库', 'POST', '/files/archive'),
+  operation('project-enterprise-ingest', '重新执行企业资料归类', '操作：手动重新处理存量企业资料', 'POST', '/enterprise/ingest'),
+];
+
+const historyQuoteOperations = (): PageApiOperation[] => [
+  operation(
+    'quote-history-source-metadata',
+    '读取行情库来源元数据',
+    '自动：进入历史报价页时加载可筛选的数据来源',
+    'GET',
+    '/quotes/history/source-metadata',
+  ),
+  operation('quote-history-import', '导入历史报价样本', '操作：上传公共库或企业私有库 XLSX', 'POST', '/quotes/history/import'),
+  operation(
+    'quote-history-material-samples',
+    '读取物料历史样本',
+    '操作：展开某个物料的逐条可复核样本',
+    'GET',
+    '/quotes/history/{materialRef}/samples',
+    { matchPathname: /^\/quotes\/history\/(?!samples(?:\/|$)|source-metadata$)[^/]+\/samples$/ },
+  ),
+  operation(
+    'quote-history-sample-detail',
+    '读取单条历史报价样本',
+    '操作：查看某条历史报价的来源与明细',
+    'GET',
+    '/quotes/history/samples/{sampleId}',
+    { matchPathname: /^\/quotes\/history\/samples\/[^/]+$/ },
+  ),
+  operation(
+    'quote-history-material-trend',
+    '读取物料报价趋势',
+    '操作：查看物料趋势和可比样本统计',
+    'GET',
+    '/quotes/history/{materialRef}/trend',
+    { matchPathname: /^\/quotes\/history\/(?!samples(?:\/|$)|source-metadata$)[^/]+\/trend$/ },
+  ),
+];
 
 const downloadDeliverableOperation = (): PageApiOperation => operation(
   'deliverable-download',
@@ -236,7 +399,15 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
     return [
       ...operations,
       operation('enterprise-upload', '上传企业资料', '操作：选择或拖入企业文件', 'POST', '/files/upload'),
-      operation('enterprise-ingest', '提交企业资料自动归类', '条件操作：上传文件已关联为企业资料', 'POST', '/enterprise/ingest'),
+      operation('enterprise-ingest', '重新执行企业资料归类', '操作：手动重新处理存量企业资料', 'POST', '/enterprise/ingest'),
+      operation(
+        'enterprise-file-image-descriptions',
+        '读取企业资料图片结构化描述',
+        '条件自动：查看包含图片的企业资料时',
+        'GET',
+        '/files/{fileId}/image-descriptions',
+        { matchPathname: /^\/files\/[^/]+\/image-descriptions$/ },
+      ),
       operation('enterprise-update-fact', '纠正企业资料字段', '操作：编辑字段并确认', 'PUT', '/enterprise/facts/{factId}', {
         matchPathname: /^\/enterprise\/facts\/[^/]+$/,
       }),
@@ -246,14 +417,19 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
     ];
   }
 
-  if (route.name === 'history-prices') return operations;
+  if (route.name === 'history-prices') return [
+    ...operations,
+    ...historyQuoteOperations(),
+  ];
 
   const projectId = route.projectId;
   const projectPath = `/projects/${encodeURIComponent(projectId)}`;
   const base = [
     ...operations,
     ...projectAutomaticOperations(projectId),
-    ...sharedProjectActions(projectId),
+    ...projectAgentOperations(projectId),
+    ...projectCheckAndExportOperations(projectId),
+    ...sharedProjectActions(),
   ];
 
   if (route.name === 'project-overview') {
@@ -263,33 +439,23 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'project-materials') {
     return [
       ...base,
-      operation('tender-notice-import', '从网址导入招标公告', '操作：粘贴网址并提交', 'POST', `${projectPath}/tender-notices/import-url`, {
-        unavailableReason: '最新后端 main 尚未提供招标公告网址导入接口；页面保留入口和手动上传能力，不会伪造导入成功。',
-      }),
-      operation('tender-notice-import-status', '查询招标公告导入状态', '条件自动：网址导入尚未完成时每 2 秒', 'GET', `${projectPath}/tender-notices/imports/{importId}`, {
-        matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/tender-notices/imports/[^/]+$`),
-        unavailableReason: '最新后端 main 尚未提供招标公告网址导入记录详情接口。',
+      operation('tender-notice-import', '从网址导入招标公告', '操作：粘贴公开网址并提交', 'POST', `${projectPath}/tender-notices/import-url`),
+      operation('tender-notice-list', '读取招标公告导入记录', '自动：进入材料页；网址导入后刷新', 'GET', `${projectPath}/tender-notices`),
+      operation('tender-notice-detail', '查询单条招标公告导入状态', '条件自动：网址导入尚未完成时按 noticeId 轮询', 'GET', `${projectPath}/tender-notices/{noticeId}`, {
+        matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/tender-notices/[^/]+$`),
       }),
       operation('snapshot-detail', '查看冻结快照详情', '操作：点击快照记录', 'GET', `${projectPath}/snapshots/{snapshotId}`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/snapshots/[^/]+$`),
       }),
-      operation('task-create', '提交任务（仅入队）', '操作：点击开始生成或开始校核', 'POST', `${projectPath}/tasks`, {
-        isTask: true,
+      operation('requirement-detail', '读取单条招标要求', '操作：展开某条招标要求', 'GET', '/requirements/{requirementId}', {
+        matchPathname: /^\/requirements\/[^/]+$/,
       }),
-      operation('requirement-confirm', '确认招标要求原文', '操作：点击确认原文', 'POST', `${projectPath}/requirements/{requirementId}/confirm`, {
-        unavailableReason: '当前后端尚未提供 Requirement 确认接口。',
+      operation('requirements-upsert', '写入招标要求识别结果', '条件操作：解析或人工整理后提交要求', 'POST', `${projectPath}/requirements/upsert`),
+      operation('requirement-confirm', '确认招标要求原文', '操作：携带 expected_revision 确认要求', 'PUT', `${projectPath}/requirements/{requirementId}/confirm`, {
+        matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/requirements/[^/]+/confirm$`),
       }),
-      operation('project-file-purpose', '按项目文件用途持久化并读取分类', '自动：进入材料页及上传文件后刷新', 'GET', `/files?target=project&project_id=${encodeURIComponent(projectId)}&document_role={role}`, {
-        unavailableReason: '当前后端文件列表没有 document_role/purpose 字段；前端不会按文件名或当前会话操作伪造“当前招标材料/补充资料/已完成标书”分类。',
-      }),
-      operation('completed-bid-purpose', '按“已完成标书”用途持久化上传文件', '操作：上传已制作完成的标书', 'POST', `${projectPath}/completed-bids/uploads`, {
-        unavailableReason: '当前只能复用普通项目材料上传，后端没有已完成标书的用途或类型字段，刷新后无法恢复该分类。',
-      }),
-      operation('completed-bid-summary', '读取已上传标书数量', '自动：进入材料页看板', 'GET', `${projectPath}/completed-bids/summary`, {
-        unavailableReason: '文件列表和上传响应没有持久化 document_role/purpose 字段，后端尚未提供可读取的已完成标书数量。',
-      }),
-      operation('pending-check-summary', '读取待校核内容数量', '自动：进入材料页看板', 'GET', `${projectPath}/check/latest`, {
-        unavailableReason: '后端只有创建 check 和按 checkId 读取，尚未提供项目 latest/list 汇总；前端不会为读取数量触发 POST check。',
+      operation('requirement-correct', '纠正招标要求内容', '操作：携带 expected_revision 保存人工纠正', 'PUT', `${projectPath}/requirements/{requirementId}/correct`, {
+        matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/requirements/[^/]+/correct$`),
       }),
     ];
   }
@@ -297,10 +463,7 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'review-center') {
     return [
       ...base,
-      operation('review-evaluate', '运行内置评审', '操作：选择内置成果完整性检查并运行', 'POST', `${projectPath}/evaluate`),
-      operation('review-provider-selection', '按所选外部评审机制运行', '操作：选择文档、代码或 API 评审机制', 'POST', `${projectPath}/evaluate`, {
-        unavailableReason: '最新后端 evaluate 接口没有 requestBody，当前会忽略 provider_id 并固定运行内置 Provider。',
-      }),
+      operation('review-evaluate', '运行模拟评审', '操作：选择已启用 Provider（或使用后端默认项）并运行', 'POST', `${projectPath}/evaluate`),
       operation('review-update-suggestion', '保存编辑后的评审建议', '操作：确认编辑建议', 'PUT', `${projectPath}/scores/{scoreId}/items/{findingId}/suggestion`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/scores/[^/]+/items/[^/]+/suggestion$`),
       }),
@@ -310,7 +473,10 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'pricing-center') {
     return [
       ...base,
+      operation('quote-calculate', '执行确定性报价测算', '操作：提交材料、成本和报价参数', 'POST', '/quotes/calculate'),
+      operation('quote-recalculate', '按冻结样本复算报价', '操作：点击复算并校验历史测算', 'POST', '/quotes/recalc'),
       operation('quote-strategy', '生成确定性报价策略', '操作：确认应用报价策略', 'POST', '/quotes/strategies'),
+      operation('quote-ai-suggest', '生成有依据的 AI 报价建议区间', '操作：请求 AI 辅助分析；正式报价仍走确定性链路', 'POST', '/quotes/ai-suggest'),
       operation('quote-apply', '应用策略并生成报价新版本', '操作：策略测算成功后', 'POST', '/quotes/apply'),
     ];
   }

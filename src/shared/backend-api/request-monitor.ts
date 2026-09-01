@@ -1,6 +1,10 @@
 export type BackendApiRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-export type BackendApiRequestEventStatus = 'started' | 'succeeded' | 'failed';
+export type BackendApiRequestEventStatus =
+  | 'started'
+  | 'succeeded'
+  | 'expected-empty'
+  | 'failed';
 
 export type BackendApiRequestEvent = Readonly<{
   requestId: string;
@@ -18,6 +22,7 @@ export type BackendApiRequestEventListener = (event: BackendApiRequestEvent) => 
 
 export type BackendApiRequestLifecycle = {
   succeeded: () => void;
+  expectedEmpty: () => void;
   failed: () => void;
 };
 
@@ -129,7 +134,7 @@ export function startBackendApiRequestLifecycle(
     status: 'started',
   });
 
-  const finish = (status: Extract<BackendApiRequestEventStatus, 'succeeded' | 'failed'>) => {
+  const finish = (status: Exclude<BackendApiRequestEventStatus, 'started'>) => {
     if (finished) return;
     finished = true;
     const finishedAtEpochMs = Date.now();
@@ -148,6 +153,7 @@ export function startBackendApiRequestLifecycle(
 
   return {
     succeeded: () => finish('succeeded'),
+    expectedEmpty: () => finish('expected-empty'),
     failed: () => finish('failed'),
   };
 }

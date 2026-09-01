@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createBackendApiClient } from './client';
+import { consumeAgentRunStream } from './agent-stream';
 import {
   normalizeBackendRequestPath,
   normalizeBackendRequestPathname,
@@ -42,6 +43,7 @@ describe('backend API request monitor', () => {
 
     const lifecycle = startBackendApiRequestLifecycle('GET', '/projects/7?view=overview');
     lifecycle.succeeded();
+    lifecycle.expectedEmpty();
     lifecycle.failed();
 
     expect(events).toHaveLength(2);
@@ -62,6 +64,28 @@ describe('backend API request monitor', () => {
       latencyMs: 42,
     });
     expect(Object.isFrozen(events[0])).toBe(true);
+  });
+
+  it('publishes the exact not-reviewed score response as an expected empty state', async () => {
+    const { events } = collectEvents();
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: '  尚未评标  ' }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: '项目不存在' }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: '尚未评标' }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: '尚未评标' }), { status: 500 }));
+    const client = createBackendApiClient({ fetchImpl });
+
+    await expect(client.request('/projects/7/scores')).rejects.toMatchObject({ status: 404 });
+    await expect(client.request('/projects/8/scores')).rejects.toMatchObject({ status: 404 });
+    await expect(client.request('/projects/7/reviews')).rejects.toMatchObject({ status: 404 });
+    await expect(client.request('/projects/7/scores')).rejects.toMatchObject({ status: 500 });
+
+    expect(events.filter((event) => event.finishedAt).map((event) => event.status)).toEqual([
+      'expected-empty',
+      'failed',
+      'failed',
+      'failed',
+    ]);
   });
 
   it('supports unsubscribe and isolates subscriber errors from API behavior', async () => {
@@ -169,6 +193,88 @@ describe('backend API request monitor', () => {
       path: '/tasks/5/stream',
       status: 'succeeded',
     });
+  });
+
+  it('keeps a streaming request open until a valid Agent end event is consumed', async () => {
+    const encoder = new TextEncoder();
+    let finishStream: (() => void) | undefined;
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          'event: message\ndata: {"seq":1,"kind":"service","content":"生成中"}\n\n',
+        ));
+        finishStream = () => {
+          controller.enqueue(encoder.encode(
+            'event: end\ndata: {"status":3,"session_id":"s1","outcome":"complete","reason":null,"action_list":[],"error":null}\n\n',
+          ));
+          controller.close();
+        };
+      },
+    }), { headers: { 'Content-Type': 'text/event-stream' } });
+    const client = createBackendApiClient({
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
+    });
+    const { events } = collectEvents();
+    const onMessage = vi.fn();
+
+    const stream = client.requestStream(
+      '/projects/7/agent-run/31/stream?since=0',
+      { headers: { Accept: 'text/event-stream' } },
+      (streamResponse) => consumeAgentRunStream(streamResponse, { onMessage }),
+    );
+
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledOnce());
+    expect(events.map((event) => event.status)).toEqual(['started']);
+
+    finishStream?.();
+    await expect(stream).resolves.toMatchObject({ type: 'end', status: 3 });
+    expect(events.map((event) => event.status)).toEqual(['started', 'succeeded']);
+  });
+
+  it('marks an Agent stream protocol disconnect as failed after successful headers', async () => {
+    const response = new Response(
+      'event: message\ndata: {"seq":1,"kind":"service","content":"生成中"}\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    );
+    const client = createBackendApiClient({
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
+    });
+    const { events } = collectEvents();
+
+    await expect(client.requestStream(
+      '/projects/7/agent-run/31/stream?since=0',
+      { headers: { Accept: 'text/event-stream' } },
+      (streamResponse) => consumeAgentRunStream(streamResponse, { onMessage: vi.fn() }),
+    )).rejects.toThrow(/end/);
+
+    expect(events.map((event) => event.status)).toEqual(['started', 'failed']);
+  });
+
+  it('preserves AbortError semantics when a streaming consumer is cancelled', async () => {
+    const controller = new AbortController();
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // Keep the connection open until the request signal cancels the reader.
+      },
+    }), { headers: { 'Content-Type': 'text/event-stream' } });
+    const client = createBackendApiClient({
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(response),
+    });
+    const { events } = collectEvents();
+    const stream = client.requestStream(
+      '/projects/7/agent-run/31/stream?since=0',
+      { headers: { Accept: 'text/event-stream' }, signal: controller.signal },
+      (streamResponse) => consumeAgentRunStream(streamResponse, {
+        signal: controller.signal,
+        onMessage: vi.fn(),
+      }),
+    );
+
+    await vi.waitFor(() => expect(events).toHaveLength(1));
+    controller.abort();
+
+    await expect(stream).rejects.toMatchObject({ name: 'AbortError' });
+    expect(events.map((event) => event.status)).toEqual(['started', 'failed']);
   });
 
   it('counts a 401 refresh and replay as one logical client request', async () => {

@@ -30,74 +30,100 @@ describe('page API catalog', () => {
     });
   });
 
-  it('lists automatic, user-triggered, and missing backend capabilities for materials', () => {
+  it('lists the latest Agent, tender notice, requirement, and check contracts for materials', () => {
     const catalog = pageApiCatalog({ name: 'project-materials', projectId: 'project/7' });
     const ids = catalog.map((item) => item.id);
 
     expect(ids).toEqual(expect.arrayContaining([
       'auth-me',
       'bootstrap-enterprise-assets',
+      'image-describe-progress',
       'project-detail',
       'project-materials',
+      'project-task-history',
       'project-requirements',
-      'project-tasks',
-      'task-status',
-      'task-stream',
+      'project-file-image-descriptions',
       'project-upload',
+      'agent-run-start',
+      'agent-run-status',
+      'agent-run-stream',
+      'agent-run-questions',
+      'agent-run-answer',
+      'agent-run-chat',
+      'agent-pre-chat',
+      'project-response-package',
+      'agent-artifact-download',
       'tender-notice-import',
-      'tender-notice-import-status',
+      'tender-notice-list',
+      'tender-notice-detail',
       'snapshot-detail',
-      'task-create',
+      'requirements-upsert',
       'requirement-confirm',
+      'requirement-correct',
+      'project-final-check',
+      'project-final-check-detail',
+    ]));
+    expect(catalog.find((item) => item.id === 'requirement-confirm')).toMatchObject({
+      method: 'PUT',
+      path: '/projects/project%2F7/requirements/{requirementId}/confirm',
+    });
+    expect(catalog.find((item) => item.id === 'requirement-correct')).toMatchObject({
+      method: 'PUT',
+      path: '/projects/project%2F7/requirements/{requirementId}/correct',
+    });
+    expect(catalog.find((item) => item.id === 'tender-notice-list')).toMatchObject({
+      method: 'GET',
+      path: '/projects/project%2F7/tender-notices',
+    });
+    expect(ids).not.toEqual(expect.arrayContaining([
       'completed-bid-purpose',
       'completed-bid-summary',
       'pending-check-summary',
-    ]));
-    expect(catalog.find((item) => item.id === 'requirement-confirm')?.unavailableReason)
-      .toContain('尚未提供');
-    expect(catalog.find((item) => item.id === 'tender-notice-import')?.unavailableReason)
-      .toContain('最新后端 main');
-    expect(catalog.find((item) => item.id === 'tender-notice-import-status')?.unavailableReason)
-      .toContain('尚未提供');
-    expect(catalog.find((item) => item.id === 'completed-bid-purpose')?.unavailableReason)
-      .toContain('刷新后无法恢复');
-    expect(catalog.find((item) => item.id === 'completed-bid-summary')).toMatchObject({
-      method: 'GET',
-      path: '/projects/project%2F7/completed-bids/summary',
-    });
-    expect(catalog.find((item) => item.id === 'completed-bid-summary')?.unavailableReason)
-      .toContain('document_role');
-    expect(catalog.find((item) => item.id === 'pending-check-summary')).toMatchObject({
-      method: 'GET',
-      path: '/projects/project%2F7/check/latest',
-    });
-    expect(catalog.find((item) => item.id === 'pending-check-summary')?.unavailableReason)
-      .toContain('不会为读取数量触发 POST check');
-    expect(catalog.find((item) => item.id === 'task-status')?.notIntegratedReason)
-      .toBeUndefined();
-    expect(catalog.find((item) => item.id === 'task-stream')?.notIntegratedReason)
-      .toBeUndefined();
-    expect(catalog.find((item) => item.id === 'task-create')?.feature)
-      .toBe('提交任务（仅入队）');
-    expect(catalog.filter((item) => item.isTask).map((item) => item.id)).toEqual([
-      'project-tasks',
-      'task-status',
-      'task-stream',
+      'project-file-purpose',
       'task-create',
+      'task-stream',
+    ]));
+    expect(catalog.some((item) => item.path.includes('/assembly/'))).toBe(false);
+    expect(catalog.some((item) => item.path.includes('/completed-bids'))).toBe(false);
+    expect(catalog.some((item) => item.path.includes('/check/latest'))).toBe(false);
+    expect(catalog.some((item) => item.path.includes('document_role='))).toBe(false);
+    expect(catalog.filter((item) => item.isTask).map((item) => item.id)).toEqual([
+      'project-task-history',
+      'agent-run-start',
+      'agent-run-status',
+      'agent-run-stream',
+      'agent-run-questions',
+      'agent-run-answer',
+      'agent-run-chat',
+      'project-final-check',
+      'project-final-check-detail',
+      'project-export',
+      'project-export-status',
     ]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('documents and matches integrated task polling and authenticated SSE streaming', () => {
+  it('matches Agent status, SSE replay, questions, answers, chat, packages, and artifacts', () => {
     const catalog = pageApiCatalog({ name: 'project-overview', projectId: '7' });
-    const status = catalog.find((item) => item.id === 'task-status')!;
-    const stream = catalog.find((item) => item.id === 'task-stream')!;
+    const status = catalog.find((item) => item.id === 'agent-run-status')!;
+    const stream = catalog.find((item) => item.id === 'agent-run-stream')!;
+    const questions = catalog.find((item) => item.id === 'agent-run-questions')!;
+    const answer = catalog.find((item) => item.id === 'agent-run-answer')!;
+    const chat = catalog.find((item) => item.id === 'agent-run-chat')!;
+    const artifact = catalog.find((item) => item.id === 'agent-artifact-download')!;
 
-    expect(status).toMatchObject({ method: 'GET', path: '/tasks/{taskId}' });
-    expect(stream).toMatchObject({ method: 'GET', path: '/tasks/{taskId}/stream' });
-    expect(stream.notIntegratedReason).toBeUndefined();
-    expect(pageApiOperationMatches(status, { method: 'GET', path: '/tasks/31' })).toBe(true);
-    expect(pageApiOperationMatches(stream, { method: 'GET', path: '/tasks/31/stream' })).toBe(true);
+    expect(status).toMatchObject({ method: 'GET', path: '/projects/7/agent-run/{taskId}' });
+    expect(stream).toMatchObject({ method: 'GET', path: '/projects/7/agent-run/{taskId}/stream?since={seq}' });
+    expect(pageApiOperationMatches(status, { method: 'GET', path: '/projects/7/agent-run/31' })).toBe(true);
+    expect(pageApiOperationMatches(stream, { method: 'GET', path: '/projects/7/agent-run/31/stream?since=98' })).toBe(true);
+    expect(pageApiOperationMatches(questions, { method: 'GET', path: '/projects/7/agent-run/31/questions' })).toBe(true);
+    expect(pageApiOperationMatches(answer, { method: 'POST', path: '/projects/7/agent-run/31/asks/13/answer' })).toBe(true);
+    expect(pageApiOperationMatches(chat, { method: 'POST', path: '/projects/7/agent-run/31/chat' })).toBe(true);
+    expect(pageApiOperationMatches(artifact, { method: 'GET', path: '/projects/7/agent-artifact/52/download' })).toBe(true);
+    expect(catalog.find((item) => item.id === 'project-response-package')).toMatchObject({
+      method: 'GET',
+      path: '/projects/7/response-package',
+    });
   });
 
   it('documents and matches dynamic deliverable version-list requests on the overview', () => {
@@ -129,6 +155,10 @@ describe('page API catalog', () => {
     })).toBe(true);
     expect(pageApiOperationMatches(materials, {
       method: 'GET',
+      path: '/files?target=project&project_id=7&page=2&size=100',
+    })).toBe(true);
+    expect(pageApiOperationMatches(materials, {
+      method: 'GET',
       path: '/files?target=project&project_id=8&page=1&size=100',
     })).toBe(false);
     expect(pageApiOperationMatches(snapshot, {
@@ -148,6 +178,75 @@ describe('page API catalog', () => {
     expect(pageApiOperationMatches(detail, { method: 'GET', path: '/quotes/31' })).toBe(true);
     expect(pageApiOperationMatches(detail, { method: 'GET', path: '/quotes/history' })).toBe(false);
     expect(pageApiOperationMatches(detail, { method: 'POST', path: '/quotes/31' })).toBe(false);
+  });
+
+  it('lists and distinguishes the latest quote history and pricing extensions', () => {
+    const history = pageApiCatalog({ name: 'history-prices' });
+    const pricing = pageApiCatalog({ name: 'pricing-center', projectId: '7' });
+    const samples = history.find((item) => item.id === 'quote-history-material-samples')!;
+    const detail = history.find((item) => item.id === 'quote-history-sample-detail')!;
+    const trend = history.find((item) => item.id === 'quote-history-material-trend')!;
+
+    expect(history.map((item) => item.id)).toEqual(expect.arrayContaining([
+      'bootstrap-history-quotes',
+      'quote-history-source-metadata',
+      'quote-history-import',
+      'quote-history-material-samples',
+      'quote-history-sample-detail',
+      'quote-history-material-trend',
+    ]));
+    expect(pricing.map((item) => item.id)).toEqual(expect.arrayContaining([
+      'quote-calculate',
+      'quote-recalculate',
+      'quote-strategy',
+      'quote-ai-suggest',
+      'quote-apply',
+    ]));
+    expect(pageApiOperationMatches(samples, {
+      method: 'GET',
+      path: '/quotes/history/%E7%89%A9%E6%96%99-A/samples',
+    })).toBe(true);
+    expect(pageApiOperationMatches(detail, {
+      method: 'GET',
+      path: '/quotes/history/samples/12',
+    })).toBe(true);
+    expect(pageApiOperationMatches(samples, {
+      method: 'GET',
+      path: '/quotes/history/samples/12',
+    })).toBe(false);
+    expect(pageApiOperationMatches(trend, {
+      method: 'GET',
+      path: '/quotes/history/material-7/trend',
+    })).toBe(true);
+  });
+
+  it('matches corrected tender notice list/detail and requirement mutation paths', () => {
+    const catalog = pageApiCatalog({ name: 'project-materials', projectId: '7' });
+    const noticeList = catalog.find((item) => item.id === 'tender-notice-list')!;
+    const noticeDetail = catalog.find((item) => item.id === 'tender-notice-detail')!;
+    const confirm = catalog.find((item) => item.id === 'requirement-confirm')!;
+    const correct = catalog.find((item) => item.id === 'requirement-correct')!;
+
+    expect(pageApiOperationMatches(noticeList, {
+      method: 'GET',
+      path: '/projects/7/tender-notices',
+    })).toBe(true);
+    expect(pageApiOperationMatches(noticeDetail, {
+      method: 'GET',
+      path: '/projects/7/tender-notices/19',
+    })).toBe(true);
+    expect(pageApiOperationMatches(noticeDetail, {
+      method: 'GET',
+      path: '/projects/7/tender-notices/imports/19',
+    })).toBe(false);
+    expect(pageApiOperationMatches(confirm, {
+      method: 'PUT',
+      path: '/projects/7/requirements/4/confirm',
+    })).toBe(true);
+    expect(pageApiOperationMatches(correct, {
+      method: 'PUT',
+      path: '/projects/7/requirements/4/correct',
+    })).toBe(true);
   });
 
   it('lists real editor session lifecycle endpoints', () => {
@@ -171,15 +270,14 @@ describe('page API catalog', () => {
     ]));
   });
 
-  it('separates the working built-in review call from unsupported Provider selection', () => {
+  it('lists one real review call that supports a selected enabled Provider id', () => {
     const catalog = pageApiCatalog({ name: 'review-center', projectId: '7' });
     expect(catalog.find((item) => item.id === 'review-evaluate')).toMatchObject({
-      feature: '运行内置评审',
+      feature: '运行模拟评审',
       method: 'POST',
       path: '/projects/7/evaluate',
     });
-    expect(catalog.find((item) => item.id === 'review-provider-selection')?.unavailableReason)
-      .toContain('忽略 provider_id');
+    expect(catalog.some((item) => item.id === 'review-provider-selection')).toBe(false);
   });
 
   it('marks login password recovery and enterprise revision content as unavailable', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BackendFile, FailedUpload } from '../shared/backend-api';
-import { readUploadOutcome, uploadOutcomeError } from './upload-outcome';
+import { readUploadOutcome, uploadExpansionMessage, uploadOutcomeError } from './upload-outcome';
 
 const uploadedFile: BackendFile = {
   file_id: 7,
@@ -30,5 +30,30 @@ describe('upload outcome handling', () => {
 
     expect(uploadOutcomeError('企业资料', outcome.uploaded.length, outcome.errors)?.message)
       .toBe('未上传任何企业资料：后端未返回成功文件。');
+  });
+
+  it('reports ZIP expansion errors even when the archive file itself uploaded', () => {
+    const zipFile: BackendFile = {
+      ...uploadedFile,
+      expanded: { failed: 2, imported: 5 },
+      name: '补充资料.zip',
+    };
+
+    const outcome = readUploadOutcome([zipFile]);
+
+    expect(outcome.uploaded).toEqual([zipFile]);
+    expect(outcome.errors).toEqual(['补充资料.zip：ZIP 自动解包有 2 个条目失败']);
+    expect(uploadExpansionMessage(outcome)).toBe('；ZIP 自动解包导入 5 个文件');
+  });
+
+  it('summarizes successfully imported and duplicate ZIP entries', () => {
+    const outcome = readUploadOutcome([{
+      ...uploadedFile,
+      expanded: { duplicates: 3, imported: 8 },
+      name: '企业资料.zip',
+    }]);
+
+    expect(uploadExpansionMessage(outcome))
+      .toBe('；ZIP 自动解包导入 8 个文件，跳过 3 个重复文件');
   });
 });

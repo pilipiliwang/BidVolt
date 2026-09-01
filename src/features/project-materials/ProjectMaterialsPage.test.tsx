@@ -589,6 +589,7 @@ describe('ProjectMaterialsPage', () => {
   it('confirms low-confidence Requirements and opens a frozen snapshot', async () => {
     const user = userEvent.setup();
     const onConfirmRequirement = vi.fn();
+    const onCorrectRequirement = vi.fn();
     const onOpenSnapshot = vi.fn();
 
     render(
@@ -599,6 +600,7 @@ describe('ProjectMaterialsPage', () => {
         requirements={requirements}
         snapshots={snapshots}
         onConfirmRequirement={onConfirmRequirement}
+        onCorrectRequirement={onCorrectRequirement}
         onOpenSnapshot={onOpenSnapshot}
         onStartTask={vi.fn()}
       />,
@@ -609,6 +611,18 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.getByText(/第 18 页/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '确认原文' }));
     expect(onConfirmRequirement).toHaveBeenCalledWith('BV-2026-0088', 'requirement-1');
+    const requirementRow = screen.getByText('投标人资质等级').closest('article');
+    expect(requirementRow).not.toBeNull();
+    await user.click(within(requirementRow!).getByRole('button', { name: '纠正内容' }));
+    const correctionEditor = within(requirementRow!).getByRole('textbox', { name: '纠正后内容' });
+    await user.clear(correctionEditor);
+    await user.type(correctionEditor, '更新后的资质要求。');
+    await user.click(within(requirementRow!).getByRole('button', { name: '保存纠正' }));
+    expect(onCorrectRequirement).toHaveBeenCalledWith(
+      'BV-2026-0088',
+      'requirement-1',
+      '更新后的资质要求。',
+    );
 
     await user.click(screen.getByRole('button', { name: /项目快照/ }));
     expect(screen.getByText('生成任务输入快照')).toBeInTheDocument();

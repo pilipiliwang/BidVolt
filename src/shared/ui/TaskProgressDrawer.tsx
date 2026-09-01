@@ -2,11 +2,33 @@ import { useEffect, useRef } from 'react';
 import { Check, CircleHelp, Clock3, LoaderCircle, X } from 'lucide-react';
 
 import type { PublicTaskEvent } from '../task-events';
+import type { AgentRunViewModel } from '../task-events';
+import {
+  AgentRunPanel,
+  type AgentAnswerResult,
+  type AgentChatMode,
+  type AgentChatResult,
+} from './AgentRunPanel';
 
 type TaskProgressDrawerProps = {
+  agentRun?: AgentRunViewModel;
+  answeringAskId?: string | null;
+  downloadingPackage?: boolean;
   isOpen: boolean;
+  onAnswerQuestion?: (
+    askId: string,
+    answers: string[],
+  ) => AgentAnswerResult | Promise<AgentAnswerResult | void> | void;
   onClose: () => void;
+  onDownloadResponsePackage?: () => Promise<void> | void;
+  onResumeAgentRun?: (taskId: string) => Promise<void> | void;
+  onSendAgentMessage?: (
+    message: string,
+    mode: AgentChatMode,
+  ) => AgentChatResult | Promise<AgentChatResult | void> | void;
   events: PublicTaskEvent[];
+  resumingAgentRun?: boolean;
+  sendingAgentMessage?: boolean;
 };
 
 const focusableSelector = [
@@ -53,15 +75,25 @@ function phaseLabel(phase: string) {
   const labels: Record<string, string> = {
     bid_generate: '成果生成',
     bid_review: '成果校核',
+    agent_pipeline: 'Agent 成果生成',
     tender_parse: '招标材料解析',
   };
   return labels[phase] ?? phase;
 }
 
 export function TaskProgressDrawer({
+  agentRun,
+  answeringAskId,
+  downloadingPackage,
   isOpen,
+  onAnswerQuestion,
   onClose,
+  onDownloadResponsePackage,
+  onResumeAgentRun,
+  onSendAgentMessage,
   events,
+  resumingAgentRun,
+  sendingAgentMessage,
 }: TaskProgressDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -159,7 +191,20 @@ export function TaskProgressDrawer({
           </button>
         </header>
 
-        <section className="event-stream" aria-labelledby="event-stream-title" aria-live="polite">
+        {agentRun ? (
+          <AgentRunPanel
+            answeringAskId={answeringAskId}
+            downloadingPackage={downloadingPackage}
+            onAnswerQuestion={onAnswerQuestion}
+            onDownloadResponsePackage={onDownloadResponsePackage}
+            onResume={onResumeAgentRun}
+            onSendMessage={onSendAgentMessage}
+            resuming={resumingAgentRun}
+            run={agentRun}
+            sendingMessage={sendingAgentMessage}
+          />
+        ) : (
+          <section className="event-stream" aria-labelledby="event-stream-title" aria-live="polite">
           <div className="event-stream__heading">
             <h3 id="event-stream-title">任务当前状态</h3>
             <span>自动更新</span>
@@ -188,12 +233,15 @@ export function TaskProgressDrawer({
               ))}
             </ol>
           )}
-        </section>
+          </section>
+        )}
 
         <footer className="task-drawer__footer">
           <p>
             <span aria-hidden="true" />
-            每一行代表一个独立任务的最新状态，不是同一任务的多段执行日志。
+            {agentRun
+              ? '实时会话展示主会话公开消息；完整记录将随最终响应文件包交付。'
+              : '每一行代表一个独立任务的最新状态，不是同一任务的多段执行日志。'}
           </p>
         </footer>
       </aside>
