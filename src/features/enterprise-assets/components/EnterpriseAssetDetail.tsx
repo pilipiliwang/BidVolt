@@ -5,13 +5,6 @@ import { ImageDescriptionSummary } from '../../../shared/ui/ImageDescriptionSumm
 import type { EnterpriseAsset, EnterpriseAssetPreview as EnterpriseAssetPreviewData, EnterpriseFact } from '../types';
 import { EnterpriseAssetPreview } from './EnterpriseAssetPreview';
 
-const statusLabel = {
-  processing: '处理中',
-  needs_review: '待复核',
-  ready: '可复用',
-  failed: '处理失败',
-} as const;
-
 interface EnterpriseAssetDetailProps {
   asset: EnterpriseAsset;
   onCorrectFact?: (
@@ -163,12 +156,6 @@ export function EnterpriseAssetDetail({
     <section className="enterprise-detail" aria-labelledby="enterprise-detail-title">
       <header className="enterprise-detail__header">
         <div>
-          <div className="enterprise-detail__tags">
-            <span className="enterprise-chip">{asset.categoryLabel}</span>
-            <span className={`enterprise-status enterprise-status--${asset.status}`}>
-              资料状态：{statusLabel[asset.status]}
-            </span>
-          </div>
           <h2 id="enterprise-detail-title">{asset.name}</h2>
           <p>最近更新 {asset.updatedAt}</p>
         </div>
@@ -208,107 +195,115 @@ export function EnterpriseAssetDetail({
         </button>
       </nav>
 
-      {activeTab === 'preview' ? (
-        <EnterpriseAssetPreview
-          fileId={previewFileId}
-          fileName={asset.name}
-          onLoadPreview={onLoadPreview}
-          onDownloadFile={onDownloadFile}
-        />
-      ) : null}
+      <div className="enterprise-detail__content">
+        {activeTab === 'preview' ? (
+          <EnterpriseAssetPreview
+            fileId={previewFileId}
+            fileName={asset.name}
+            onLoadPreview={onLoadPreview}
+            onDownloadFile={onDownloadFile}
+          />
+        ) : null}
 
-      {activeTab === 'recognition' ? (
-        <div className="enterprise-detail__recognition">
-          {asset.imageDescription ? (
-            <section className="enterprise-panel enterprise-panel--image-description" aria-labelledby="enterprise-image-description-title">
+        {activeTab === 'recognition' ? (
+          <div className="enterprise-detail__recognition">
+            {asset.imageDescription ? (
+              <section className="enterprise-panel enterprise-panel--image-description" aria-labelledby="enterprise-image-description-title">
+                <div className="enterprise-panel__heading">
+                  <FileText aria-hidden="true" size={18} />
+                  <div>
+                    <h3 id="enterprise-image-description-title">图片识别与编号复核</h3>
+                    <p>若编号读数不一致，请对照原件核对。</p>
+                  </div>
+                </div>
+                <ImageDescriptionSummary description={asset.imageDescription} />
+              </section>
+            ) : null}
+            <section className="enterprise-panel" aria-labelledby="enterprise-facts-title">
               <div className="enterprise-panel__heading">
                 <FileText aria-hidden="true" size={18} />
                 <div>
-                  <h3 id="enterprise-image-description-title">图片识别与编号复核</h3>
-                  <p>识别结果来自后端；若两次编号读数冲突，请以原件人工核对。</p>
+                  <h3 id="enterprise-facts-title">资料关键信息</h3>
+                  <p>如有误差，可对照原件人工纠正。</p>
                 </div>
               </div>
-              <ImageDescriptionSummary description={asset.imageDescription} />
+              <div className="enterprise-facts">
+                {asset.facts.length ? (
+                  asset.facts.map((fact) => (
+                    <EnterpriseFactRow
+                      assetId={asset.id}
+                      fact={fact}
+                      key={fact.key}
+                      onCorrectFact={onCorrectFact}
+                    />
+                  ))
+                ) : (
+                  <p className="enterprise-empty-copy">暂无资料关键信息。</p>
+                )}
+              </div>
             </section>
-          ) : null}
-        <section className="enterprise-panel" aria-labelledby="enterprise-facts-title">
-          <div className="enterprise-panel__heading">
-            <FileText aria-hidden="true" size={18} />
-            <div>
-              <h3 id="enterprise-facts-title">结构化字段</h3>
-              <p>人工纠正会创建新版本，原值和来源始终保留</p>
-            </div>
           </div>
-          <div className="enterprise-facts">
-            {asset.facts.length ? (
-              asset.facts.map((fact) => (
-                <EnterpriseFactRow
-                  assetId={asset.id}
-                  fact={fact}
-                  key={fact.key}
-                  onCorrectFact={onCorrectFact}
-                />
-              ))
-            ) : (
-              <p className="enterprise-empty-copy">尚未抽取到结构化字段。</p>
-            )}
-          </div>
-        </section>
-        </div>
-      ) : null}
+        ) : null}
 
-      {activeTab === 'revisions' ? (
-        <section className="enterprise-panel" aria-labelledby="enterprise-revisions-title">
-          <div className="enterprise-panel__heading">
-            <History aria-hidden="true" size={18} />
-            <div>
-              <h3 id="enterprise-revisions-title">版本记录</h3>
-              <p>原文件、字段纠正与自动分类均可追溯</p>
+        {activeTab === 'revisions' ? (
+          <section className="enterprise-panel enterprise-panel--revisions" aria-labelledby="enterprise-revisions-title">
+            <div className="enterprise-panel__heading">
+              <History aria-hidden="true" size={18} />
+              <div>
+                <h3 id="enterprise-revisions-title">版本记录</h3>
+                <p>用于查看和追溯已上传的原文件版本。</p>
+              </div>
             </div>
-          </div>
-          <ol className="enterprise-revisions">
-            {asset.revisions.map((revision) => {
-              const revisionContent = (
-                <>
-                  <span className="enterprise-revision__marker" aria-hidden="true">
-                    {revision.isCurrent ? <Check size={14} /> : revision.revisionNo}
-                  </span>
-                  <span>
-                    <strong>版本 {revision.revisionNo}</strong>
-                    <small>{revision.changeNote}</small>
-                    <small>{revision.createdAt} · {revision.createdBy}</small>
-                  </span>
-                  {revision.isCurrent && <em>当前版本</em>}
-                </>
-              );
+            <ol className="enterprise-revisions">
+              {asset.revisions.length ? asset.revisions.map((revision) => {
+                const revisionContent = (
+                  <>
+                    <span className="enterprise-revision__marker" aria-hidden="true">
+                      {revision.isCurrent ? <Check size={14} /> : revision.revisionNo}
+                    </span>
+                    <span>
+                      <strong>版本 {revision.revisionNo}</strong>
+                      <small>{revision.changeNote}</small>
+                      <small>{revision.createdAt} · {revision.createdBy}</small>
+                    </span>
+                    {revision.isCurrent && <em>当前版本</em>}
+                  </>
+                );
 
-              return (
-                <li key={revision.id}>
-                  {revision.fileId ? (
-                    <button
-                      type="button"
-                      className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current' : 'enterprise-revision'}
-                      onClick={() => {
-                        setPreviewFileId(revision.fileId);
-                        setActiveTab('preview');
-                        onSelectRevision?.(asset.id, revision.id);
-                      }}
-                    >
-                      {revisionContent}
-                    </button>
-                  ) : (
-                    <div
-                      className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current enterprise-revision--static' : 'enterprise-revision enterprise-revision--static'}
-                    >
-                      {revisionContent}
-                    </div>
-                  )}
+                return (
+                  <li key={revision.id}>
+                    {revision.fileId ? (
+                      <button
+                        type="button"
+                        className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current' : 'enterprise-revision'}
+                        onClick={() => {
+                          setPreviewFileId(revision.fileId);
+                          setActiveTab('preview');
+                          onSelectRevision?.(asset.id, revision.id);
+                        }}
+                      >
+                        {revisionContent}
+                      </button>
+                    ) : (
+                      <div
+                        className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current enterprise-revision--static' : 'enterprise-revision enterprise-revision--static'}
+                      >
+                        {revisionContent}
+                      </div>
+                    )}
+                  </li>
+                );
+              }) : (
+                <li className="enterprise-revisions__empty">
+                  <History aria-hidden="true" size={24} />
+                  <strong>暂无历史文件版本</strong>
+                  <span>暂无其他可追溯的原文件版本。</span>
                 </li>
-              );
-            })}
-          </ol>
-        </section>
-      ) : null}
+              )}
+            </ol>
+          </section>
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -413,23 +413,6 @@ a {
   background: var(--surface-soft);
 }
 
-.icon-button--quiet {
-  border-color: transparent;
-  background: transparent;
-}
-
-.notification-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 6px;
-  height: 6px;
-  border: 2px solid #f6faf9;
-  border-radius: 50%;
-  background: #db664c;
-  box-sizing: content-box;
-}
-
 .task-status-button {
   display: inline-flex;
   min-height: 40px;
@@ -1815,8 +1798,7 @@ a {
 
 @media (max-width: 760px) {
   .topbar__heading,
-  .profile-button,
-  .icon-button--quiet {
+  .profile-button {
     display: none;
   }
 

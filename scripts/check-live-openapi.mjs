@@ -92,6 +92,7 @@ const requiredOperations = [
 
 const knownUnavailableOperations = [
   ['POST', '/api/v1/auth/forgot-password'],
+  ['PATCH', '/api/v1/enterprise/assets/{asset_id}'],
   ['GET', '/api/v1/enterprise/assets/{asset_id}/revisions/{revision_id}'],
 ];
 

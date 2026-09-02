@@ -60,19 +60,11 @@ export function buildEnterpriseAssetFolders<T extends CategoryAssignedItem>(
     {
       categoryId: null,
       id: ALL_ENTERPRISE_ASSETS_FOLDER_ID,
-      items: businessItems,
+      items: [...items],
       kind: 'all',
       label: options.allLabel ?? '全部资料',
       parentId: null,
     },
-    ...businessCategories.map((category) => ({
-      categoryId: category.id,
-      id: `enterprise-category:${category.id}`,
-      items: businessItems.filter((item) => item.categoryId === category.id),
-      kind: 'category' as const,
-      label: category.label.trim() || `分类 #${category.id}`,
-      parentId: category.parentId,
-    })),
     ...(options.separateSourceArchives ? [{
       categoryId: null,
       id: SOURCE_ENTERPRISE_ASSETS_FOLDER_ID,
@@ -81,6 +73,14 @@ export function buildEnterpriseAssetFolders<T extends CategoryAssignedItem>(
       label: '源文件',
       parentId: null,
     }] : []),
+    ...businessCategories.map((category) => ({
+      categoryId: category.id,
+      id: `enterprise-category:${category.id}`,
+      items: businessItems.filter((item) => item.categoryId === category.id),
+      kind: 'category' as const,
+      label: category.label.trim() || `分类 #${category.id}`,
+      parentId: category.parentId,
+    })),
   ];
   const uncategorizedItems = businessItems.filter((item) =>
     !item.categoryId || !categoryIds.has(item.categoryId));

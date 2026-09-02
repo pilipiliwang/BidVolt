@@ -2,7 +2,6 @@ import {
   Archive,
   AlertCircle,
   CheckCircle2,
-  ChevronRight,
   FileArchive,
   FileImage,
   FileSpreadsheet,
@@ -33,8 +32,8 @@ import type {
 } from './types';
 import './enterprise-assets.css';
 
-const DEFAULT_PAGE_SIZE = 20;
-const PAGE_SIZE_OPTIONS = [20, 50] as const;
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
 type PaginationItem = number | 'end-ellipsis' | 'start-ellipsis';
 
@@ -128,10 +127,15 @@ export function EnterpriseAssetsPage({
 
   const folders = useMemo(
     () => buildEnterpriseAssetFolders(categories, assets, {
-      allLabel: '业务资料',
+      allLabel: '全部资料',
       separateSourceArchives: true,
     }),
     [assets, categories],
+  );
+  const systemFolders = folders.filter((folder) => folder.kind === 'all' || folder.kind === 'source');
+  const businessFolders = folders.filter((folder) => folder.kind !== 'all' && folder.kind !== 'source');
+  const sourceAssetIds = new Set(
+    systemFolders.find((folder) => folder.kind === 'source')?.items.map((asset) => asset.id) ?? [],
   );
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? folders[0];
   const visibleAssets = useMemo(() => {
@@ -305,22 +309,45 @@ export function EnterpriseAssetsPage({
             <span>{assets.length}</span>
           </div>
           <nav aria-label="企业资料分类">
-            {folders.map((folder) => (
-              <button
-                className={`enterprise-folder${selectedFolder.id === folder.id ? ' enterprise-folder--active' : ''}`}
-                key={folder.id}
-                type="button"
-                onClick={() => {
-                  setSelectedFolderId(folder.id);
-                  setCurrentPage(1);
-                }}
-              >
-                <ChevronRight aria-hidden="true" size={13} />
-                <Folder aria-hidden="true" size={18} />
-                <span>{folder.label}</span>
-                <em>{folder.items.length}</em>
-              </button>
-            ))}
+            <div className="enterprise-folder-group enterprise-folder-group--system">
+              <span className="enterprise-folder-group__label">系统视图</span>
+              {systemFolders.map((folder) => {
+                const FolderIcon = folder.kind === 'source' ? FileArchive : Archive;
+                return (
+                  <button
+                    className={`enterprise-folder enterprise-folder--system${selectedFolder.id === folder.id ? ' enterprise-folder--active' : ''}`}
+                    key={folder.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedFolderId(folder.id);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <FolderIcon aria-hidden="true" size={18} />
+                    <span>{folder.label}</span>
+                    <em>{folder.items.length}</em>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="enterprise-folder-group enterprise-folder-group--business">
+              <span className="enterprise-folder-group__label">业务分类</span>
+              {businessFolders.map((folder) => (
+                <button
+                  className={`enterprise-folder${selectedFolder.id === folder.id ? ' enterprise-folder--active' : ''}`}
+                  key={folder.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedFolderId(folder.id);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <Folder aria-hidden="true" size={18} />
+                  <span>{folder.label}</span>
+                  <em>{folder.items.length}</em>
+                </button>
+              ))}
+            </div>
           </nav>
         </aside>
 
@@ -354,7 +381,7 @@ export function EnterpriseAssetsPage({
                       </button>
                     </td>
                     <td>{fileMeta.label}</td>
-                    <td>{selectedFolder.kind === 'source' ? '源文件' : asset.categoryLabel}</td>
+                    <td>{sourceAssetIds.has(asset.id) ? '源文件' : asset.categoryLabel}</td>
                     <td>{asset.updatedAt}</td>
                   </tr>
                 );

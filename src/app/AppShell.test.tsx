@@ -31,6 +31,32 @@ describe('AppShell mobile navigation', () => {
       screen.getAllByRole('link', { name: '电网投标助手首页' }).length,
     ).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: '历史报价' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /通知/ })).not.toBeInTheDocument();
+  });
+
+  it('places optional diagnostics after the business page content', () => {
+    const { container } = render(
+      <AppShell
+        currentRoute="enterprise-assets"
+        diagnostics={<div>接口调用明细</div>}
+        eyebrow="企业知识中心"
+        enterpriseName="测试企业"
+        onLogout={vi.fn()}
+        onOpenTasks={vi.fn()}
+        taskCount={0}
+        title="企业资料库"
+        user={{ displayName: '测试用户', role: '投标经理' }}
+      >
+        <section>企业资料业务区</section>
+      </AppShell>,
+    );
+
+    const main = container.querySelector<HTMLElement>('#main-content')!;
+    const diagnostics = within(main).getByRole('region', { name: '页面联调诊断' });
+    expect(main).toHaveTextContent('企业资料业务区');
+    expect(main.lastElementChild).toBe(diagnostics);
+    expect(diagnostics).toHaveTextContent('接口调用明细');
+    expect(container.querySelector('.ui0802-shell--enterprise-assets')).toBeInTheDocument();
   });
 
   it('moves focus into the dialog, traps it, hides the background, and restores the trigger on Escape', async () => {

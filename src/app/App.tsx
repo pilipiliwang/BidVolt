@@ -2147,8 +2147,16 @@ export function App() {
   if (authState === 'anonymous' || route.name === 'login' || !session) {
     return (
       <>
+        <LoginPage
+          error={loginError}
+          isSubmitting={authSubmitting}
+          localPreviewAvailable={isLocalPreviewAvailable()}
+          onLogin={handleLogin}
+          onOpenLocalPreview={handleOpenLocalPreview}
+          onRegister={handleRegister}
+        />
         {showApiTestPanel ? (
-          <ApiTestPanel className="login-api-test-panel">
+          <ApiTestPanel className="login-api-test-panel" defaultExpanded={false}>
             <BackendApiStatusBar
               checkedAt={pageApiActivity.checkedAt}
               checks={pageApiActivity.checks}
@@ -2159,14 +2167,6 @@ export function App() {
             />
           </ApiTestPanel>
         ) : null}
-        <LoginPage
-          error={loginError}
-          isSubmitting={authSubmitting}
-          localPreviewAvailable={isLocalPreviewAvailable()}
-          onLogin={handleLogin}
-          onOpenLocalPreview={handleOpenLocalPreview}
-          onRegister={handleRegister}
-        />
       </>
     );
   }
@@ -2264,26 +2264,27 @@ export function App() {
   const backendActivityMessage = currentResourceErrorCount > 0
     ? `${pageApiActivity.message} 当前页面另有 ${currentResourceErrorCount} 组业务数据加载失败，相关区域可能保留上次成功数据。`
     : pageApiActivity.message;
+  const pageDiagnostics = showApiTestPanel ? (
+    <ApiTestPanel className="page-api-test-panel" defaultExpanded={false}>
+      <BackendApiStatusBar
+        checkedAt={pageApiActivity.checkedAt}
+        checks={pageApiActivity.checks}
+        endpointLabel={localPreviewActive
+          ? '未调用真实 API'
+          : `${backendApiBaseLabel} · 企业 #${session.enterpriseId} · ${session.user.displayName}`}
+        latencyMs={pageApiActivity.latencyMs}
+        message={backendActivityMessage}
+        status={pageApiActivity.status}
+      />
+    </ApiTestPanel>
+  ) : undefined;
 
   return (
     <>
-      {showApiTestPanel ? (
-        <ApiTestPanel className="page-api-test-panel">
-          <BackendApiStatusBar
-            checkedAt={pageApiActivity.checkedAt}
-            checks={pageApiActivity.checks}
-            endpointLabel={localPreviewActive
-              ? '未调用真实 API'
-              : `${backendApiBaseLabel} · 企业 #${session.enterpriseId} · ${session.user.displayName}`}
-            latencyMs={pageApiActivity.latencyMs}
-            message={backendActivityMessage}
-            status={pageApiActivity.status}
-          />
-        </ApiTestPanel>
-      ) : null}
       <AppShell
         currentProjectId={routeProjectId}
         currentRoute={route.name}
+        diagnostics={pageDiagnostics}
         eyebrow={pageMeta.eyebrow}
         enterpriseName={session.enterpriseName}
         title={pageMeta.title}

@@ -18,7 +18,7 @@ describe('enterprise asset folders', () => {
     (name) => expect(isEnterpriseSourceArchive({ name })).toBe(true),
   );
 
-  it('keeps archives only in the source folder and business documents in backend folders', () => {
+  it('shows every item in all assets while keeping archives out of backend business folders', () => {
     const folders = buildEnterpriseAssetFolders(
       categories,
       [
@@ -26,12 +26,16 @@ describe('enterprise asset folders', () => {
         { id: 'archive', name: '原始资料.zip', categoryId: 'other' },
         { id: 'unknown', name: '补充说明.docx', categoryId: null },
       ],
-      { allLabel: '业务资料', separateSourceArchives: true },
+      { allLabel: '全部资料', separateSourceArchives: true },
     );
 
     expect(folders.find((folder) => folder.id === ALL_ENTERPRISE_ASSETS_FOLDER_ID)).toMatchObject({
-      label: '业务资料',
-      items: [expect.objectContaining({ id: 'document' }), expect.objectContaining({ id: 'unknown' })],
+      label: '全部资料',
+      items: [
+        expect.objectContaining({ id: 'document' }),
+        expect.objectContaining({ id: 'archive' }),
+        expect.objectContaining({ id: 'unknown' }),
+      ],
     });
     expect(folders.find((folder) => folder.id === 'enterprise-category:other')?.items).toEqual([]);
     expect(folders.find((folder) => folder.id === SOURCE_ENTERPRISE_ASSETS_FOLDER_ID)).toMatchObject({
@@ -39,6 +43,7 @@ describe('enterprise asset folders', () => {
       label: '源文件',
       items: [expect.objectContaining({ id: 'archive' })],
     });
+    expect(folders.slice(0, 2).map((folder) => folder.kind)).toEqual(['all', 'source']);
     expect(folders.find((folder) => folder.kind === 'uncategorized')?.items)
       .toEqual([expect.objectContaining({ id: 'unknown' })]);
   });
@@ -69,6 +74,9 @@ describe('enterprise asset folders', () => {
     expect(folders.find((folder) => folder.id === SOURCE_ENTERPRISE_ASSETS_FOLDER_ID)?.items)
       .toEqual([expect.objectContaining({ id: 'backend-source' })]);
     expect(folders.find((folder) => folder.id === ALL_ENTERPRISE_ASSETS_FOLDER_ID)?.items)
-      .toEqual([expect.objectContaining({ id: 'document' })]);
+      .toEqual([
+        expect.objectContaining({ id: 'backend-source' }),
+        expect.objectContaining({ id: 'document' }),
+      ]);
   });
 });

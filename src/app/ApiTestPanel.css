@@ -7,9 +7,12 @@
   box-shadow: 0 4px 14px rgb(42 62 79 / 7%);
 }
 
-.page-api-test-panel,
 .login-api-test-panel {
   margin: 12px;
+}
+
+.page-api-test-panel {
+  margin: 0;
 }
 
 .api-test-panel__header {
@@ -138,7 +141,6 @@
 }
 
 @media (max-width: 620px) {
-  .page-api-test-panel,
   .login-api-test-panel {
     margin: 8px;
   }

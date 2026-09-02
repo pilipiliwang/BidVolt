@@ -105,6 +105,45 @@
   background: rgb(10 145 87 / 10%);
 }
 
+.page-diagnostics {
+  flex: 0 0 auto;
+  margin-top: 24px;
+}
+
+.ui0802-shell--enterprise-assets .app-shell__body {
+  display: grid;
+  height: 100dvh;
+  min-height: 0;
+  grid-template-rows: 82px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.ui0802-shell--enterprise-assets .topbar {
+  min-height: 82px;
+  align-items: flex-end;
+  padding-top: 8px;
+  padding-bottom: 6px;
+}
+
+.ui0802-shell--enterprise-assets .topbar__heading h1 {
+  font-size: 30px;
+}
+
+.ui0802-shell--enterprise-assets .page-content {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding-top: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ui0802-shell--enterprise-assets .enterprise-page {
+  height: 100%;
+  min-height: 0;
+  flex: 0 0 100%;
+}
+
 @media (max-width: 760px) {
   .account-menu--topbar .profile-button {
     display: grid;
@@ -122,5 +161,22 @@
     position: fixed;
     top: 72px;
     right: 16px;
+  }
+
+  .ui0802-shell--enterprise-assets .app-shell__body {
+    display: block;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .ui0802-shell--enterprise-assets .page-content {
+    display: block;
+    overflow: visible;
+  }
+
+  .ui0802-shell--enterprise-assets .enterprise-page {
+    height: auto;
+    min-height: 0;
   }
 }

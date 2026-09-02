@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   Activity,
-  Bell,
   BookOpenText,
   Building2,
   CalendarDays,
@@ -41,6 +40,7 @@ type AppShellProps = {
   children: ReactNode;
   currentRoute: AppRoute['name'];
   currentProjectId?: string;
+  diagnostics?: ReactNode;
   eyebrow: string;
   enterpriseName: string;
   onLogout: () => void;
@@ -288,6 +288,7 @@ export function AppShell({
   children,
   currentRoute,
   currentProjectId,
+  diagnostics,
   eyebrow,
   enterpriseName,
   onLogout,
@@ -309,6 +310,7 @@ export function AppShell({
       currentRoute,
     );
   const projectSummary = projectSummaryOverride;
+  const isEnterpriseAssetsMode = currentRoute === 'enterprise-assets';
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileNavId = useId();
   const mobileNavRef = useRef<HTMLElement>(null);
@@ -370,7 +372,9 @@ export function AppShell({
   }, [isMobileNavOpen]);
 
   return (
-    <div className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}`}>
+    <div
+      className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}${isEnterpriseAssetsMode ? ' ui0802-shell--enterprise-assets' : ''}`}
+    >
       <a
         className="skip-link"
         href="#main-content"
@@ -452,8 +456,8 @@ export function AppShell({
             </>
           )}
 
-          <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
-            {currentRoute !== 'enterprise-assets' ? (
+          {currentRoute !== 'enterprise-assets' ? (
+            <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
               <button
                 className="task-status-button"
                 type="button"
@@ -469,21 +473,17 @@ export function AppShell({
                 <span>任务进度</span>
                 <em>{taskCount}</em>
               </button>
-            ) : null}
-            <button
-              className="icon-button icon-button--quiet"
-              type="button"
-              aria-label="通知（MVP 暂未开放）"
-              disabled
-            >
-              <Bell aria-hidden="true" size={19} />
-              <span className="notification-dot" aria-hidden="true" />
-            </button>
-          </div>
+            </div>
+          ) : null}
         </header>
 
         <main className="page-content" id="main-content" tabIndex={-1}>
           {children}
+          {diagnostics ? (
+            <section className="page-diagnostics" aria-label="页面联调诊断">
+              {diagnostics}
+            </section>
+          ) : null}
         </main>
       </div>
 

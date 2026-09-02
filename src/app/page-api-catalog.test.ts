@@ -307,5 +307,10 @@ describe('page API catalog', () => {
       method: 'GET',
       path: '/files/{fileId}/blocks',
     });
+    expect(enterprise.find((item) => item.id === 'enterprise-rename-asset')).toMatchObject({
+      method: 'PATCH',
+      path: '/enterprise/assets/{assetId}',
+      unavailableReason: expect.stringContaining('尚未提供'),
+    });
   });
 });

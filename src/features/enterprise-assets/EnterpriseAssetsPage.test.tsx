@@ -114,9 +114,17 @@ describe('EnterpriseAssetsPage', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.getByRole('table')).toHaveTextContent('华东电气营业执照.pdf');
     expect(screen.getByRole('table')).not.toHaveTextContent('识别状态');
-    expect(screen.getByRole('button', { name: /业务资料/ })).toHaveTextContent('1');
-    expect(screen.getByRole('button', { name: /源文件/ })).toHaveTextContent('0');
-    expect(screen.getByRole('button', { name: /企业证照/ })).toHaveTextContent('1');
+    expect(screen.getByText('系统视图')).toBeInTheDocument();
+    expect(screen.getByText('业务分类')).toBeInTheDocument();
+    const allAssetsButton = screen.getByRole('button', { name: /全部资料/ });
+    const sourceAssetsButton = screen.getByRole('button', { name: /源文件/ });
+    const licenseButton = screen.getByRole('button', { name: /企业证照/ });
+    expect(allAssetsButton).toHaveTextContent('1');
+    expect(sourceAssetsButton).toHaveTextContent('0');
+    expect(allAssetsButton).toHaveClass('enterprise-folder--system');
+    expect(sourceAssetsButton).toHaveClass('enterprise-folder--system');
+    expect(licenseButton).not.toHaveClass('enterprise-folder--system');
+    expect(licenseButton).toHaveTextContent('1');
     expect(screen.getByRole('button', { name: /检测报告/ })).toHaveTextContent('0');
 
     await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
@@ -124,7 +132,9 @@ describe('EnterpriseAssetsPage', () => {
     const detailDialog = screen.getByRole('dialog', { name: '华东电气营业执照.pdf详情' });
     expect(detailDialog).toBeInTheDocument();
     expect(detailDialog.parentElement?.parentElement).toBe(document.body);
-    expect(detailDialog).toHaveTextContent('资料状态：待复核');
+    expect(detailDialog).not.toHaveTextContent('资料状态：待复核');
+    expect(detailDialog).not.toHaveTextContent('其他');
+    expect(screen.getByRole('heading', { name: '资料关键信息' })).toBeInTheDocument();
     expect(screen.getByText('统一社会信用代码')).toBeInTheDocument();
     expect(screen.getAllByText('来源：营业执照原件 · 第 1 页')).toHaveLength(2);
     await user.click(screen.getByRole('button', { name: '版本记录' }));
@@ -152,7 +162,8 @@ describe('EnterpriseAssetsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料原件.ZIP');
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料原件.ZIP');
+    expect(screen.getByRole('table')).toHaveTextContent('源文件');
     await user.click(screen.getByRole('button', { name: /企业证照/ }));
     expect(screen.getByRole('table')).not.toHaveTextContent('企业资料原件.ZIP');
     await user.click(screen.getByRole('button', { name: /源文件/ }));
@@ -162,7 +173,7 @@ describe('EnterpriseAssetsPage', () => {
     expect(screen.getByRole('table')).not.toHaveTextContent('企业证照');
   });
 
-  it('paginates the filtered assets and supports 20 or 50 rows per page', async () => {
+  it('paginates ten rows by default and supports 20 or 50 rows per page', async () => {
     const user = userEvent.setup();
     const manyAssets: EnterpriseAsset[] = Array.from({ length: 45 }, (_, index) => ({
       ...assets[0],
@@ -177,14 +188,17 @@ describe('EnterpriseAssetsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('显示 1–20 条，共 45 条');
-    expect(screen.getByRole('table')).toHaveTextContent('企业资料-20.pdf');
-    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料-21.pdf');
+    expect(screen.getByRole('status')).toHaveTextContent('显示 1–10 条，共 45 条');
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料-10.pdf');
+    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料-11.pdf');
 
     await user.click(screen.getByRole('button', { name: '下一页' }));
-    expect(screen.getByRole('status')).toHaveTextContent('显示 21–40 条，共 45 条');
-    expect(screen.getByRole('table')).toHaveTextContent('企业资料-21.pdf');
+    expect(screen.getByRole('status')).toHaveTextContent('显示 11–20 条，共 45 条');
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料-11.pdf');
     expect(screen.getByRole('table')).not.toHaveTextContent('企业资料-01.pdf');
+
+    await user.selectOptions(screen.getByRole('combobox', { name: '每页显示数量' }), '20');
+    expect(screen.getByRole('status')).toHaveTextContent('显示 1–20 条，共 45 条');
 
     await user.selectOptions(screen.getByRole('combobox', { name: '每页显示数量' }), '50');
     expect(screen.getByRole('status')).toHaveTextContent('显示 1–45 条，共 45 条');
@@ -208,14 +222,14 @@ describe('EnterpriseAssetsPage', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '第 3 页' }));
+    await user.click(screen.getByRole('button', { name: '第 5 页' }));
     expect(screen.getByRole('status')).toHaveTextContent('显示 41–45 条，共 45 条');
     await user.type(screen.getByRole('searchbox', { name: '搜索企业资料' }), '企业资料-02');
     expect(screen.getByRole('status')).toHaveTextContent('显示 1–1 条，共 1 条');
     expect(screen.getByRole('button', { name: '第 1 页' })).toHaveAttribute('aria-current', 'page');
 
     await user.clear(screen.getByRole('searchbox', { name: '搜索企业资料' }));
-    await user.click(screen.getByRole('button', { name: '第 3 页' }));
+    await user.click(screen.getByRole('button', { name: '第 5 页' }));
     rerender(
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
@@ -265,7 +279,7 @@ describe('EnterpriseAssetsPage', () => {
       '91310000NEW',
     );
     expect(screen.getByText('91310000NEW')).toBeInTheDocument();
-    expect(screen.getByText('人工纠正会创建新版本，原值和来源始终保留')).toBeInTheDocument();
+    expect(screen.getByText('如有误差，可对照原件人工纠正。')).toBeInTheDocument();
   });
 
   it('replaces the open detail with the complete refreshed asset after a fact correction', async () => {
@@ -320,7 +334,7 @@ describe('EnterpriseAssetsPage', () => {
     expect(within(creditCodeFact!).getByText('置信度 99%')).toBeInTheDocument();
     expect(within(creditCodeFact!).getByText('来源：人工确认')).toBeInTheDocument();
     expect(within(creditCodeFact!).queryByText('待确认')).not.toBeInTheDocument();
-    expect(screen.getByText('资料状态：可复用')).toBeInTheDocument();
+    expect(screen.queryByText('资料状态：可复用')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '版本记录' }));
     expect(await screen.findByText('版本 3')).toBeInTheDocument();
   });

@@ -360,7 +360,7 @@ const sharedProjectActions = (): PageApiOperation[] => [
     notIntegratedReason: '最新上传接口会自动展开 ZIP；当前页面没有针对历史存量文件的手动补解包入口。',
   }),
   operation('project-enterprise-ingest', '重新执行企业资料归类', '当前页面暂无手动重归类入口', 'POST', '/enterprise/ingest', {
-    notIntegratedReason: '企业资料上传已由后端自动归类；当前页面没有手动重新处理存量资料的入口。',
+    notIntegratedReason: '上传后端会按文件名关键词自动归类；当前页面不重复执行同一规则，基于正文或 OCR 内容的归类及确认闭环尚未提供。',
   }),
 ];
 
@@ -403,7 +403,7 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       ...operations,
       operation('enterprise-upload', '上传企业资料', '操作：选择或拖入企业文件', 'POST', '/files/upload'),
       operation('enterprise-ingest', '重新执行企业资料归类', '当前页面暂无手动重归类入口', 'POST', '/enterprise/ingest', {
-        notIntegratedReason: '企业资料上传已由后端自动分类；上传流程不会创建可确认的归类任务，页面不重复发起手动任务。',
+        notIntegratedReason: '上传后端会按文件名关键词自动归类；当前页面不重复执行同一规则，基于正文或 OCR 内容的归类及确认闭环尚未提供。',
       }),
       operation('enterprise-update-fact', '纠正企业资料字段', '操作：编辑字段并确认', 'PUT', '/enterprise/facts/{factId}', {
         matchPathname: /^\/enterprise\/facts\/[^/]+$/,
@@ -413,6 +413,9 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       }),
       operation('enterprise-file-preview-blocks', '读取企业资料解析文本', '操作：预览 Word、Excel、PPT 等文档', 'GET', '/files/{fileId}/blocks', {
         matchPathname: /^\/files\/[^/]+\/blocks$/,
+      }),
+      operation('enterprise-rename-asset', '重命名企业资料', '计划：双击资料名称并保存', 'PATCH', '/enterprise/assets/{assetId}', {
+        unavailableReason: '当前后端仅提供资料详情读取和分类修改接口，尚未提供企业资料名称更新接口。',
       }),
     ];
   }
