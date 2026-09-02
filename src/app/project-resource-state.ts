@@ -1,6 +1,10 @@
 import { BackendApiError, type ImageDescribeProgress } from '../shared/backend-api';
 import type { BackendTaskStreamUpdate } from '../shared/backend-api';
-import type { AgentRunCompletion, PublicTaskEvent } from '../shared/task-events';
+import type {
+  AgentRunCompletion,
+  AgentRunViewModel,
+  PublicTaskEvent,
+} from '../shared/task-events';
 
 export type ProjectResourceKey =
   | 'materials'
@@ -58,6 +62,88 @@ export function findLatestActiveBidGenerateTask(events: readonly PublicTaskEvent
     }
     return !latest || event.sequence > latest.sequence ? event : latest;
   }, undefined);
+}
+
+/** Selects the newest generation task across the current and legacy pipelines. */
+export function findLatestGenerationTask(events: readonly PublicTaskEvent[]) {
+  return events.reduce<PublicTaskEvent | undefined>((latest, event) => {
+    if (!['agent_pipeline', 'bid_generate'].includes(event.task_type ?? event.phase)) {
+      return latest;
+    }
+    return !latest || event.sequence > latest.sequence ? event : latest;
+  }, undefined);
+}
+
+/**
+ * Agent detail is richer than the public task event, but it is only valid when
+ * it describes the generation task selected above. This prevents a historical
+ * Agent run from hiding a newer legacy generation task.
+ */
+export function shouldUseAgentRunForGenerationTask(
+  latestTask: PublicTaskEvent | undefined,
+  agentRun: AgentRunViewModel | undefined,
+) {
+  if (!agentRun) return false;
+  if (!latestTask) return true;
+  return (latestTask.task_type ?? latestTask.phase) === 'agent_pipeline'
+    && latestTask.task_id === agentRun.taskId;
+}
+
+/**
+ * Keeps the task returned by POST /agent/start visible while the eventually
+ * consistent task list still contains only older runs. The caller must pass
+ * the explicit pending receipt id; an arbitrary historical Agent detail must
+ * never be promoted above a newer backend task.
+ */
+export function mergePendingAgentRunTaskReceipt(
+  events: readonly PublicTaskEvent[],
+  agentRun: AgentRunViewModel | undefined,
+  pendingTaskId: string | undefined,
+): PublicTaskEvent[] {
+  if (!agentRun || !pendingTaskId || agentRun.taskId !== pendingTaskId) {
+    return events as PublicTaskEvent[];
+  }
+
+  const hasOpenQuestion = agentRun.completion === 'active'
+    && agentRun.questions.some((question) => !question.answered);
+  const status: PublicTaskEvent['status'] = hasOpenQuestion
+    ? 'waiting_user'
+    : agentRun.completion === 'incomplete' || agentRun.completion === 'failed'
+      ? 'failed'
+      : agentRun.completion === 'cancelled'
+        ? 'cancelled'
+        : ({
+            failed_retryable: 'failed',
+            queued: 'queued',
+            running: 'running',
+            succeeded: 'succeeded',
+          } as Partial<Record<AgentRunViewModel['status'], PublicTaskEvent['status']>>)[agentRun.status]
+          ?? 'unknown';
+  const existingIndex = events.findIndex((event) => event.task_id === pendingTaskId);
+  if (existingIndex >= 0 && events[existingIndex].event_id !== `agent-receipt-${pendingTaskId}`) {
+    return events as PublicTaskEvent[];
+  }
+  const existing = existingIndex >= 0 ? events[existingIndex] : undefined;
+  const receipt: PublicTaskEvent = {
+    schema_version: '1',
+    event_id: `agent-receipt-${pendingTaskId}`,
+    sequence: existing?.sequence ?? Math.max(0, ...events.map((event) => event.sequence)) + 1,
+    task_id: pendingTaskId,
+    task_type: 'agent_pipeline',
+    project_id: agentRun.projectId,
+    phase: agentRun.phase || 'agent_pipeline',
+    status,
+    percent: agentRun.percent,
+    public_message: agentRun.message,
+    error_code: null,
+    // CreatedTask does not expose created_at. Preserve the client receipt time
+    // so timestamp matching remains possible if an older backend omits source_task_id.
+    occurred_at: existing?.occurred_at ?? new Date().toISOString(),
+  };
+  if (!existing) return [...events, receipt];
+  const next = [...events];
+  next[existingIndex] = receipt;
+  return next;
 }
 
 /** Selects the latest new-pipeline task without changing the legacy SSE subscription helper. */

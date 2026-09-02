@@ -11,11 +11,20 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 
 import { ProjectReviewSidebar } from '../../domains/projects/ProjectReviewSidebar';
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
+import {
+  ProjectEntryChoice,
+  ProjectTaskExecutionPanel,
+  ProjectWorkflowFrame,
+  ProjectWorkflowResourcePanel,
+  fallbackWorkflowTask,
+  resolveProjectWorkflowPhase,
+  type ProjectWorkflowTaskSummary,
+} from '../../domains/projects/ProjectWorkflow';
 import type { FileImageDescriptions } from '../../shared/backend-api/types';
 import { ImageDescriptionSummary } from '../../shared/ui/ImageDescriptionSummary';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
@@ -262,6 +271,8 @@ export function ProjectMaterialsPage({
   projectId,
   projectName,
   reviewSidebar,
+  hasDeliverables,
+  initialWorkflowMode = 'choose',
   materials,
   requirements,
   snapshots,
@@ -269,8 +280,11 @@ export function ProjectMaterialsPage({
   onConfirmRequirement,
   onCorrectRequirement,
   onOpenSnapshot,
+  onOpenTasks,
   onStartTask,
+  taskSummary,
   taskStatus,
+  workflowFacts: workflowFactsOverride,
 }: ProjectMaterialsPageProps) {
   const [activeTab, setActiveTab] = useState<ProjectMaterialsTab>('materials');
   const [isSupplementalExpanded, setSupplementalExpanded] = useState(false);
@@ -281,6 +295,8 @@ export function ProjectMaterialsPage({
   const currentTenderPanelId = `${materialGroupId}-current-tender-materials`;
   const completedBidPanelId = `${materialGroupId}-completed-bid-materials`;
   const [selectedTaskMode, setSelectedTaskMode] = useState<'generate' | 'validate' | null>(null);
+  const [workflowMode, setWorkflowMode] = useState<'choose' | 'generate'>(initialWorkflowMode);
+  const [retryFailedTask, setRetryFailedTask] = useState(false);
   const [taskState, setTaskState] = useState<{
     message: string;
     status: 'error' | 'idle' | 'loading';
@@ -303,6 +319,25 @@ export function ProjectMaterialsPage({
     ),
     [materials],
   );
+  const workflowTenderMaterials = useMemo(
+    () => materials.filter((material) => material.purpose === 'current_tender'),
+    [materials],
+  );
+  const workflowEnabled = Boolean(workflowFactsOverride) || hasDeliverables !== undefined;
+  const workflowTask = taskSummary ?? toWorkflowTaskSummary(taskStatus);
+  const workflowFacts = workflowFactsOverride ?? {
+    currentTenderMaterialCount: workflowTenderMaterials.length,
+    enterpriseMaterialCount: enterpriseMaterials.length,
+    hasDeliverables: Boolean(hasDeliverables),
+    task: workflowTask,
+  };
+  const workflowPhase = resolveProjectWorkflowPhase(workflowFacts);
+  const workflowResourceState = workflowFacts.materialsState !== undefined
+    && workflowFacts.materialsState !== 'ready'
+    ? workflowFacts.materialsState
+    : workflowFacts.deliverablesState !== undefined && workflowFacts.deliverablesState !== 'ready'
+      ? workflowFacts.deliverablesState
+      : null;
   const hasUnclassifiedMaterials = unclassifiedMaterials.length > 0;
   const workspaceMaterials = useMemo(
     () =>
@@ -316,12 +351,11 @@ export function ProjectMaterialsPage({
   );
 
   const uploadProjectFiles = async (files: File[]) => onUpload?.(projectId, files);
-  const startTask = async () => {
-    if (!selectedTaskMode) return;
-    const mode = selectedTaskMode;
+  const startTaskForMode = async (mode: 'generate' | 'validate') => {
     setTaskState({ message: '正在创建任务…', status: 'loading' });
     try {
       await onStartTask(projectId, mode);
+      setRetryFailedTask(false);
       setTaskState({ message: '', status: 'idle' });
     } catch (error) {
       setTaskState({
@@ -332,9 +366,18 @@ export function ProjectMaterialsPage({
       });
     }
   };
+  const startTask = async () => {
+    if (!selectedTaskMode) return;
+    await startTaskForMode(selectedTaskMode);
+  };
   const taskBlocksActions = taskStatus ? taskActionBlockingStatuses.has(taskStatus) : false;
 
-  return (
+  useEffect(() => {
+    setWorkflowMode(initialWorkflowMode);
+    setRetryFailedTask(false);
+  }, [initialWorkflowMode, projectId]);
+
+  const workbench = (
     <ProjectWorkbench
       enterpriseCategories={enterpriseCategories}
       enterpriseLibraryKey={enterpriseLibraryKey}
@@ -344,10 +387,83 @@ export function ProjectMaterialsPage({
       onAddFiles={onUpload ? uploadProjectFiles : undefined}
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
-      workspaceNavigation={<ProjectWorkspaceTabs activeTab="materials" projectId={projectId} />}
+      workspaceNavigation={!workflowEnabled || workflowPhase === 'completed'
+        ? <ProjectWorkspaceTabs activeTab="materials" projectId={projectId} />
+        : undefined}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       rightRail={<ProjectReviewSidebar viewModel={reviewSidebar} />}
     >
+      {workflowEnabled && workflowPhase !== 'completed' ? (
+        workflowPhase === 'executing' || workflowPhase === 'finalizing'
+          || (workflowPhase === 'failed' && !retryFailedTask) ? (
+            <ProjectTaskExecutionPanel
+              onBackToMaterials={workflowPhase === 'failed' && workflowTask?.status === 'failed'
+                ? () => {
+                    setRetryFailedTask(true);
+                    setWorkflowMode('generate');
+                  }
+                : undefined}
+              onOpenTasks={onOpenTasks ?? (() => undefined)}
+              task={workflowTask ?? fallbackWorkflowTask(workflowPhase)}
+            />
+          ) : workflowResourceState ? (
+            <ProjectWorkflowResourcePanel state={workflowResourceState} />
+          ) : workflowMode === 'choose' && workflowPhase === 'choose' ? (
+            <ProjectEntryChoice
+              enterpriseReady={enterpriseMaterials.length > 0}
+              onGenerate={() => setWorkflowMode('generate')}
+            />
+          ) : (
+            <section className="project-generation-setup" aria-labelledby="project-generation-setup-title">
+              <header>
+                <span>生成新的标书</span>
+                <h1 id="project-generation-setup-title">准备项目材料</h1>
+                <p>上传当前招标材料并按需补充项目资料，确认后开始生成标书。</p>
+              </header>
+              <ProjectMaterialUpload
+                mode="generation"
+                projectId={projectId}
+                projectName={projectName}
+                onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+                onSupplementalUpload={onAssistantAddFiles}
+                onUpload={onUpload}
+                supplementalFileNames={supplementalMaterials.map((material) => material.name)}
+                tenderFileNames={workflowTenderMaterials.map((material) => material.name)}
+              />
+              <div className="project-generation-setup__actions">
+                <button
+                  className="project-generation-setup__back"
+                  disabled={taskState.status === 'loading'}
+                  onClick={() => {
+                    setRetryFailedTask(false);
+                    setWorkflowMode('choose');
+                  }}
+                  type="button"
+                >
+                  返回选择
+                </button>
+                <button
+                  className="project-generation-setup__start"
+                  disabled={workflowTenderMaterials.length === 0 || taskState.status === 'loading'}
+                  onClick={() => {
+                    setSelectedTaskMode('generate');
+                    void startTaskForMode('generate');
+                  }}
+                  type="button"
+                >
+                  <Sparkles aria-hidden="true" size={18} />
+                  {taskState.status === 'loading' ? '正在创建任务…' : '确认材料并开始生成标书'}
+                </button>
+              </div>
+              {workflowTenderMaterials.length === 0 ? (
+                <p className="project-generation-setup__hint">请先上传招标材料，或粘贴招标公告网址并等待材料返回。</p>
+              ) : null}
+              {taskState.status === 'error' ? (
+                <p className="project-generation-setup__error" role="alert">{taskState.message}</p>
+              ) : null}
+            </section>
+          )
+      ) : (
       <section className="project-material-page">
         <div className="project-material-content">
           <div className="project-material-flow">
@@ -415,7 +531,7 @@ export function ProjectMaterialsPage({
 
               {activeTab === 'materials' ? (
                 <div className="project-material-group__body">
-                  {!taskBlocksActions ? (
+                  {!taskBlocksActions && !workflowFacts.hasDeliverables ? (
                     <ProjectMaterialUpload
                       projectId={projectId}
                       projectName={projectName}
@@ -435,7 +551,7 @@ export function ProjectMaterialsPage({
                     onLoadImageDescriptions={onLoadImageDescriptions}
                   />
 
-                  {currentProjectMaterials.length > 0 && !taskBlocksActions ? (
+                  {currentProjectMaterials.length > 0 && !taskBlocksActions && !workflowFacts.hasDeliverables ? (
                     <div className="project-start-task-wrap">
                       <fieldset className="project-task-mode">
                         <legend>选择本次任务</legend>
@@ -530,8 +646,27 @@ export function ProjectMaterialsPage({
           </div>
         </div>
       </section>
+      )}
     </ProjectWorkbench>
   );
+
+  return workflowEnabled ? (
+    <ProjectWorkflowFrame facts={workflowFacts}>{workbench}</ProjectWorkflowFrame>
+  ) : workbench;
+}
+
+function toWorkflowTaskSummary(
+  taskStatus: ProjectMaterialsPageProps['taskStatus'],
+): ProjectWorkflowTaskSummary | undefined {
+  if (!taskStatus || taskStatus === 'cancel_requested' || taskStatus === 'cancelled' || taskStatus === 'unknown') {
+    return undefined;
+  }
+  return {
+    message: '任务状态正在从后端同步',
+    percent: null,
+    status: taskStatus,
+    title: '成果编制',
+  };
 }
 
 export type {

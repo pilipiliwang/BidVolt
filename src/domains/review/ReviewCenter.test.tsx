@@ -191,6 +191,33 @@ describe('ReviewCenter', () => {
     expect(screen.getByText('已确认')).toBeInTheDocument();
   });
 
+  it('links returned deliverable versions into the edit and re-evaluate flow', () => {
+    render(
+      <ReviewCenter
+        deliverableEditTargets={[
+          { id: 'business', title: '商务标', versionId: '3' },
+          { id: 'technical', title: '技术标', versionId: '2' },
+        ]}
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        projectId="53"
+        providers={providers}
+        run={run}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: '编辑商务标' })).toHaveAttribute(
+      'href',
+      '/projects/53/deliverables/business/versions/3',
+    );
+    expect(screen.getByRole('link', { name: '编辑技术标' })).toHaveAttribute(
+      'href',
+      '/projects/53/deliverables/technical/versions/2',
+    );
+    expect(screen.getByText(/保存后将形成新版本/)).toBeInTheDocument();
+  });
+
   it('filters loaded findings by required action, category and optimizable status', async () => {
     const user = userEvent.setup();
     const filterableRun: ReviewRunView = {

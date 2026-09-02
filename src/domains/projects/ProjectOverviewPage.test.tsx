@@ -330,6 +330,47 @@ describe('ProjectOverviewPage', () => {
     expect(onOpenTasks).toHaveBeenCalledOnce();
   });
 
+  it('prioritizes a running workflow task over stale deliverable cards', () => {
+    const runningTask = {
+      message: '正在重新生成商务响应',
+      percent: 42,
+      status: 'running' as const,
+      title: '成果编制',
+    };
+
+    render(
+      <ProjectOverviewPage
+        enterpriseMaterials={[]}
+        materials={[]}
+        onOpenTasks={vi.fn()}
+        overview={overview}
+        project={project}
+        projectId="BV-2026-018"
+        taskSummary={runningTask}
+        workflowFacts={{
+          agentCompletion: 'active',
+          currentTenderMaterialCount: 2,
+          deliverablesState: 'ready',
+          enterpriseMaterialCount: 7,
+          enterpriseState: 'ready',
+          hasDeliverables: true,
+          materialsState: 'ready',
+          task: runningTask,
+        }}
+      />,
+    );
+
+    const progress = screen.getByRole('heading', { level: 1, name: '成果生成正在执行' })
+      .closest<HTMLElement>('[role="status"]');
+    expect(progress).not.toBeNull();
+    expect(within(progress!).getByText('正在重新生成商务响应')).toBeInTheDocument();
+    expect(within(progress!).getByRole('progressbar', { name: '成果生成任务进度' }))
+      .toHaveAttribute('aria-valuenow', '42');
+    expect(screen.queryByRole('heading', { level: 2, name: '商务标文件' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '预览商务标文件' })).not.toBeInTheDocument();
+  });
+
   it('does not show a project-material shortcut when the deliverables request fails', () => {
     render(
       <ProjectOverviewPage

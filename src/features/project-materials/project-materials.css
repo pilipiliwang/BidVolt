@@ -484,6 +484,92 @@
   font-size: inherit;
   font-weight: 700;
 }
+
+.project-generation-setup {
+  height: 100%;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  color: var(--project-ink);
+  background: #f9fbfc;
+}
+
+.project-generation-setup > header {
+  margin: 0 auto 18px;
+  max-width: 880px;
+}
+
+.project-generation-setup > header > span {
+  color: var(--project-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.project-generation-setup > header h1 {
+  margin: 5px 0 4px;
+  font-size: 23px;
+}
+
+.project-generation-setup > header p {
+  margin: 0;
+  color: var(--project-muted);
+  font-size: 13px;
+}
+
+.project-generation-setup > .project-material-upload {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.project-generation-setup__actions {
+  display: grid;
+  max-width: 880px;
+  grid-template-columns: auto minmax(260px, 1fr);
+  gap: 10px;
+  margin: 14px auto 0;
+}
+
+.project-generation-setup__actions button {
+  display: inline-flex;
+  min-height: 45px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.project-generation-setup__back {
+  border: 1px solid #d5dfe4;
+  color: #52647a;
+  background: #fff;
+  cursor: pointer;
+}
+
+.project-generation-setup__start {
+  border: 1px solid var(--project-accent);
+  color: #fff;
+  background: var(--project-accent);
+  cursor: pointer;
+}
+
+.project-generation-setup__start:hover:not(:disabled) { background: var(--project-accent-deep); }
+.project-generation-setup__actions button:disabled { cursor: not-allowed; opacity: .55; }
+
+.project-generation-setup__hint,
+.project-generation-setup__error {
+  max-width: 880px;
+  margin: 9px auto 0;
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.project-generation-setup__hint { color: #6e7d75; }
+.project-generation-setup__error { color: #b42318; }
 .project-material-row__image-button:hover { text-decoration: underline; }
 .project-material-row__image-details {
   display: grid;
@@ -686,6 +772,8 @@
   .project-material-subviews { overflow-x: auto; }
   .project-material-subviews button { flex: 0 0 auto; }
   .project-material-content { padding: 14px; }
+  .project-generation-setup { padding: 18px 14px; }
+  .project-generation-setup__actions { grid-template-columns: 1fr; }
   .project-tender-url-import__form { grid-template-columns: 1fr; }
   .project-tender-url-import__form button { justify-self: stretch; }
   .project-material-dropzone { grid-template-columns: auto 1fr; }

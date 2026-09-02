@@ -126,15 +126,27 @@ describe('ProjectSourceRail', () => {
     expect(within(rail).queryByRole('tab')).not.toBeInTheDocument();
     expect(within(rail).getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
       'aria-expanded',
-      'true',
+      'false',
     );
     expect(within(rail).getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
+    expect(within(rail).getByRole('button', { name: '企业业绩，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(within(rail).getByRole('button', { name: '检测报告，0项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(within(rail).getByRole('button', { name: '未分类资料，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     expect(within(rail).getByRole('button', { name: '检测报告，0项' })).toBeInTheDocument();
     expect(within(rail).getByRole('button', { name: '未分类资料，1项' })).toBeInTheDocument();
-    expect(within(rail).getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
+    expect(within(rail).queryByLabelText('企业营业执照.pdf')).not.toBeInTheDocument();
     expect(within(rail).queryByText('当前招标材料')).not.toBeInTheDocument();
     expect(within(rail).queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
     expect(within(rail).queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
@@ -152,6 +164,8 @@ describe('ProjectSourceRail', () => {
 
     const allFolder = screen.getByRole('button', { name: '全部资料，3项' });
     const licenseFolder = screen.getByRole('button', { name: '企业证照，1项' });
+    expect(allFolder).toHaveAttribute('aria-expanded', 'false');
+    expect(licenseFolder).toHaveAttribute('aria-expanded', 'false');
     await user.click(licenseFolder);
 
     expect(allFolder).toHaveAttribute('aria-expanded', 'false');
@@ -200,7 +214,7 @@ describe('ProjectSourceRail', () => {
 
     expect(screen.getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
       'aria-expanded',
-      'true',
+      'false',
     );
     expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
       'aria-expanded',
@@ -262,6 +276,7 @@ describe('ProjectSourceRail', () => {
   it('shows a dedicated empty state for enterprise data', () => {
     render(<ProjectSourceRail enterpriseMaterials={[]} />);
 
+    fireEvent.click(screen.getByRole('button', { name: '全部资料，0项' }));
     expect(screen.getByRole('status')).toHaveTextContent('企业资料库暂无可展示资料');
   });
 });

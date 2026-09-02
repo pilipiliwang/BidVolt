@@ -32,11 +32,15 @@ type UploadCardProps = {
 
 type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
   existingBidFileNames?: string[];
+  mode?: 'generation' | 'legacy';
   onExistingBidUpload?: (files: File[]) => Promise<void> | void;
+  onSupplementalUpload?: (files: File[]) => Promise<void> | void;
   onImportTenderNoticeUrl?: (
     projectId: string,
     url: string,
   ) => Promise<TenderNoticeUrlImportResult | void>;
+  supplementalFileNames?: string[];
+  tenderFileNames?: string[];
 };
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -362,8 +366,12 @@ export function ProjectMaterialUpload({
   projectName,
   onUpload,
   existingBidFileNames = [],
+  mode = 'legacy',
   onExistingBidUpload,
+  onSupplementalUpload,
   onImportTenderNoticeUrl,
+  supplementalFileNames = [],
+  tenderFileNames = [],
 }: EnhancedProjectMaterialUploadProps) {
   const dispatchProjectFiles = async (files: FileList | null) => {
     const selectedFiles = toFiles(files);
@@ -377,6 +385,13 @@ export function ProjectMaterialUpload({
     if (selectedFiles.length === 0) return;
     if (!onExistingBidUpload) throw new Error('当前环境未配置已完成标书上传能力。');
     await onExistingBidUpload(selectedFiles);
+  };
+
+  const dispatchSupplementalFiles = async (files: FileList | null) => {
+    const selectedFiles = toFiles(files);
+    if (selectedFiles.length === 0) return;
+    if (!onSupplementalUpload) throw new Error('当前环境未配置补充资料上传能力。');
+    await onSupplementalUpload(selectedFiles);
   };
 
   return (
@@ -397,6 +412,7 @@ export function ProjectMaterialUpload({
           description="上传本项目全部招标文件，AI 将自动识别并分类。"
           inputLabel="选择或拖拽招标材料"
           accept={BACKEND_UPLOAD_ACCEPT}
+          selectedNames={tenderFileNames}
           onFiles={dispatchProjectFiles}
         >
           <TenderNoticeUrlImporter
@@ -404,14 +420,25 @@ export function ProjectMaterialUpload({
             onImport={onImportTenderNoticeUrl}
           />
         </UploadCard>
-        <UploadCard
-          title="已制作完成的标书"
-          description="如已有商务标、技术标或报价单，可上传后直接进入校核。"
-          inputLabel="选择或拖拽已制作完成的标书"
-          accept={BACKEND_UPLOAD_ACCEPT}
-          selectedNames={existingBidFileNames}
-          onFiles={dispatchExistingBidFiles}
-        />
+        {mode === 'generation' ? (
+          <UploadCard
+            title="补充资料"
+            description="可补充本项目专用的说明、模板或参考文件。"
+            inputLabel="选择或拖拽补充资料"
+            accept={BACKEND_UPLOAD_ACCEPT}
+            selectedNames={supplementalFileNames}
+            onFiles={dispatchSupplementalFiles}
+          />
+        ) : (
+          <UploadCard
+            title="已制作完成的标书"
+            description="如已有商务标、技术标或报价单，可上传后直接进入校核。"
+            inputLabel="选择或拖拽已制作完成的标书"
+            accept={BACKEND_UPLOAD_ACCEPT}
+            selectedNames={existingBidFileNames}
+            onFiles={dispatchExistingBidFiles}
+          />
+        )}
       </div>
     </section>
   );

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Deliverable, DeliverableVersion } from '../shared/backend-api';
 import {
   buildProjectOverviewVersionOptions,
+  isCurrentDeliverableVersionFromTask,
   loadDeliverableVersionLists,
 } from './deliverable-versions';
 
@@ -37,6 +38,68 @@ const version = (versionNo: number): DeliverableVersion => ({
 });
 
 describe('deliverable version data', () => {
+  it('uses source_task_id as the authoritative latest-task match', () => {
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: { ...version(2), source_task_id: 901, created_at: '2026-09-03T09:00:00Z' },
+      currentVersionNo: 2,
+      task: { task_id: '901', occurred_at: '2026-09-03T10:00:00Z' },
+    })).toBe(true);
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: { ...version(2), source_task_id: 900, created_at: '2026-09-03T12:00:00Z' },
+      currentVersionNo: 2,
+      task: { task_id: 901, occurred_at: '2026-09-03T10:00:00Z' },
+    })).toBe(false);
+  });
+
+  it('falls back to creation time only when source task metadata is absent', () => {
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: { ...version(2), created_at: '2026-09-03T10:00:01Z' },
+      currentVersionNo: 2,
+      task: { task_id: 901, occurred_at: '2026-09-03T10:00:00Z' },
+    })).toBe(true);
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: { ...version(2), created_at: '2026-09-03T09:59:59Z' },
+      currentVersionNo: 2,
+      task: { task_id: 901, occurred_at: '2026-09-03T10:00:00Z' },
+    })).toBe(false);
+  });
+
+  it('does not treat metadata-free versions as the latest task output', () => {
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: version(2),
+      currentVersionNo: 2,
+      task: { task_id: 901 },
+    })).toBe(false);
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersionNo: 2,
+      task: { task_id: 901 },
+    })).toBe(false);
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: { ...version(2), created_at: 'invalid-date' },
+      currentVersionNo: 2,
+      task: { task_id: 901, occurred_at: '2026-09-03T10:00:00Z' },
+    })).toBe(false);
+  });
+
+  it('keeps current_version_no compatibility when there is no latest task context', () => {
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: version(2),
+      currentVersionNo: 2,
+      task: null,
+    })).toBe(true);
+    expect(isCurrentDeliverableVersionFromTask({ currentVersionNo: 2 })).toBe(true);
+  });
+
+  it('rejects missing current versions and a non-current version record', () => {
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: version(1),
+      currentVersionNo: 2,
+      task: { task_id: 901 },
+    })).toBe(false);
+    expect(isCurrentDeliverableVersionFromTask({ currentVersionNo: 0, task: { task_id: 901 } })).toBe(false);
+    expect(isCurrentDeliverableVersionFromTask({ currentVersionNo: 2, task: null })).toBe(true);
+  });
+
   it('loads every list with bounded concurrency and keeps results keyed by backend id', async () => {
     let active = 0;
     let maxActive = 0;

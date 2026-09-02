@@ -82,6 +82,166 @@ const snapshots: ProjectSnapshot[] = [
 ];
 
 describe('ProjectMaterialsPage', () => {
+  it('opens the approved generation path directly when requested from the overview', () => {
+    render(
+      <ProjectMaterialsPage
+        initialWorkflowMode="generate"
+        materials={[]}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        workflowFacts={{
+          currentTenderMaterialCount: 0,
+          deliverablesState: 'ready',
+          enterpriseMaterialCount: 7,
+          enterpriseState: 'ready',
+          hasDeliverables: false,
+          materialsState: 'ready',
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '准备项目材料' })).toBeInTheDocument();
+    expect(screen.getByText('当前招标材料')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /补充资料.*可选/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '选择本次投标任务' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
+  });
+
+  it('does not expose creation actions before backend project state is known', () => {
+    render(
+      <ProjectMaterialsPage
+        materials={[]}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        workflowFacts={{
+          currentTenderMaterialCount: 0,
+          deliverablesState: 'loading',
+          enterpriseMaterialCount: 0,
+          enterpriseState: 'loading',
+          hasDeliverables: false,
+          materialsState: 'loading',
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在同步项目状态');
+    expect(screen.queryByRole('button', { name: /生成新的标书/ })).not.toBeInTheDocument();
+  });
+
+  it('shows backend task progress and hides material submission while generation is active', () => {
+    render(
+      <ProjectMaterialsPage
+        materials={materials}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        taskSummary={{
+          message: '正在生成商务响应',
+          percent: 46,
+          status: 'running',
+          title: 'Agent 成果生成',
+        }}
+        workflowFacts={{
+          agentCompletion: 'active',
+          currentTenderMaterialCount: 2,
+          deliverablesState: 'ready',
+          enterpriseMaterialCount: 7,
+          enterpriseState: 'ready',
+          hasDeliverables: false,
+          materialsState: 'ready',
+          task: {
+            message: '正在生成商务响应',
+            percent: 46,
+            status: 'running',
+            title: 'Agent 成果生成',
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('正在生成商务响应')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '成果生成任务进度' }))
+      .toHaveAttribute('aria-valuenow', '46');
+    expect(screen.queryByRole('heading', { name: '准备项目材料' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: '项目工作区页面' })).not.toBeInTheDocument();
+  });
+
+  it('prioritizes a running workflow task over stale project materials when old results exist', () => {
+    const runningTask = {
+      message: '正在重新生成技术响应',
+      percent: 64,
+      status: 'running' as const,
+      title: '成果编制',
+    };
+
+    render(
+      <ProjectMaterialsPage
+        hasDeliverables
+        materials={materialsWithSupplemental}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={requirements}
+        snapshots={snapshots}
+        taskSummary={runningTask}
+        workflowFacts={{
+          agentCompletion: 'active',
+          currentTenderMaterialCount: 1,
+          deliverablesState: 'ready',
+          enterpriseMaterialCount: 7,
+          enterpriseState: 'ready',
+          hasDeliverables: true,
+          materialsState: 'ready',
+          task: runningTask,
+        }}
+      />,
+    );
+
+    const progress = screen.getByRole('heading', { level: 1, name: '成果生成正在执行' })
+      .closest<HTMLElement>('[role="status"]');
+    expect(progress).not.toBeNull();
+    expect(within(progress!).getByText('正在重新生成技术响应')).toBeInTheDocument();
+    expect(within(progress!).getByRole('progressbar', { name: '成果生成任务进度' }))
+      .toHaveAttribute('aria-valuenow', '64');
+    expect(screen.queryByRole('heading', { name: '补充资料' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '当前招标材料' })).not.toBeInTheDocument();
+  });
+
+  it('restores project-material and deliverable tabs only after a real version exists', () => {
+    render(
+      <ProjectMaterialsPage
+        hasDeliverables
+        materials={materials}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={requirements}
+        snapshots={snapshots}
+        workflowFacts={{
+          agentCompletion: 'complete',
+          currentTenderMaterialCount: 2,
+          deliverablesState: 'ready',
+          enterpriseMaterialCount: 7,
+          enterpriseState: 'ready',
+          hasDeliverables: true,
+          materialsState: 'ready',
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('navigation', { name: '项目工作区页面' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '补充资料' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '当前招标材料' })).toBeInTheDocument();
+  });
+
   it('loads real image descriptions on demand and exposes identifier conflicts', async () => {
     const user = userEvent.setup();
     const onLoadImageDescriptions = vi.fn().mockResolvedValue({

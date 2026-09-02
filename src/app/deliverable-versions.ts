@@ -15,6 +15,17 @@ export type DeliverableVersionOption = {
   isCurrent?: boolean;
 };
 
+export type DeliverableTaskIdentity = {
+  occurred_at?: string | null;
+  task_id?: number | string | null;
+};
+
+export type CurrentDeliverableVersionMatchInput = {
+  currentVersion?: Pick<DeliverableVersion, 'created_at' | 'source_task_id' | 'version_no'> | null;
+  currentVersionNo?: number | null;
+  task?: DeliverableTaskIdentity | null;
+};
+
 const routeIdByDeliverableType: Partial<Record<number, DeliverableRouteId>> = {
   1: 'business',
   2: 'technical',
@@ -23,6 +34,53 @@ const routeIdByDeliverableType: Partial<Record<number, DeliverableRouteId>> = {
 
 function positiveInteger(value: number | undefined) {
   return Number.isInteger(value) && (value ?? 0) > 0 ? value : undefined;
+}
+
+function normalizedId(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') return null;
+  return String(value);
+}
+
+function timestamp(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Tells whether the currently advertised deliverable version was produced by
+ * the latest generation task. Explicit source-task metadata is authoritative;
+ * timestamps are used only when that relation is absent. Older backends that
+ * expose neither field retain the historical current_version_no behaviour.
+ */
+export function isCurrentDeliverableVersionFromTask({
+  currentVersion,
+  currentVersionNo,
+  task,
+}: CurrentDeliverableVersionMatchInput): boolean {
+  const advertisedVersionNo = positiveInteger(currentVersionNo ?? undefined);
+  if (!advertisedVersionNo) return false;
+  if (currentVersion && currentVersion.version_no !== advertisedVersionNo) return false;
+
+  // Without a latest-task context there is nothing to disambiguate: preserve
+  // the legacy behaviour and expose the backend-advertised current version.
+  if (!task) return true;
+
+  const sourceTaskId = normalizedId(currentVersion?.source_task_id);
+  const taskId = normalizedId(task.task_id);
+  if (sourceTaskId !== null) return taskId !== null && sourceTaskId === taskId;
+
+  const versionCreatedAt = timestamp(currentVersion?.created_at);
+  const taskOccurredAt = timestamp(task.occurred_at);
+  if (versionCreatedAt !== null || taskOccurredAt !== null) {
+    return versionCreatedAt !== null
+      && taskOccurredAt !== null
+      && versionCreatedAt >= taskOccurredAt;
+  }
+
+  // A latest task does exist, so an untraceable version must not be presented
+  // as that task's output. The caller can keep waiting for version metadata.
+  return false;
 }
 
 /**

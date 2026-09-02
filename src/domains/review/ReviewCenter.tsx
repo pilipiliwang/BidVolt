@@ -18,7 +18,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 
-import { AppLink } from '../../app/router';
+import { AppLink, deliverableEditorPath } from '../../app/router';
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import {
   ProjectWorkbench,
@@ -68,6 +68,11 @@ const riskLabel = (finding: ReviewFinding) => {
 };
 
 type ReviewCenterProps = {
+  deliverableEditTargets?: Array<{
+    id: 'business' | 'technical' | 'quote';
+    title: string;
+    versionId: string;
+  }>;
   enterpriseCategories?: EnterpriseAssetCategoryFolder[];
   enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
@@ -107,6 +112,7 @@ const findingStatusLabels = {
 } as const;
 
 export function ReviewCenter({
+  deliverableEditTargets = [],
   enterpriseCategories = [],
   enterpriseLibraryKey,
   enterpriseMaterials,
@@ -362,6 +368,21 @@ export function ReviewCenter({
                 可以优化内容 <span>{actionableCount}</span>
               </button>
             </div>
+
+            {projectId && deliverableEditTargets.length > 0 ? (
+              <div className={styles.editDeliverables} aria-label="修改标书成果">
+                <span><PencilLine aria-hidden="true" size={16} />根据建议修改成果</span>
+                {deliverableEditTargets.map((target) => (
+                  <AppLink
+                    key={target.id}
+                    to={deliverableEditorPath(projectId, target.id, target.versionId)}
+                  >
+                    编辑{target.title}
+                  </AppLink>
+                ))}
+                <small>保存后将形成新版本，再返回本页重新模拟评标。</small>
+              </div>
+            ) : null}
 
             {onConfirmFinding || onConfirmFindings || onReEvaluate ? (
               <div className={styles.reviewActions} aria-label="评审建议处理">

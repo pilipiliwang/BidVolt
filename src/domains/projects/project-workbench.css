@@ -40,6 +40,10 @@
   min-height: 0;
   flex-direction: column;
   padding: 16px 17px 18px;
+  align-self: start;
+  max-height: calc(100vh - 116px);
+  position: sticky;
+  top: 12px;
 }
 
 .bv-source-rail__header {
@@ -261,7 +265,8 @@
 }
 
 .bv-project-workspace__main { grid-column: 2; grid-row: 1; }
-.bv-project-workspace__right { grid-column: 3; grid-row: 1; }
+.bv-project-workspace__right { grid-column: 3; grid-row: 1; overflow-y: auto; }
+.bv-project-workspace__right { container-type: inline-size; }
 
 .bv-project-workspace__main--with-navigation {
   display: flex;
@@ -452,11 +457,17 @@
 
 @media (max-width: 760px) {
   .bv-project-workspace { display: block; padding: 10px; }
-  .bv-source-rail { display: none; }
+  .bv-source-rail {
+    display: flex;
+    max-height: 390px;
+    margin-bottom: 10px;
+    position: static;
+  }
   .bv-project-workspace__main,
   .bv-project-workspace__right,
   .bv-project-chat { margin-bottom: 10px; }
-  .bv-project-chat { grid-template-columns: auto minmax(0, 1fr); }
+  .bv-project-chat { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; padding-inline: 9px; }
+  .bv-project-chat label { min-width: 0; }
   .bv-project-chat .bv-project-chat__send { min-width: 92px; }
   .bv-project-chat > button:first-child { display: none; }
 }

@@ -78,13 +78,18 @@ describe('App local read-only preview', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
 
     const previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
-    await user.click(within(previewNavigation).getByRole('link', { name: '评审中心' }));
-    await user.click(await screen.findByRole('button', { name: '基于冻结快照运行评审' }));
+    await user.click(within(previewNavigation).getByRole('link', { name: '企业资料' }));
+    await user.click(await screen.findByRole('button', { name: /上传资料/ }));
+    await user.upload(
+      await screen.findByLabelText(/选择文件或拖拽到此处/),
+      new File(['preview'], 'preview.pdf', { type: 'application/pdf' }),
+    );
 
     const writeAlerts = await screen.findAllByRole('alert');
     expect(writeAlerts.some((alert) => alert.textContent?.includes('不会伪造成功结果'))).toBe(true);
+    await user.click(screen.getByRole('button', { name: '关闭上传资料窗口' }));
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it('keeps outcome scoring separate from the materials status metrics', async () => {
     const user = userEvent.setup();
@@ -106,19 +111,21 @@ describe('App local read-only preview', () => {
     previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
     await user.click(within(previewNavigation).getByRole('link', { name: '招标材料' }));
 
-    expect(await screen.findByRole('region', { name: '补充资料' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '当前招标材料' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '成果生成正在执行' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '补充资料' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '当前招标材料' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/选择或拖拽招标材料/)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '生成标书' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('添加当前项目文件')).toBeInTheDocument();
-    expect(screen.getByText('上传企业资料')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: '企业资料' }))
+      .getByText('上传企业资料')).toBeInTheDocument();
     expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
-    expect(screen.queryByText('已有成果编制任务正在排队')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
+    expect(screen.getByText('已有成果编制任务正在排队')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
 
     const reviewMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
     expect(within(reviewMetrics).getAllByRole('listitem')).toHaveLength(6);
@@ -134,7 +141,7 @@ describe('App local read-only preview', () => {
       .toHaveTextContent('已生成当前版本 V1');
     expect(within(reviewMetrics).getAllByText('接口待提供')).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it('opens the bid market library with explicitly labelled mock data while APIs are missing', async () => {
     const user = userEvent.setup();

@@ -140,3 +140,18 @@
   .project-review-metrics { gap: 10px; }
   .project-review-metric-card { min-height: 145px; padding: 14px 12px 12px; }
 }
+
+@container (max-width: 330px) {
+  .project-review-preview { padding: 18px 14px; }
+  .project-review-metrics { grid-template-columns: 1fr; gap: 8px; margin-top: 14px; }
+  .project-review-metric-card {
+    min-height: 78px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 11px;
+  }
+  .project-review-metric-copy small { min-height: 0; }
+  .project-review-metric-icon { grid-column: 2; grid-row: 1; }
+}

@@ -1,5 +1,9 @@
 import type { PublicTaskEvent } from '../../shared/task-events';
 import type { ProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
+import type {
+  ProjectWorkflowFacts,
+  ProjectWorkflowTaskSummary,
+} from '../../domains/projects/ProjectWorkflow';
 import type { FileImageDescriptions } from '../../shared/backend-api/types';
 
 export type ProjectMaterialKind =
@@ -90,6 +94,8 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   enterpriseLibraryKey?: string;
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];
   materials: ProjectMaterial[];
+  hasDeliverables?: boolean;
+  initialWorkflowMode?: 'choose' | 'generate';
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onCompletedBidUpload?: (projectId: string, files: File[]) => void | Promise<void>;
@@ -102,7 +108,9 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   requirements: ProjectRequirement[];
   reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];
+  taskSummary?: ProjectWorkflowTaskSummary;
   taskStatus?: PublicTaskEvent['status'];
+  onOpenTasks?: () => void;
   onConfirmRequirement?: (projectId: string, requirementId: string) => Promise<void> | void;
   onCorrectRequirement?: (
     projectId: string,
@@ -111,4 +119,5 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   ) => Promise<void> | void;
   onOpenSnapshot?: (projectId: string, snapshotId: string) => void;
   onStartTask: (projectId: string, mode: 'generate' | 'validate') => Promise<void> | void;
+  workflowFacts?: ProjectWorkflowFacts;
 }

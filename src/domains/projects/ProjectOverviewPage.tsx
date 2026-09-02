@@ -20,6 +20,17 @@ import {
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
 import { ProjectWorkspaceTabs } from './ProjectWorkspaceTabs';
+import {
+  ProjectEntryChoice,
+  ProjectOptimizationFlow,
+  ProjectTaskExecutionPanel,
+  ProjectWorkflowFrame,
+  ProjectWorkflowResourcePanel,
+  fallbackWorkflowTask,
+  resolveProjectWorkflowPhase,
+  type ProjectWorkflowFacts,
+  type ProjectWorkflowTaskSummary,
+} from './ProjectWorkflow';
 import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
@@ -34,19 +45,16 @@ type ProjectOverviewPageProps = {
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
   onOpenImprovementSuggestions?: () => void;
+  onStartWorkflow?: () => void;
   onOpenTasks: () => void;
   onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
   projectId: string;
   outcomeReview?: ProjectOutcomeReviewViewModel;
-  taskSummary?: {
-    message: string;
-    percent: number | null;
-    status?: ProjectTaskStatus;
-    title: string;
-  };
+  taskSummary?: ProjectWorkflowTaskSummary;
   versionOptions?: ProjectOverviewVersionOption[];
+  workflowFacts?: ProjectWorkflowFacts;
   downloadHrefFor?: (deliverable: ProjectDeliverableView) => string;
   onDownloadDeliverable?: (deliverable: ProjectDeliverableView) => void | Promise<void>;
 };
@@ -102,6 +110,7 @@ export function ProjectOverviewPage({
   onAssistantAddFiles,
   onAssistantSend,
   onOpenImprovementSuggestions,
+  onStartWorkflow,
   onOpenTasks,
   onSelectVersion,
   overview,
@@ -110,6 +119,7 @@ export function ProjectOverviewPage({
   outcomeReview,
   taskSummary,
   versionOptions,
+  workflowFacts,
   downloadHrefFor,
   onDownloadDeliverable,
 }: ProjectOverviewPageProps) {
@@ -131,7 +141,26 @@ export function ProjectOverviewPage({
     );
   }
 
-  return (
+  const hasVisibleDeliverables = Boolean(
+    visibleDeliverables
+      && visibleDeliverables.length > 0
+      && (workflowFacts ? workflowFacts.hasDeliverables : true),
+  );
+  const workflowPhase = workflowFacts ? resolveProjectWorkflowPhase(workflowFacts) : undefined;
+  const showWorkflowResults = hasVisibleDeliverables
+    && (!workflowFacts || workflowPhase === 'completed');
+  const workflowResourceState = workflowFacts?.materialsState !== undefined
+    && workflowFacts.materialsState !== 'ready'
+    ? workflowFacts.materialsState
+    : workflowFacts?.deliverablesState !== undefined && workflowFacts.deliverablesState !== 'ready'
+      ? workflowFacts.deliverablesState
+      : null;
+  const workflowTask = taskSummary ?? (workflowPhase === 'executing'
+    || workflowPhase === 'finalizing'
+    || workflowPhase === 'failed'
+    ? fallbackWorkflowTask(workflowPhase)
+    : undefined);
+  const workbench = (
     <ProjectWorkbench
       enterpriseCategories={enterpriseCategories}
       enterpriseLibraryKey={enterpriseLibraryKey}
@@ -143,10 +172,13 @@ export function ProjectOverviewPage({
       onAddFiles={onAddFiles}
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
-      workspaceNavigation={<ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />}
+      workspaceNavigation={!workflowFacts || showWorkflowResults
+        ? <ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />
+        : undefined}
       rightRail={(
         <ProjectOutcomeReviewPanel
           onOpenImprovementSuggestions={onOpenImprovementSuggestions}
+          onOpenReviewCenter={showWorkflowResults ? onOpenImprovementSuggestions : undefined}
           onOpenTasks={onOpenTasks}
           viewModel={outcomeReview}
         />
@@ -182,9 +214,13 @@ export function ProjectOverviewPage({
           </div>
         </header>
 
-        {visibleDeliverables && visibleDeliverables.length > 0 ? (
+        {showWorkflowResults ? (
+          <>
+          <ProjectOptimizationFlow
+            reviewReady={outcomeReview?.state === 'ready'}
+          />
           <div className="bv-deliverable-grid">
-          {visibleDeliverables.map((item) => (
+          {visibleDeliverables?.map((item) => (
             <article className="bv-deliverable-card" key={item.id}>
               <span className="bv-deliverable-card__status">{item.versionId ? `V${item.versionId}` : '尚无版本'}</span>
               <ResultCover title={item.title} tone={item.tone} />
@@ -234,6 +270,16 @@ export function ProjectOverviewPage({
             </article>
           ))}
           </div>
+          </>
+        ) : workflowFacts && workflowTask ? (
+          <ProjectTaskExecutionPanel onOpenTasks={onOpenTasks} task={workflowTask} />
+        ) : workflowFacts && workflowResourceState ? (
+          <ProjectWorkflowResourcePanel state={workflowResourceState} />
+        ) : workflowFacts ? (
+          <ProjectEntryChoice
+            enterpriseReady={workflowFacts.enterpriseMaterialCount > 0}
+            onGenerate={onStartWorkflow ?? (() => undefined)}
+          />
         ) : (
           <DeliverablesEmptyState
             onOpenTasks={onOpenTasks}
@@ -244,6 +290,10 @@ export function ProjectOverviewPage({
       </section>
     </ProjectWorkbench>
   );
+
+  return workflowFacts ? (
+    <ProjectWorkflowFrame facts={workflowFacts}>{workbench}</ProjectWorkflowFrame>
+  ) : workbench;
 }
 
 type DeliverablesEmptyStateProps = {
@@ -393,7 +443,10 @@ const genericTaskEmptyStateContent: EmptyStateContent = {
   statusLabel: '任务状态更新中',
 };
 
-const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
+const taskEmptyStateContent: Record<
+  NonNullable<ProjectWorkflowTaskSummary['status']>,
+  EmptyStateContent
+> = {
   queued: {
     title: '成果生成正在执行',
     description: '系统正在根据当前项目材料生成成果，请留意任务进度。',
@@ -420,6 +473,11 @@ const taskEmptyStateContent: Record<ProjectTaskStatus, EmptyStateContent> = {
     title: '成果生成任务已完成',
     description: '任务已完成，成果列表正在更新；如长时间未显示，请查看任务详情。',
     statusLabel: '任务已完成',
+  },
+  sync_error: {
+    title: '成果版本同步超时',
+    description: '生成任务已经结束，但成果版本尚未返回。请重新同步项目数据。',
+    statusLabel: '等待重新同步',
   },
   failed: {
     title: '成果生成失败',

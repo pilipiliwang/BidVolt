@@ -1,0 +1,137 @@
+.project-flow-track {
+  --project-flow-green: #009b63;
+  --project-flow-green-soft: #e9f8f1;
+  --project-flow-border: #dbe7e0;
+  width: 100%;
+  padding: 15px 20px;
+  border: 1px solid var(--project-flow-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgb(27 66 47 / 5%);
+}
+
+.project-flow-track__list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-flow-track__stage {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 10px;
+  color: #718078;
+}
+
+.project-flow-track__connector {
+  position: absolute;
+  top: 17px;
+  right: calc(100% - 1px);
+  width: calc(100% - 34px);
+  height: 2px;
+  background: #dfe7e3;
+}
+
+.project-flow-track__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 1px solid #d8e1dc;
+  border-radius: 50%;
+  background: #f6f8f7;
+}
+
+.project-flow-track__content {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding-top: 1px;
+}
+
+.project-flow-track__eyebrow,
+.project-flow-track__content small {
+  overflow: hidden;
+  color: #788980;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-flow-track__content strong {
+  overflow: hidden;
+  color: #34483e;
+  font-size: 14px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-flow-track__stage--completed .project-flow-track__marker {
+  border-color: var(--project-flow-green);
+  background: var(--project-flow-green);
+  color: #fff;
+}
+
+.project-flow-track__stage--completed .project-flow-track__connector {
+  background: var(--project-flow-green);
+}
+
+.project-flow-track__stage--current .project-flow-track__connector {
+  background: var(--project-flow-green);
+}
+
+.project-flow-track__stage--completed .project-flow-track__content strong,
+.project-flow-track__stage--current .project-flow-track__content strong {
+  color: #006f48;
+}
+
+.project-flow-track__stage--current .project-flow-track__marker {
+  border-color: var(--project-flow-green);
+  background: var(--project-flow-green-soft);
+  color: var(--project-flow-green);
+}
+
+.project-flow-track__stage--current.project-flow-track__stage--processing .project-flow-track__marker svg {
+  animation: project-flow-track-spin 1.4s linear infinite;
+}
+
+.project-flow-track__stage--error .project-flow-track__marker {
+  border-color: #e05b50;
+  background: #fff1ef;
+  color: #c83c32;
+}
+
+.project-flow-track__stage--error .project-flow-track__content strong,
+.project-flow-track__stage--error .project-flow-track__eyebrow {
+  color: #b22f27;
+}
+
+@keyframes project-flow-track-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 780px) {
+  .project-flow-track { padding: 14px; }
+  .project-flow-track__list { grid-template-columns: 1fr 1fr; gap: 18px 12px; }
+  .project-flow-track__connector { display: none; }
+}
+
+@media (max-width: 460px) {
+  .project-flow-track__list { grid-template-columns: 1fr; gap: 14px; }
+  .project-flow-track__eyebrow,
+  .project-flow-track__content small,
+  .project-flow-track__content strong { white-space: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-flow-track__stage--current.project-flow-track__stage--processing .project-flow-track__marker svg { animation: none; }
+}

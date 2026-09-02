@@ -20,10 +20,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import {
-  ALL_ENTERPRISE_ASSETS_FOLDER_ID,
-  buildEnterpriseAssetFolders,
-} from '../../features/enterprise-assets/category-folders';
+import { buildEnterpriseAssetFolders } from '../../features/enterprise-assets/category-folders';
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets/types';
 import { PRODUCT_NAME } from '../../shared/product-brand';
 import './project-workbench.css';
@@ -49,14 +46,12 @@ export function ProjectSourceRail({
 }: ProjectSourceRailProps) {
   const folderContentId = useId();
   const folders = buildEnterpriseAssetFolders(enterpriseCategories, enterpriseMaterials);
-  const [openFolderId, setOpenFolderId] = useState<string | null>(
-    ALL_ENTERPRISE_ASSETS_FOLDER_ID,
-  );
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const resolvedOpenFolderId = openFolderId === null
     ? null
     : folders.some((folder) => folder.id === openFolderId)
       ? openFolderId
-      : ALL_ENTERPRISE_ASSETS_FOLDER_ID;
+      : null;
   const [uploadState, setUploadState] = useState({ error: null as string | null, pending: false });
 
   const uploadEnterpriseFiles = async (files: File[]) => {

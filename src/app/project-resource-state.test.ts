@@ -2,17 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import { BackendApiError } from '../shared/backend-api';
 import type { PublicTaskEvent } from '../shared/task-events';
+import { isCurrentDeliverableVersionFromTask } from './deliverable-versions';
 import {
   findLatestActiveBidGenerateTask,
+  findLatestGenerationTask,
   findLatestAgentPipelineTask,
   findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
   isActiveTaskStatus,
   isProjectNotFound,
   isReviewScoreUnavailable,
+  mergePendingAgentRunTaskReceipt,
   mergeTaskStreamUpdate,
   resolveTaskPollingInterval,
   shouldReloadProjectAfterAgentPoll,
+  shouldUseAgentRunForGenerationTask,
   shouldShowImageDescribeProgress,
   STREAM_CONVERGENCE_POLL_INTERVAL_MS,
   TASK_POLL_INTERVAL_MS,
@@ -281,6 +285,90 @@ describe('project resource state', () => {
     expect(findLatestAgentPipelineTask([legacyGeneration, terminalAgent])).toBe(terminalAgent);
     expect(findCurrentProjectSubmissionTask([legacyGeneration, terminalAgent, activeAgent]))
       .toBe(activeAgent);
+  });
+
+  it('uses Agent detail only when it belongs to the newest generation task', () => {
+    const oldAgent = {
+      ...task('agent-7', 'succeeded'),
+      phase: 'agent_pipeline',
+      sequence: 7,
+      task_type: 'agent_pipeline',
+    };
+    const newLegacy = {
+      ...task('generate-9', 'running'),
+      phase: 'bid_generate',
+      sequence: 9,
+      task_type: 'bid_generate',
+    };
+    const agentRun = {
+      actionList: [],
+      completion: 'complete' as const,
+      conversation: [],
+      errorMessage: null,
+      message: '旧 Agent 已完成',
+      outcome: 'complete' as const,
+      percent: 100,
+      phase: 'agent_pipeline',
+      projectId: 'project-1',
+      questions: [],
+      reason: null,
+      sessionId: null,
+      status: 'succeeded' as const,
+      streamState: 'ended' as const,
+      taskId: 'agent-7',
+    };
+
+    expect(findLatestGenerationTask([oldAgent, newLegacy])).toBe(newLegacy);
+    expect(shouldUseAgentRunForGenerationTask(newLegacy, agentRun)).toBe(false);
+    expect(shouldUseAgentRunForGenerationTask(oldAgent, agentRun)).toBe(true);
+    expect(shouldUseAgentRunForGenerationTask(undefined, agentRun)).toBe(true);
+  });
+
+  it('keeps a newly started Agent receipt ahead of a stale task list until it converges', () => {
+    const previous = [{
+      ...task('agent-7', 'succeeded'),
+      phase: 'agent_pipeline',
+      sequence: 7,
+      task_type: 'agent_pipeline',
+    }];
+    const agentRun = {
+      actionList: [],
+      completion: 'active' as const,
+      conversation: [],
+      errorMessage: null,
+      message: '正在生成新标书',
+      outcome: null,
+      percent: 12,
+      phase: 'agent_pipeline',
+      projectId: 'project-1',
+      questions: [],
+      reason: null,
+      sessionId: null,
+      status: 'running' as const,
+      streamState: 'connecting' as const,
+      taskId: 'agent-9',
+    };
+
+    const merged = mergePendingAgentRunTaskReceipt(previous, agentRun, 'agent-9');
+
+    expect(findLatestGenerationTask(merged)).toMatchObject({
+      task_id: 'agent-9',
+      sequence: 8,
+      status: 'running',
+      public_message: '正在生成新标书',
+    });
+    expect(Number.isFinite(Date.parse(merged[1].occurred_at))).toBe(true);
+    expect(isCurrentDeliverableVersionFromTask({
+      currentVersion: {
+        created_at: new Date(Date.parse(merged[1].occurred_at) + 1_000).toISOString(),
+        source_task_id: null,
+        version_no: 1,
+      },
+      currentVersionNo: 1,
+      task: merged[1],
+    })).toBe(true);
+    expect(mergePendingAgentRunTaskReceipt(merged, agentRun, 'agent-9')).toEqual(merged);
+    expect(mergePendingAgentRunTaskReceipt(previous, agentRun, undefined)).toBe(previous);
   });
 
   it('does not invent a timestamp or backend error code from a stream-only failure status', () => {

@@ -77,11 +77,11 @@ const failedReviewRunStatuses = new Set<ReviewRunView['status']>([
 
 function latestTask(
   tasks: ProjectOutcomeReviewSource['tasks'],
-  type: 'bid_generate' | 'bid_review',
+  types: readonly string[],
 ) {
   return (tasks ?? []).reduce<ProjectOutcomeReviewTask | undefined>(
     (latest, task) => {
-      if ((task.task_type ?? task.phase) !== type) return latest;
+      if (!types.includes(task.task_type ?? task.phase)) return latest;
       return !latest || task.sequence > latest.sequence ? task : latest;
     },
     undefined,
@@ -103,8 +103,10 @@ export function buildProjectOutcomeReviewViewModel({
   tasks = [],
   tasksState = 'ready',
 }: ProjectOutcomeReviewSource): ProjectOutcomeReviewViewModel {
-  const reviewTask = tasksState === 'ready' ? latestTask(tasks, 'bid_review') : undefined;
-  const generationTask = tasksState === 'ready' ? latestTask(tasks, 'bid_generate') : undefined;
+  const reviewTask = tasksState === 'ready' ? latestTask(tasks, ['bid_review']) : undefined;
+  const generationTask = tasksState === 'ready'
+    ? latestTask(tasks, ['agent_pipeline', 'bid_generate'])
+    : undefined;
   const currentReviewRunStatus = reviewSourceState === 'ready' ? reviewRunStatus : 'idle';
   const currentReviewRunId = reviewSourceState === 'ready' ? reviewRunId : undefined;
   const reviewRunDoesNotMatchScore = Boolean(
@@ -319,10 +321,12 @@ const defaultViewModel = buildProjectOutcomeReviewViewModel({});
 
 export function ProjectOutcomeReviewPanel({
   onOpenImprovementSuggestions,
+  onOpenReviewCenter,
   onOpenTasks,
   viewModel = defaultViewModel,
 }: {
   onOpenImprovementSuggestions?: () => void;
+  onOpenReviewCenter?: () => void;
   onOpenTasks?: () => void;
   viewModel?: ProjectOutcomeReviewViewModel;
 }) {
@@ -344,6 +348,7 @@ export function ProjectOutcomeReviewPanel({
       {viewModel.score ? (
         <ScoreSummary
           onOpenImprovementSuggestions={onOpenImprovementSuggestions}
+          onOpenReviewCenter={onOpenReviewCenter}
           onOpenTasks={viewModel.canOpenTaskProgress ? onOpenTasks : undefined}
           score={viewModel.score}
           state={viewModel.state}
@@ -353,6 +358,7 @@ export function ProjectOutcomeReviewPanel({
       ) : (
         <ReviewStatus
           description={viewModel.description}
+          onOpenReviewCenter={onOpenReviewCenter}
           onOpenTasks={viewModel.canOpenTaskProgress ? onOpenTasks : undefined}
           state={viewModel.state}
           title={viewModel.title}
@@ -364,6 +370,7 @@ export function ProjectOutcomeReviewPanel({
 
 function ScoreSummary({
   onOpenImprovementSuggestions,
+  onOpenReviewCenter,
   onOpenTasks,
   score,
   state,
@@ -371,6 +378,7 @@ function ScoreSummary({
   statusTitle,
 }: {
   onOpenImprovementSuggestions?: () => void;
+  onOpenReviewCenter?: () => void;
   onOpenTasks?: () => void;
   score: ProjectOutcomeScore;
   state: ProjectOutcomeReviewState;
@@ -428,6 +436,15 @@ function ScoreSummary({
           <Lightbulb aria-hidden="true" size={20} />
           查看提升建议
         </button>
+      ) : (state === 'stale' || state === 'refresh-error') && onOpenReviewCenter ? (
+        <button
+          className="project-outcome-review__suggestions"
+          onClick={onOpenReviewCenter}
+          type="button"
+        >
+          <Lightbulb aria-hidden="true" size={20} />
+          重新模拟评标
+        </button>
       ) : null}
     </>
   );
@@ -435,11 +452,13 @@ function ScoreSummary({
 
 function ReviewStatus({
   description,
+  onOpenReviewCenter,
   onOpenTasks,
   state,
   title,
 }: {
   description: string;
+  onOpenReviewCenter?: () => void;
   onOpenTasks?: () => void;
   state: ProjectOutcomeReviewState;
   title: string;
@@ -461,6 +480,10 @@ function ReviewStatus({
       <p>{description}</p>
       {onOpenTasks ? (
         <button onClick={onOpenTasks} type="button">查看任务进度</button>
+      ) : onOpenReviewCenter && (state === 'empty' || state === 'failed' || state === 'error') ? (
+        <button onClick={onOpenReviewCenter} type="button">
+          {state === 'empty' ? '开始模拟评标' : '进入评审中心'}
+        </button>
       ) : null}
     </div>
   );

@@ -160,7 +160,8 @@ export function buildProjectReviewSidebarViewModel({
   tasksState = 'ready',
 }: ProjectReviewSidebarSource): ProjectReviewSidebarViewModel {
   const generationInProgress = tasksState === 'ready' && tasks.some((task) =>
-    (task.task_type ?? task.phase) === 'bid_generate' && activeTaskStatuses.has(task.status));
+    ['agent_pipeline', 'bid_generate'].includes(task.task_type ?? task.phase)
+      && activeTaskStatuses.has(task.status));
   const scoreRuleCount = requirements.filter((requirement) => requirement.type === 'score_rule').length;
   const scoringMetric: ProjectReviewMetric = requirementsState === 'ready'
     ? {

@@ -87,6 +87,17 @@ function expectCanonicalValues(container: HTMLElement, viewModel: ProjectReviewS
 }
 
 describe('ProjectReviewSidebar', () => {
+  it('treats the current agent pipeline as a real generation task', () => {
+    const viewModel = buildProjectReviewSidebarViewModel({
+      deliverables: [],
+      requirements: [],
+      tasks: [{ phase: 'agent_pipeline', status: 'running', task_type: 'agent_pipeline' }],
+    });
+
+    expect(viewModel.metrics.find((metric) => metric.id === 'business'))
+      .toMatchObject({ detail: '后端生成任务处理中', state: 'in-progress', value: '执行中' });
+  });
+
   it('uses real requirements, deliverable versions, and active generation tasks', () => {
     const active = activeGenerationViewModel();
     const { container, rerender } = render(<ProjectReviewSidebar viewModel={active} />);

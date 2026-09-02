@@ -596,6 +596,9 @@ describe('DeliverableEditorPage', () => {
     );
 
     const sourceRail = screen.getByRole('complementary', { name: '企业资料' });
+    expect(within(sourceRail).getByRole('button', { name: '全部资料，1项' }))
+      .toHaveAttribute('aria-expanded', 'false');
+    await user.click(within(sourceRail).getByRole('button', { name: '全部资料，1项' }));
     expect(within(sourceRail).getByLabelText('企业资质证书.pdf')).toBeInTheDocument();
     expect(within(sourceRail).queryByLabelText('招标文件.pdf')).not.toBeInTheDocument();
     expect(within(sourceRail).queryByRole('tab')).not.toBeInTheDocument();
