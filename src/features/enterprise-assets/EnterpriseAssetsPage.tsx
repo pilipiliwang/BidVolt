@@ -465,8 +465,8 @@ export function EnterpriseAssetsPage({
           >
             <header className="enterprise-modal__header">
               <div>
-                <span>企业资料专属入口</span>
-                <h2 id="enterprise-upload-dialog-title">上传并自动归档</h2>
+                <span>企业资料库</span>
+                <h2 id="enterprise-upload-dialog-title">导入企业资料</h2>
               </div>
               <button
                 className="enterprise-modal__close"

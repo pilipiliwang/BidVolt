@@ -96,6 +96,13 @@ const knownUnavailableOperations = [
   ['GET', '/api/v1/enterprise/assets/{asset_id}/revisions/{revision_id}'],
 ];
 
+// These are capability gaps rather than missing OpenAPI paths. Keep them out of
+// requiredOperations and review them against backend behavior/source code.
+const knownUnavailableCapabilities = [
+  'RAR/7Z 压缩包解包（现有上传与解包接口仅支持 ZIP）',
+  '历史标书成果智能提取企业资料（后端尚未定义启动接口）',
+];
+
 const response = await fetch(openApiUrl, { signal: AbortSignal.timeout(15_000) });
 if (!response.ok) {
   throw new Error(`读取后端 OpenAPI 失败：HTTP ${response.status} (${openApiUrl})`);
@@ -110,6 +117,8 @@ const newlyAvailable = knownUnavailableOperations.filter(supports);
 console.log(`OpenAPI: ${openApiUrl}`);
 console.log(`已验证前端必需接口：${requiredOperations.length - missingRequired.length}/${requiredOperations.length}`);
 console.log(`后端仍未提供的已知能力：${knownUnavailableOperations.length - newlyAvailable.length}/${knownUnavailableOperations.length}`);
+console.log(`需结合源码或行为复核的能力缺口：${knownUnavailableCapabilities.length}`);
+knownUnavailableCapabilities.forEach((capability) => console.log(`- ${capability}`));
 
 if (missingRequired.length > 0) {
   console.error('\n缺少前端已接入的必需接口：');

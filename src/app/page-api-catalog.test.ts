@@ -293,7 +293,7 @@ describe('page API catalog', () => {
     });
   });
 
-  it('marks login password recovery unavailable and exposes enterprise preview APIs', () => {
+  it('marks unavailable enterprise capabilities without inventing observable API calls', () => {
     const login = pageApiCatalog({ name: 'login' });
     const enterprise = pageApiCatalog({ name: 'enterprise-assets' });
 
@@ -310,6 +310,28 @@ describe('page API catalog', () => {
     expect(enterprise.find((item) => item.id === 'enterprise-rename-asset')).toMatchObject({
       method: 'PATCH',
       path: '/enterprise/assets/{assetId}',
+      unavailableReason: expect.stringContaining('尚未提供'),
+    });
+    const rar7z = enterprise.find((item) => item.id === 'enterprise-rar-7z-extract')!;
+    expect(rar7z).toMatchObject({
+      feature: '解包 RAR/7Z 压缩包',
+      method: 'POST',
+      path: '/files/upload',
+      trackRuntime: false,
+      unavailableReason: expect.stringContaining('后端会拒绝 RAR/7Z'),
+    });
+    expect(pageApiOperationMatches(rar7z, {
+      method: 'POST',
+      path: '/files/upload',
+    })).toBe(false);
+
+    const historyBid = enterprise.find((item) => item.id === 'enterprise-history-bid-extract')!;
+    expect(historyBid).toMatchObject({
+      feature: '历史标书成果智能提取企业资料',
+      method: 'POST',
+      path: '后端未定义',
+      isTask: true,
+      trackRuntime: false,
       unavailableReason: expect.stringContaining('尚未提供'),
     });
   });

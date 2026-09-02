@@ -1,4 +1,10 @@
-import { AlertCircle, Building2, CheckCircle2, FileUp, LoaderCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  FileText,
+  FileUp,
+  LoaderCircle,
+} from 'lucide-react';
 import { useId, useState, type ChangeEvent, type DragEvent } from 'react';
 
 import type { EnterpriseAssetUploadProps, EnterpriseUploadState } from '../types';
@@ -13,7 +19,10 @@ function validateFiles(files: FileList) {
       ? `.${file.name.split('.').pop()?.toLocaleLowerCase() ?? ''}`
       : '';
     if (!acceptedExtensions.has(extension)) {
-      throw new Error(`${file.name}：当前后端不支持该格式；压缩包请使用 ZIP`);
+      if (extension === '.rar' || extension === '.7z') {
+        throw new Error(`${file.name}：后端暂不支持 RAR/7Z，请转换为 ZIP 后上传`);
+      }
+      throw new Error(`${file.name}：后端暂不支持该格式`);
     }
     if (file.size > MAX_UPLOAD_BYTES) {
       throw new Error(`${file.name}：单个文件不能超过 500MB`);
@@ -22,7 +31,6 @@ function validateFiles(files: FileList) {
 }
 
 export function EnterpriseAssetUpload({
-  enterpriseName,
   onUpload,
   uploadState: controlledUploadState,
   onUploadStateChange,
@@ -33,6 +41,7 @@ export function EnterpriseAssetUpload({
     type: 'idle',
   });
   const uploadState = controlledUploadState ?? localUploadState;
+  const isUploading = uploadState.type === 'loading';
   const setUploadState = (state: EnterpriseUploadState) => {
     if (onUploadStateChange) {
       onUploadStateChange(state);
@@ -42,7 +51,7 @@ export function EnterpriseAssetUpload({
   };
 
   const dispatchFiles = async (files: FileList | null) => {
-    if (!files?.length || uploadState.type === 'loading') return;
+    if (!files?.length || isUploading) return;
     if (!onUpload) {
       setUploadState({ message: '当前环境未配置企业资料上传能力。', type: 'error' });
       return;
@@ -76,27 +85,50 @@ export function EnterpriseAssetUpload({
   };
 
   return (
-    <section className="enterprise-upload" aria-labelledby="enterprise-upload-title">
-      <div className="enterprise-upload__heading">
-        <span className="enterprise-upload__icon" aria-hidden="true">
-          <Building2 size={20} />
-        </span>
-        <div>
-          <p className="enterprise-eyebrow">企业资料专属入口</p>
-          <h2 id="enterprise-upload-title">上传企业资料</h2>
-        </div>
+    <section className="enterprise-upload" aria-label="企业资料上传">
+      <div className="enterprise-upload__modes" role="group" aria-label="企业资料上传方式">
+        <button
+          className="enterprise-upload-mode enterprise-upload-mode--active"
+          type="button"
+          aria-pressed="true"
+          disabled={isUploading}
+        >
+          <span className="enterprise-upload-mode__icon" aria-hidden="true">
+            <FileUp size={21} />
+          </span>
+          <span className="enterprise-upload-mode__copy">
+            <strong>上传企业资料</strong>
+            <small>选择文件或拖拽上传</small>
+          </span>
+          <span className="enterprise-upload-mode__badge">当前方式</span>
+        </button>
+
+        <button
+          className="enterprise-upload-mode enterprise-upload-mode--unavailable"
+          type="button"
+          disabled
+        >
+          <span className="enterprise-upload-mode__icon" aria-hidden="true">
+            <FileText size={21} />
+          </span>
+          <span className="enterprise-upload-mode__copy">
+            <strong>从历史标书成果提取</strong>
+            <small>由 AI 提取企业资料并自动归档</small>
+          </span>
+          <span className="enterprise-upload-mode__badge">待测试</span>
+        </button>
       </div>
 
       <label
-        className="enterprise-dropzone"
+        className={`enterprise-dropzone${isUploading ? ' enterprise-dropzone--disabled' : ''}`}
         htmlFor={inputId}
+        aria-disabled={isUploading}
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
         <FileUp aria-hidden="true" size={27} />
         <strong>选择文件或拖拽到此处</strong>
-        <span>资料只归属于 {enterpriseName}；上传后由服务端自动分类并抽取字段</span>
-        <span className="enterprise-dropzone__formats">支持文档、表格、图片与 ZIP，单个文件不超过 500MB；RAR/7Z 暂不支持解包</span>
+        <span className="enterprise-dropzone__formats">支持 PDF、OFD、Word、Excel、PPT、文本、图片和 ZIP；单个文件不超过 500MB</span>
       </label>
       <input
         id={inputId}
@@ -104,6 +136,7 @@ export function EnterpriseAssetUpload({
         type="file"
         multiple
         accept={BACKEND_UPLOAD_ACCEPT}
+        disabled={isUploading}
         onChange={handleChange}
       />
 

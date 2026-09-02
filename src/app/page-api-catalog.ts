@@ -11,6 +11,7 @@ export type PageApiOperation = {
   matchPathname: string | RegExp;
   matchQuery?: Record<string, string>;
   isTask: boolean;
+  trackRuntime: boolean;
   notIntegratedReason?: string;
   unavailableReason?: string;
 };
@@ -33,6 +34,7 @@ const operation = (
     matchPathname?: string | RegExp;
     matchQuery?: Record<string, string>;
     isTask?: boolean;
+    trackRuntime?: boolean;
     notIntegratedReason?: string;
     unavailableReason?: string;
   } = {},
@@ -45,6 +47,7 @@ const operation = (
   matchPathname: options.matchPathname ?? path.split('?', 1)[0],
   matchQuery: options.matchQuery,
   isTask: options.isTask ?? false,
+  trackRuntime: options.trackRuntime ?? true,
   notIntegratedReason: options.notIntegratedReason,
   unavailableReason: options.unavailableReason,
 });
@@ -402,6 +405,29 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
     return [
       ...operations,
       operation('enterprise-upload', '上传企业资料', '操作：选择或拖入企业文件', 'POST', '/files/upload'),
+      operation(
+        'enterprise-rar-7z-extract',
+        '解包 RAR/7Z 压缩包',
+        '计划：上传 RAR/7Z 后由服务端安全解包并逐件入库',
+        'POST',
+        '/files/upload',
+        {
+          trackRuntime: false,
+          unavailableReason: '当前文件上传接口仅支持 ZIP 自动解包；后端会拒绝 RAR/7Z，需先转换为 ZIP。',
+        },
+      ),
+      operation(
+        'enterprise-history-bid-extract',
+        '历史标书成果智能提取企业资料',
+        '计划：上传历史标书成果，异步解析并将可复用企业资料分类入库',
+        'POST',
+        '后端未定义',
+        {
+          isTask: true,
+          trackRuntime: false,
+          unavailableReason: '后端尚未提供历史标书成果解析、企业资料抽取及分类入库接口；现有企业资料归类仅依据文件名。',
+        },
+      ),
       operation('enterprise-ingest', '重新执行企业资料归类', '当前页面暂无手动重归类入口', 'POST', '/enterprise/ingest', {
         notIntegratedReason: '上传后端会按文件名关键词自动归类；当前页面不重复执行同一规则，基于正文或 OCR 内容的归类及确认闭环尚未提供。',
       }),
@@ -523,6 +549,7 @@ export function pageApiOperationMatches(
   operationDefinition: PageApiOperation,
   request: PageApiRequestLike,
 ) {
+  if (!operationDefinition.trackRuntime) return false;
   if (request.method.toUpperCase() !== operationDefinition.method) return false;
 
   const url = requestUrl(request.path);

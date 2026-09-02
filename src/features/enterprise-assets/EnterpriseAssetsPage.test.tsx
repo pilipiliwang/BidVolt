@@ -356,7 +356,7 @@ describe('EnterpriseAssetsPage', () => {
     const file = new File(['broken'], '资质.pdf', { type: 'application/pdf' });
     await user.upload(screen.getByLabelText(/选择文件或拖拽到此处/), file);
 
-    const uploadDialog = screen.getByRole('dialog', { name: '上传并自动归档' });
+    const uploadDialog = screen.getByRole('dialog', { name: '导入企业资料' });
     expect(await within(uploadDialog).findByRole('alert')).toHaveTextContent('资质.pdf：文件损坏');
   });
 
@@ -376,7 +376,7 @@ describe('EnterpriseAssetsPage', () => {
       new File(['qualification'], '资质.pdf', { type: 'application/pdf' }),
     );
 
-    const uploadDialog = screen.getByRole('dialog', { name: '上传并自动归档' });
+    const uploadDialog = screen.getByRole('dialog', { name: '导入企业资料' });
     expect(await within(uploadDialog).findByRole('alert'))
       .toHaveTextContent('当前环境未配置企业资料上传能力');
     expect(screen.queryByText('上传已受理')).not.toBeInTheDocument();
@@ -403,7 +403,7 @@ describe('EnterpriseAssetsPage', () => {
     const activity = screen.getByLabelText('企业资料上传与处理状态');
     expect(within(activity).getByText('上传中')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '关闭上传资料窗口' }));
-    expect(screen.queryByRole('dialog', { name: /上传并自动归档/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /导入企业资料/ })).not.toBeInTheDocument();
     expect(within(activity).getByText('上传中')).toBeInTheDocument();
 
     await act(async () => {

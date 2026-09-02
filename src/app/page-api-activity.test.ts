@@ -77,6 +77,24 @@ describe('page API activity', () => {
       .toMatchObject({ status: 'not-integrated', callCount: 0 });
   });
 
+  it('keeps semantic backend gaps unavailable after an ordinary enterprise upload succeeds', () => {
+    const definitions = pageApiCatalog({ name: 'enterprise-assets' });
+    const result = buildPageApiActivity(definitions, [
+      requestEvent({
+        method: 'POST',
+        path: '/files/upload',
+        pathname: '/files/upload',
+      }),
+    ]);
+
+    expect(result.checks.find((check) => check.id === 'enterprise-upload'))
+      .toMatchObject({ status: 'success', callCount: 1 });
+    expect(result.checks.find((check) => check.id === 'enterprise-rar-7z-extract'))
+      .toMatchObject({ status: 'unavailable', callCount: 0 });
+    expect(result.checks.find((check) => check.id === 'enterprise-history-bid-extract'))
+      .toMatchObject({ status: 'unavailable', callCount: 0 });
+  });
+
   it('shows Agent streaming as untriggered, then captures the real SSE request including since', () => {
     const definitions = pageApiCatalog({ name: 'project-overview', projectId: '7' });
     const withoutStream = buildPageApiActivity(definitions, [
