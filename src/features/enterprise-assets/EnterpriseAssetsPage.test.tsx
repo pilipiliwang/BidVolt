@@ -108,12 +108,14 @@ describe('EnterpriseAssetsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '企业资料库', level: 2 })).toBeInTheDocument();
-    expect(screen.getByRole('note')).toHaveTextContent('企业域');
-    expect(screen.getByRole('note')).toHaveTextContent('自动分类不会改变其数据归属');
-    expect(screen.getByRole('note')).toHaveTextContent('项目材料也不会进入企业库');
+    expect(screen.queryByRole('heading', { name: '企业资料库', level: 2 })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资料分类', level: 3 })).toBeInTheDocument();
+    expect(screen.getByText(/此处资料仅归属当前企业/)).toHaveTextContent('项目材料不会进入企业资料库');
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.getByRole('table')).toHaveTextContent('华东电气营业执照.pdf');
     expect(screen.getByRole('table')).not.toHaveTextContent('识别状态');
+    expect(screen.getByRole('button', { name: /业务资料/ })).toHaveTextContent('1');
+    expect(screen.getByRole('button', { name: /源文件/ })).toHaveTextContent('0');
     expect(screen.getByRole('button', { name: /企业证照/ })).toHaveTextContent('1');
     expect(screen.getByRole('button', { name: /检测报告/ })).toHaveTextContent('0');
 
@@ -130,6 +132,99 @@ describe('EnterpriseAssetsPage', () => {
     await user.click(screen.getByRole('button', { name: '关闭资料详情' }));
     expect(screen.queryByText(/资料归类任务/)).not.toBeInTheDocument();
     expect(screen.queryByText(/待用户核对/)).not.toBeInTheDocument();
+  });
+
+  it('separates archive source files from business and backend category folders', async () => {
+    const user = userEvent.setup();
+    const archive: EnterpriseAsset = {
+      ...assets[0],
+      id: 'asset-archive-1',
+      name: '企业资料原件.ZIP',
+      category: 'other',
+      categoryId: 'category-license',
+      categoryLabel: '企业证照',
+    };
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={[...assets, archive]}
+        categories={categories}
+      />,
+    );
+
+    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料原件.ZIP');
+    await user.click(screen.getByRole('button', { name: /企业证照/ }));
+    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料原件.ZIP');
+    await user.click(screen.getByRole('button', { name: /源文件/ }));
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料原件.ZIP');
+    expect(screen.getByRole('table')).not.toHaveTextContent('华东电气营业执照.pdf');
+    expect(screen.getByRole('table')).toHaveTextContent('源文件');
+    expect(screen.getByRole('table')).not.toHaveTextContent('企业证照');
+  });
+
+  it('paginates the filtered assets and supports 20 or 50 rows per page', async () => {
+    const user = userEvent.setup();
+    const manyAssets: EnterpriseAsset[] = Array.from({ length: 45 }, (_, index) => ({
+      ...assets[0],
+      id: `asset-${index + 1}`,
+      name: `企业资料-${String(index + 1).padStart(2, '0')}.pdf`,
+    }));
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={manyAssets}
+        categories={categories}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('显示 1–20 条，共 45 条');
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料-20.pdf');
+    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料-21.pdf');
+
+    await user.click(screen.getByRole('button', { name: '下一页' }));
+    expect(screen.getByRole('status')).toHaveTextContent('显示 21–40 条，共 45 条');
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料-21.pdf');
+    expect(screen.getByRole('table')).not.toHaveTextContent('企业资料-01.pdf');
+
+    await user.selectOptions(screen.getByRole('combobox', { name: '每页显示数量' }), '50');
+    expect(screen.getByRole('status')).toHaveTextContent('显示 1–45 条，共 45 条');
+    expect(screen.getByRole('table')).toHaveTextContent('企业资料-45.pdf');
+    expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
+  });
+
+  it('resets pagination for search and safely clamps after the result set shrinks', async () => {
+    const user = userEvent.setup();
+    const manyAssets: EnterpriseAsset[] = Array.from({ length: 45 }, (_, index) => ({
+      ...assets[0],
+      id: `asset-${index + 1}`,
+      name: `企业资料-${String(index + 1).padStart(2, '0')}.pdf`,
+    }));
+    const { rerender } = render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={manyAssets}
+        categories={categories}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '第 3 页' }));
+    expect(screen.getByRole('status')).toHaveTextContent('显示 41–45 条，共 45 条');
+    await user.type(screen.getByRole('searchbox', { name: '搜索企业资料' }), '企业资料-02');
+    expect(screen.getByRole('status')).toHaveTextContent('显示 1–1 条，共 1 条');
+    expect(screen.getByRole('button', { name: '第 1 页' })).toHaveAttribute('aria-current', 'page');
+
+    await user.clear(screen.getByRole('searchbox', { name: '搜索企业资料' }));
+    await user.click(screen.getByRole('button', { name: '第 3 页' }));
+    rerender(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={manyAssets.slice(0, 5)}
+        categories={categories}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('显示 1–5 条，共 5 条');
+    expect(screen.getByRole('button', { name: '第 1 页' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('uploads through the enterprise entry and submits a fact correction', async () => {

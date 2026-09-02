@@ -317,6 +317,7 @@ describe('backend DTO adapters', () => {
       categoryLabel: '证照',
       sourceFileId: '7',
       status: 'needs_review',
+      updatedAt: '2026-08-14',
     });
     expect(result.facts[0]).toMatchObject({
       id: '81',
@@ -329,6 +330,7 @@ describe('backend DTO adapters', () => {
       fileId: '7',
       isCurrent: true,
       createdBy: '用户 #3',
+      createdAt: '2026-08-14',
     });
   });
 
@@ -353,6 +355,85 @@ describe('backend DTO adapters', () => {
       facts: [],
       revisions: [],
       status: 'processing',
+      updatedAt: '—',
+    });
+  });
+
+  it('prefers real asset timestamps and formats enterprise dates at day precision', () => {
+    const asset: EnterpriseAsset = {
+      asset_id: 7,
+      name: '企业资质.pdf',
+      asset_type: '资质',
+      category_id: 2,
+      status: 3,
+      source_file_id: 14,
+      created_at: '2026-09-01',
+      updated_at: '2026-09-03',
+    };
+    const revisions: EnterpriseAssetRevision[] = [{
+      revision_id: 21,
+      revision_no: 1,
+      file_id: 14,
+      sha256: null,
+      source_location: null,
+      created_by: null,
+      created_at: '2026-08-31',
+    }];
+
+    const result = adaptBackendEnterpriseAsset({ asset, revisions });
+
+    expect(result.updatedAt).toBe('2026-09-03');
+    expect(result.revisions[0]?.createdAt).toBe('2026-08-31');
+
+    const zonedTimestamp = '2026-09-03T23:30:00-07:00';
+    const localDate = new Date(zonedTimestamp);
+    const expectedLocalDay = [
+      String(localDate.getFullYear()).padStart(4, '0'),
+      String(localDate.getMonth() + 1).padStart(2, '0'),
+      String(localDate.getDate()).padStart(2, '0'),
+    ].join('-');
+    expect(adaptBackendEnterpriseAsset({
+      asset: { ...asset, updated_at: zonedTimestamp },
+    }).updatedAt).toBe(expectedLocalDay);
+  });
+
+  it('falls back through valid asset and revision dates without inventing a timestamp', () => {
+    const baseAsset: EnterpriseAsset = {
+      asset_id: 8,
+      name: '企业资质.pdf',
+      asset_type: '资质',
+      category_id: 2,
+      status: 3,
+      source_file_id: 15,
+      updated_at: '2026-02-30T10:00:00+08:00',
+      created_at: '2026-09-02',
+    };
+    const revision: EnterpriseAssetRevision = {
+      revision_id: 22,
+      revision_no: 1,
+      file_id: 15,
+      sha256: null,
+      source_location: null,
+      created_by: null,
+      created_at: 'not-a-date',
+    };
+
+    expect(adaptBackendEnterpriseAsset({ asset: baseAsset, revisions: [revision] })).toMatchObject({
+      updatedAt: '2026-09-02',
+      revisions: [{ createdAt: '—' }],
+    });
+
+    expect(adaptBackendEnterpriseAsset({
+      asset: { ...baseAsset, created_at: null, updated_at: 'invalid-timezone+99:00' },
+      revisions: [{ ...revision, revision_no: 2, created_at: '2026-09-01' }],
+    })).toMatchObject({ updatedAt: '2026-09-01' });
+
+    expect(adaptBackendEnterpriseAsset({
+      asset: { ...baseAsset, created_at: null, updated_at: null },
+      revisions: [{ ...revision, created_at: null }],
+    })).toMatchObject({
+      updatedAt: '—',
+      revisions: [{ createdAt: '—' }],
     });
   });
 

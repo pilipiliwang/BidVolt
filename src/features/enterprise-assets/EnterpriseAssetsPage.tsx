@@ -12,11 +12,10 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
-  ShieldCheck,
   Upload,
   X,
 } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { EnterpriseAssetDetail } from './components/EnterpriseAssetDetail';
@@ -33,6 +32,35 @@ import type {
   EnterpriseUploadState,
 } from './types';
 import './enterprise-assets.css';
+
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20, 50] as const;
+
+type PaginationItem = number | 'end-ellipsis' | 'start-ellipsis';
+
+function buildPaginationItems(currentPage: number, pageCount: number): PaginationItem[] {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1);
+
+  const pages = new Set([1, pageCount, currentPage - 1, currentPage, currentPage + 1]);
+  if (currentPage <= 4) [2, 3, 4, 5].forEach((page) => pages.add(page));
+  if (currentPage >= pageCount - 3) {
+    [pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1]
+      .forEach((page) => pages.add(page));
+  }
+
+  const orderedPages = [...pages]
+    .filter((page) => page >= 1 && page <= pageCount)
+    .sort((first, second) => first - second);
+  const items: PaginationItem[] = [];
+  orderedPages.forEach((page, index) => {
+    const previousPage = orderedPages[index - 1];
+    if (previousPage && page - previousPage > 1) {
+      items.push(previousPage === 1 ? 'start-ellipsis' : 'end-ellipsis');
+    }
+    items.push(page);
+  });
+  return items;
+}
 
 function getAssetFileMeta(asset: EnterpriseAsset) {
   const extension = asset.name.split('.').at(-1)?.toLocaleLowerCase();
@@ -67,6 +95,8 @@ export function EnterpriseAssetsPage({
   const [selectedFolderId, setSelectedFolderId] = useState(ALL_ENTERPRISE_ASSETS_FOLDER_ID);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [isUploadOpen, setUploadOpen] = useState(false);
   const [isUploadHistoryOpen, setUploadHistoryOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -88,6 +118,7 @@ export function EnterpriseAssetsPage({
     try {
       await onRefresh?.();
       setQuery('');
+      setCurrentPage(1);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : '资料列表刷新失败，请稍后重试。');
     } finally {
@@ -96,7 +127,10 @@ export function EnterpriseAssetsPage({
   };
 
   const folders = useMemo(
-    () => buildEnterpriseAssetFolders(categories, assets),
+    () => buildEnterpriseAssetFolders(categories, assets, {
+      allLabel: '业务资料',
+      separateSourceArchives: true,
+    }),
     [assets, categories],
   );
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? folders[0];
@@ -111,6 +145,20 @@ export function EnterpriseAssetsPage({
       return matchesQuery;
     });
   }, [query, selectedFolder.items]);
+  const pageCount = Math.max(1, Math.ceil(visibleAssets.length / pageSize));
+  const activePage = Math.min(currentPage, pageCount);
+  const pageOffset = (activePage - 1) * pageSize;
+  const paginatedAssets = visibleAssets.slice(pageOffset, pageOffset + pageSize);
+  const pageRangeStart = visibleAssets.length === 0 ? 0 : pageOffset + 1;
+  const pageRangeEnd = Math.min(pageOffset + pageSize, visibleAssets.length);
+  const paginationItems = useMemo(
+    () => buildPaginationItems(activePage, pageCount),
+    [activePage, pageCount],
+  );
+
+  useEffect(() => {
+    if (currentPage !== activePage) setCurrentPage(activePage);
+  }, [activePage, currentPage]);
 
   const selectedAsset = loadedAsset?.id === selectedAssetId
     ? loadedAsset
@@ -174,10 +222,7 @@ export function EnterpriseAssetsPage({
   return (
     <section className="enterprise-page">
       <header className="enterprise-page__header">
-        <div>
-          <h2>企业资料库</h2>
-          <p>统一管理企业资料，智能识别与归类，高效支持投标全流程</p>
-        </div>
+        <p>此处资料仅归属当前企业；上传后由系统自动归类，项目材料不会进入企业资料库。</p>
         <button
           className="enterprise-primary-action"
           type="button"
@@ -230,7 +275,10 @@ export function EnterpriseAssetsPage({
             type="search"
             value={query}
             placeholder="搜索文件名称/关键词"
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              setCurrentPage(1);
+            }}
           />
           <Search aria-hidden="true" size={19} />
         </label>
@@ -252,7 +300,7 @@ export function EnterpriseAssetsPage({
           <div className="enterprise-library__heading">
             <h3>
               <Archive aria-hidden="true" size={18} />
-              企业资料库
+              资料分类
             </h3>
             <span>{assets.length}</span>
           </div>
@@ -262,7 +310,10 @@ export function EnterpriseAssetsPage({
                 className={`enterprise-folder${selectedFolder.id === folder.id ? ' enterprise-folder--active' : ''}`}
                 key={folder.id}
                 type="button"
-                onClick={() => setSelectedFolderId(folder.id)}
+                onClick={() => {
+                  setSelectedFolderId(folder.id);
+                  setCurrentPage(1);
+                }}
               >
                 <ChevronRight aria-hidden="true" size={13} />
                 <Folder aria-hidden="true" size={18} />
@@ -271,13 +322,6 @@ export function EnterpriseAssetsPage({
               </button>
             ))}
           </nav>
-          <div className="enterprise-boundary" role="note">
-            <ShieldCheck aria-hidden="true" size={17} />
-            <span>
-              <strong>企业域专属资料</strong>
-              此处上传的资料归企业所有；自动分类不会改变其数据归属，项目材料也不会进入企业库。
-            </span>
-          </div>
         </aside>
 
         <div className="enterprise-table-wrap">
@@ -291,7 +335,7 @@ export function EnterpriseAssetsPage({
               </tr>
             </thead>
             <tbody>
-              {visibleAssets.map((asset) => {
+              {paginatedAssets.map((asset) => {
                 const fileMeta = getAssetFileMeta(asset);
                 const FileIcon = fileMeta.Icon;
                 return (
@@ -310,7 +354,7 @@ export function EnterpriseAssetsPage({
                       </button>
                     </td>
                     <td>{fileMeta.label}</td>
-                    <td>{asset.categoryLabel}</td>
+                    <td>{selectedFolder.kind === 'source' ? '源文件' : asset.categoryLabel}</td>
                     <td>{asset.updatedAt}</td>
                   </tr>
                 );
@@ -324,6 +368,57 @@ export function EnterpriseAssetsPage({
               <span>尝试更换关键词或选择其他文件夹。</span>
             </div>
           ) : null}
+          <nav className="enterprise-pagination" aria-label="企业资料分页">
+            <p role="status" aria-live="polite">
+              显示 {pageRangeStart}–{pageRangeEnd} 条，共 {visibleAssets.length} 条
+            </p>
+            <div className="enterprise-pagination__pages">
+              <button
+                type="button"
+                disabled={activePage === 1}
+                aria-label="上一页"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              >
+                上一页
+              </button>
+              {paginationItems.map((item) => item === 'start-ellipsis' || item === 'end-ellipsis' ? (
+                <span aria-hidden="true" key={item}>…</span>
+              ) : (
+                <button
+                  type="button"
+                  aria-current={item === activePage ? 'page' : undefined}
+                  aria-label={`第 ${item} 页`}
+                  key={item}
+                  onClick={() => setCurrentPage(item)}
+                >
+                  {item}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={activePage === pageCount}
+                aria-label="下一页"
+                onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
+              >
+                下一页
+              </button>
+            </div>
+            <label>
+              <span>每页</span>
+              <select
+                aria-label="每页显示数量"
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.currentTarget.value));
+                  setCurrentPage(1);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option} 条</option>
+                ))}
+              </select>
+            </label>
+          </nav>
         </div>
       </section>
 

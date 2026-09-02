@@ -20,7 +20,6 @@ export type AppRoute =
       deliverableId: DeliverableRouteId;
       versionId: string;
     }
-  | { name: 'history-prices' }
   | { name: 'not-found' };
 
 export type DeliverableRouteId = 'business' | 'technical' | 'quote';
@@ -57,10 +56,6 @@ export function matchRoute(pathname: string): AppRoute {
 
   if (path === '/enterprise-assets') {
     return { name: 'enterprise-assets' };
-  }
-
-  if (path === '/history-prices' || path === '/history') {
-    return { name: 'history-prices' };
   }
 
   const deliverableEditorMatch = path.match(

@@ -48,16 +48,7 @@ export function shouldShowImageDescribeProgress(progress: ImageDescribeProgress 
   if (!progress) return false;
   return progress.queued > 0
     || progress.running > 0
-    || progress.remaining > 0
-    || progress.done > 0
-    || progress.failed_terminal > 0;
-}
-
-export function isImageDescribeProgressComplete(progress: ImageDescribeProgress) {
-  return progress.remaining === 0
-    && progress.queued === 0
-    && progress.running === 0
-    && progress.done + progress.failed_terminal > 0;
+    || progress.remaining > 0;
 }
 
 export function findLatestActiveBidGenerateTask(events: readonly PublicTaskEvent[]) {

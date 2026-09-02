@@ -27,7 +27,7 @@ describe('App API test panel integration', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: '登录AI电网投标助手' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '登录电网投标助手' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'API 联调测试框' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '进入本地只读预览' }));

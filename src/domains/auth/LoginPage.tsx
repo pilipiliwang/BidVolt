@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { BrandLogo } from '../../shared/ui/BrandLogo';
+import { PRODUCT_NAME } from '../../shared/product-brand';
 import '../../styles/ui0802-shell.css';
 
 export type LoginCredentials = {
@@ -135,7 +136,7 @@ export function LoginPage({
       <section className="login0802__story" aria-label="产品能力介绍">
         <div className="login0802__brand">
           <BrandLogo />
-          <strong>AI电网投标助手</strong>
+          <strong>{PRODUCT_NAME}</strong>
         </div>
         <div className="login0802__brand-rule" aria-hidden="true" />
         <p className="login0802__lead">
@@ -182,7 +183,7 @@ export function LoginPage({
 
         <form className="login0802__form" onSubmit={handleSubmit}>
           <h1 id="login-panel-title" className="sr-only">
-            {mode === 'login' ? '登录AI电网投标助手' : '注册AI电网投标助手'}
+            {mode === 'login' ? `登录${PRODUCT_NAME}` : `注册${PRODUCT_NAME}`}
           </h1>
           {mode === 'register' && onRegister ? (
             <label>

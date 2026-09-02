@@ -5,7 +5,6 @@ import {
   Building2,
   CheckCircle2,
   ClipboardCheck,
-  Database,
   FileCheck2,
   FileSpreadsheet,
   FileText,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { AppLink } from '../../app/router';
+import { PRODUCT_NAME } from '../../shared/product-brand';
 import { BrandLogo } from '../../shared/ui/BrandLogo';
 import './landing-page.css';
 
@@ -60,13 +60,6 @@ const capabilities = [
     description:
       '通过统一 ReviewProvider 接入应用接口、受限规则代码、规则引擎或文档规则，并校验结构化结果。',
     meta: 'API / 代码 / 规则文档',
-  },
-  {
-    icon: BarChart3,
-    title: '历史报价单向取值',
-    description:
-      '外部历史数据库保持只读，由带版本号的确定性 QuoteEngine 基于冻结样本计算可解释的报价策略。',
-    meta: '只读数据源 · 确定性算法',
   },
 ] as const;
 
@@ -125,13 +118,6 @@ const boundaryCards = [
     description: '只处理固定项目快照和成果版本；浏览器不持有凭据，也不直接执行外部代码。',
     badge: '统一 Provider',
   },
-  {
-    icon: Database,
-    eyebrow: '只读数据源',
-    title: '历史报价数据库',
-    description: '仅查询不可变快照，不提供新增、修改或删除通道；算法在受控服务中完成。',
-    badge: '单向取值',
-  },
 ] as const;
 
 export function LandingPage() {
@@ -143,10 +129,10 @@ export function LandingPage() {
 
       <header className="marketing-header">
         <div className="marketing-header__inner">
-          <AppLink className="marketing-brand" to="/" aria-label="AI电网投标助手产品首页">
-            <BrandLogo title="AI电网投标助手" />
+          <AppLink className="marketing-brand" to="/" aria-label={`${PRODUCT_NAME}产品首页`}>
+            <BrandLogo title={PRODUCT_NAME} />
             <span>
-              <strong>AI电网投标助手</strong>
+              <strong>{PRODUCT_NAME}</strong>
               <small>电力行业投标智能工作台</small>
             </span>
           </AppLink>
@@ -185,7 +171,7 @@ export function LandingPage() {
                 <em>让每一步都有依据</em>
               </h1>
               <p>
-                将企业资料、本次招标材料、Word/Excel 标书成果、评审机制与历史报价连接成一条受控工作流。
+                将企业资料、本次招标材料、Word/Excel 标书成果、评审机制与报价测算连接成一条受控工作流。
                 资料不串库、建议可确认、结果可追溯。
               </p>
               <div className="marketing-hero__actions">
@@ -333,7 +319,7 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="评审与报价"
               title="外部能力可以接入，关键决策仍然受控"
-              description="评审机制与历史报价来源可以来自企业现有系统，项目快照、算法版本和用户确认共同保证结果可解释。"
+              description="评审机制可以来自企业现有系统，项目快照、算法版本和用户确认共同保证结果可解释。"
               id="integration-title"
             />
             <div className="marketing-integration-grid">
@@ -349,10 +335,10 @@ export function LandingPage() {
               <article className="marketing-integration-card marketing-integration-card--quote">
                 <span className="marketing-integration-card__icon" aria-hidden="true"><Gauge size={27} /></span>
                 <span className="marketing-eyebrow">QuoteEngine</span>
-                <h3>历史报价只读，算法结果有依据</h3>
-                <p>冻结外部查询快照，结合规格、地区、时间、成本与毛利要求计算；数据不足时明确停止，不使用 AI 猜价。</p>
+                <h3>报价测算可复核，算法结果有依据</h3>
+                <p>结合项目规格、成本与毛利要求计算；数据不足时明确停止，不使用 AI 猜价。</p>
                 <div className="marketing-quote-line">
-                  <span><Database aria-hidden="true" size={18} />外部历史库</span>
+                  <span><FileSpreadsheet aria-hidden="true" size={18} />项目报价输入</span>
                   <ArrowRight aria-hidden="true" size={18} />
                   <span><BarChart3 aria-hidden="true" size={18} />确定性算法</span>
                 </div>
@@ -389,7 +375,7 @@ export function LandingPage() {
               <div className="marketing-contact__qr-frame">
                 <img
                   src="/contact-qr.png"
-                  alt="AI电网投标助手联系人微信二维码"
+                  alt={`${PRODUCT_NAME}联系人微信二维码`}
                   width="678"
                   height="664"
                   loading="lazy"
@@ -425,7 +411,7 @@ export function LandingPage() {
         <div className="marketing-container marketing-footer__inner">
           <div className="marketing-footer__brand">
             <BrandLogo />
-            <span><strong>AI电网投标助手</strong><small>专为电力行业投标打造的智能助手</small></span>
+            <span><strong>{PRODUCT_NAME}</strong><small>专为电力行业投标打造的智能助手</small></span>
           </div>
           <nav aria-label="页脚导航">
             <a href="#capabilities">产品能力</a>
@@ -472,7 +458,7 @@ function ProductPreview() {
   ];
 
   return (
-    <div className="marketing-product-preview" aria-label="AI电网投标助手成果工作台演示">
+    <div className="marketing-product-preview" aria-label={`${PRODUCT_NAME}成果工作台演示`}>
       <div className="marketing-product-preview__bar">
         <span><i /><i /><i /></span>
         <strong>海上平台电气设备采购项目</strong>

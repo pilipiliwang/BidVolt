@@ -25,7 +25,6 @@ describe('tenant state isolation', () => {
       enterpriseAssets: [],
       enterpriseCategories: [],
       enterpriseIngestions: [],
-      history: { records: [], samples: [], total: 0 },
       loadingProjectId: null,
       projectData: {},
       projects: [],

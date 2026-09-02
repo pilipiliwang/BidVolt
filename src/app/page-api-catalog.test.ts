@@ -11,7 +11,6 @@ describe('page API catalog', () => {
       { name: 'login' as const },
       { name: 'projects' as const },
       { name: 'enterprise-assets' as const },
-      { name: 'history-prices' as const },
       { name: 'project-overview' as const, projectId: '7' },
       { name: 'project-materials' as const, projectId: '7' },
       { name: 'review-center' as const, projectId: '7' },
@@ -199,21 +198,9 @@ describe('page API catalog', () => {
     expect(pageApiOperationMatches(detail, { method: 'POST', path: '/quotes/31' })).toBe(false);
   });
 
-  it('lists and distinguishes the latest quote history and pricing extensions', () => {
-    const history = pageApiCatalog({ name: 'history-prices' });
+  it('keeps project pricing extensions after removing the standalone history page', () => {
     const pricing = pageApiCatalog({ name: 'pricing-center', projectId: '7' });
-    const samples = history.find((item) => item.id === 'quote-history-material-samples')!;
-    const detail = history.find((item) => item.id === 'quote-history-sample-detail')!;
-    const trend = history.find((item) => item.id === 'quote-history-material-trend')!;
 
-    expect(history.map((item) => item.id)).toEqual(expect.arrayContaining([
-      'bootstrap-history-quotes',
-      'quote-history-source-metadata',
-      'quote-history-import',
-      'quote-history-material-samples',
-      'quote-history-sample-detail',
-      'quote-history-material-trend',
-    ]));
     expect(pricing.map((item) => item.id)).toEqual(expect.arrayContaining([
       'quote-calculate',
       'quote-recalculate',
@@ -221,28 +208,10 @@ describe('page API catalog', () => {
       'quote-ai-suggest',
       'quote-apply',
     ]));
-    expect(history.find((item) => item.id === 'quote-history-import')?.notIntegratedReason).toBeUndefined();
-    expect(history.find((item) => item.id === 'quote-history-sample-detail')?.notIntegratedReason)
-      .toContain('sample_id');
+    expect(pricing.find((item) => item.id === 'bootstrap-history-quotes')).toBeUndefined();
     for (const id of ['quote-calculate', 'quote-recalculate', 'quote-ai-suggest']) {
       expect(pricing.find((item) => item.id === id)?.notIntegratedReason).toBeUndefined();
     }
-    expect(pageApiOperationMatches(samples, {
-      method: 'GET',
-      path: '/quotes/history/%E7%89%A9%E6%96%99-A/samples',
-    })).toBe(true);
-    expect(pageApiOperationMatches(detail, {
-      method: 'GET',
-      path: '/quotes/history/samples/12',
-    })).toBe(true);
-    expect(pageApiOperationMatches(samples, {
-      method: 'GET',
-      path: '/quotes/history/samples/12',
-    })).toBe(false);
-    expect(pageApiOperationMatches(trend, {
-      method: 'GET',
-      path: '/quotes/history/material-7/trend',
-    })).toBe(true);
   });
 
   it('matches corrected tender notice list/detail and requirement mutation paths', () => {

@@ -50,6 +50,44 @@ const asNumber = (value: unknown): number | undefined => {
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
+const isoDatePrefix = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/;
+
+/**
+ * Format backend ISO dates at day precision in the browser's timezone.
+ * Reject impossible calendar dates before parsing so values such as
+ * 2026-02-30 do not silently roll into March in some JavaScript engines.
+ */
+const formatBackendDate = (value: string | null | undefined): string | undefined => {
+  const source = asString(value);
+  if (!source) return undefined;
+
+  const prefix = source.match(isoDatePrefix);
+  if (!prefix) return undefined;
+  const sourceYear = Number(prefix[1]);
+  const sourceMonth = Number(prefix[2]);
+  const sourceDay = Number(prefix[3]);
+  const calendarCheck = new Date(Date.UTC(sourceYear, sourceMonth - 1, sourceDay));
+  if (
+    calendarCheck.getUTCFullYear() !== sourceYear
+    || calendarCheck.getUTCMonth() + 1 !== sourceMonth
+    || calendarCheck.getUTCDate() !== sourceDay
+  ) return undefined;
+
+  // A date-only value is already a calendar date and must not shift backward in
+  // browsers west of UTC. Python's isoformat may use a space before the time;
+  // normalize it to the cross-browser ISO `T` form before parsing.
+  if (source.length === 10) return `${prefix[1]}-${prefix[2]}-${prefix[3]}`;
+  const normalizedSource = source[10] === ' '
+    ? `${source.slice(0, 10)}T${source.slice(11)}`
+    : source;
+  const date = new Date(normalizedSource);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const displayJson = (value: JsonValue): string => {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -275,6 +313,10 @@ export function adaptBackendEnterpriseAsset(
     : categoryIndex.get(bundle.asset.category_id);
   const latestRevisionNo = Math.max(0, ...revisions.map((revision) => revision.revision_no));
   const latestCreatedAt = revisions.find((revision) => revision.revision_no === latestRevisionNo)?.created_at;
+  const updatedAt = formatBackendDate(bundle.asset.updated_at)
+    ?? formatBackendDate(bundle.asset.created_at)
+    ?? formatBackendDate(latestCreatedAt)
+    ?? '—';
 
   return {
     id: String(bundle.asset.asset_id),
@@ -297,7 +339,7 @@ export function adaptBackendEnterpriseAsset(
           : bundle.asset.status === 4
             ? 'failed'
             : 'processing',
-    updatedAt: latestCreatedAt ?? '更新时间未提供',
+    updatedAt,
     imageDescription: bundle.detail?.image_description ?? null,
     facts: facts.map((fact) => ({
       // Backend correction is addressed by fact_id; retain it as the UI mutation key.
@@ -313,7 +355,7 @@ export function adaptBackendEnterpriseAsset(
       id: String(revision.revision_id),
       revisionNo: revision.revision_no,
       fileId: revision.file_id === null ? undefined : String(revision.file_id),
-      createdAt: revision.created_at ?? '创建时间未提供',
+      createdAt: formatBackendDate(revision.created_at) ?? '—',
       createdBy: revision.created_by === null ? '创建人未提供' : `用户 #${revision.created_by}`,
       changeNote: '变更说明未提供',
       isCurrent: revision.revision_no === latestRevisionNo,

@@ -7,7 +7,6 @@ import {
   findLatestAgentPipelineTask,
   findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
-  isImageDescribeProgressComplete,
   isActiveTaskStatus,
   isProjectNotFound,
   isReviewScoreUnavailable,
@@ -111,7 +110,7 @@ describe('project resource state', () => {
     expect(shouldReloadProjectAfterAgentPoll('active', 'active', false)).toBe(false);
   });
 
-  it('keeps the image-description bar visible after all background work finishes', () => {
+  it('hides the image-description bar after all background work finishes', () => {
     const completed = {
       queued: 0,
       running: 0,
@@ -121,10 +120,10 @@ describe('project resource state', () => {
       described_images: 12,
     };
 
-    expect(shouldShowImageDescribeProgress(completed)).toBe(true);
-    expect(isImageDescribeProgressComplete(completed)).toBe(true);
+    expect(shouldShowImageDescribeProgress(completed)).toBe(false);
     expect(shouldShowImageDescribeProgress({ ...completed, done: 0, described_images: 0 })).toBe(false);
-    expect(isImageDescribeProgressComplete({ ...completed, queued: 1, remaining: 1 })).toBe(false);
+    expect(shouldShowImageDescribeProgress({ ...completed, done: 3, failed_terminal: 1 })).toBe(false);
+    expect(shouldShowImageDescribeProgress({ ...completed, queued: 1, remaining: 1 })).toBe(true);
   });
 
   it('keeps cancel-requested tasks in the polling set', () => {

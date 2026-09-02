@@ -86,7 +86,6 @@ const commonAuthenticatedOperations = (): PageApiOperation[] => [
     '/enterprise/assets/{assetId}/revisions',
     { matchPathname: /^\/enterprise\/assets\/[^/]+\/revisions$/ },
   ),
-  operation('bootstrap-history-quotes', '全局预加载：历史报价', '自动：登录成功后', 'GET', '/quotes/history'),
   operation('bootstrap-review-providers', '全局预加载：评审机制', '自动：登录成功后', 'GET', '/review-providers'),
 ];
 
@@ -365,50 +364,6 @@ const sharedProjectActions = (): PageApiOperation[] => [
   }),
 ];
 
-const historyQuoteOperations = (): PageApiOperation[] => [
-  operation(
-    'quote-history-source-metadata',
-    '读取行情库来源元数据',
-    '自动：进入历史报价页时加载可筛选的数据来源',
-    'GET',
-    '/quotes/history/source-metadata',
-  ),
-  operation(
-    'quote-history-import',
-    '导入历史报价样本',
-    '操作：上传 XLSX 到企业私有库或平台公共库',
-    'POST',
-    '/quotes/history/import',
-  ),
-  operation(
-    'quote-history-material-samples',
-    '读取物料历史样本',
-    '操作：展开某个物料的逐条可复核样本',
-    'GET',
-    '/quotes/history/{materialRef}/samples',
-    { matchPathname: /^\/quotes\/history\/(?!samples(?:\/|$)|source-metadata$)[^/]+\/samples$/ },
-  ),
-  operation(
-    'quote-history-sample-detail',
-    '读取单条历史报价样本',
-    '当前被后端样本响应字段阻断',
-    'GET',
-    '/quotes/history/samples/{sampleId}',
-    {
-      matchPathname: /^\/quotes\/history\/samples\/[^/]+$/,
-      notIntegratedReason: '详情路由已存在，但行情列表和物料样本当前不返回可访问的 sample_id；前端不会用公告编号冒充样本主键。',
-    },
-  ),
-  operation(
-    'quote-history-material-trend',
-    '读取物料报价趋势',
-    '操作：查看物料趋势和可比样本统计',
-    'GET',
-    '/quotes/history/{materialRef}/trend',
-    { matchPathname: /^\/quotes\/history\/(?!samples(?:\/|$)|source-metadata$)[^/]+\/trend$/ },
-  ),
-];
-
 const downloadDeliverableOperation = (): PageApiOperation => operation(
   'deliverable-download',
   '下载成果文件',
@@ -461,11 +416,6 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       }),
     ];
   }
-
-  if (route.name === 'history-prices') return [
-    ...operations,
-    ...historyQuoteOperations(),
-  ];
 
   const projectId = route.projectId;
   const projectPath = `/projects/${encodeURIComponent(projectId)}`;

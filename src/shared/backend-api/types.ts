@@ -99,6 +99,8 @@ export type EnterpriseCategory = { category_id: number; name: string; parent_id:
 export type EnterpriseAsset = {
   asset_id: number; name: string; asset_type: string | null; category_id: number | null;
   status: number; source_file_id: number | null; image_described?: boolean;
+  /** Newer deployments may expose lifecycle timestamps on both list and detail responses. */
+  created_at?: string | null; updated_at?: string | null;
 };
 export type EnterpriseFact = {
   fact_id: number; fact_key: string; fact_value: JsonValue; confidence: number | null; status: number;

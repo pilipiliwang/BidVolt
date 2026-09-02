@@ -25,6 +25,7 @@ import {
   buildEnterpriseAssetFolders,
 } from '../../features/enterprise-assets/category-folders';
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets/types';
+import { PRODUCT_NAME } from '../../shared/product-brand';
 import './project-workbench.css';
 
 export type WorkspaceMaterial = {
@@ -427,7 +428,7 @@ export function ResultCover({
     <div className={`bv-result-cover bv-result-cover--${tone}`} aria-hidden="true">
       <FileChartColumn size={37} />
       <strong>{title}</strong>
-      <span>AI电网投标助手</span>
+      <span>{PRODUCT_NAME}</span>
       <i />
     </div>
   );

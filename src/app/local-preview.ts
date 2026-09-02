@@ -1,4 +1,3 @@
-import type { HistoricalQuoteRecord } from '../domains/history/types';
 import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
 import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
@@ -169,25 +168,6 @@ export const localPreviewQuoteSamples: HistoryPriceSample[] = [
     excludedReason: '税口径未提供，不能直接用于测算',
   },
 ];
-
-export const localPreviewHistoryRecords: HistoricalQuoteRecord[] = localPreviewQuoteSamples.map((sample) => ({
-  id: sample.id,
-  projectName: sample.sourceLabel,
-  tenderer: '—',
-  year: Number(sample.occurredAt.slice(0, 4)),
-  packageName: '界面预览标包',
-  materialName: sample.materialName,
-  materialCode: sample.materialCode ?? '—',
-  specification: sample.specification,
-  region: sample.region ?? '—',
-  supplier: '—',
-  unitPrice: Number(sample.price),
-  taxRate: sample.taxIncluded === undefined ? '未提供' : sample.taxIncluded ? '含税，税率待后端返回' : '不含税',
-  awardedAt: sample.occurredAt,
-  source: sample.sourceLabel,
-  parameterDifference: sample.excludedReason ?? '仅用于界面预览',
-  similarity: sample.usable ? 'high' : 'reference',
-}));
 
 export const localPreviewQuote: QuoteCalculationView = {
   id: 'preview-calculation',

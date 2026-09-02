@@ -7,7 +7,6 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronLeft,
-  CircleDollarSign,
   ClipboardCheck,
   FolderKanban,
   LogOut,
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { BrandLogo } from '../shared/ui/BrandLogo';
+import { PRODUCT_NAME } from '../shared/product-brand';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
 import '../styles/ui0802-shell.css';
 import { AppLink, type AppRoute } from './router';
@@ -87,22 +87,14 @@ function getNavigationItems(projectId?: string) {
       activeFor: ['review-center'] satisfies AppRoute['name'][],
       visuallyHidden: true,
     },
-    {
-      label: '历史报价',
-      ariaLabel: undefined,
-      caption: '外部历史样本只读查询',
-      icon: CircleDollarSign,
-      href: '/history-prices',
-      activeFor: ['history-prices'] satisfies AppRoute['name'][],
-    },
   ];
 }
 
 function Brand() {
   return (
-    <AppLink className="brand" to="/projects" aria-label="AI电网投标助手首页">
+    <AppLink className="brand" to="/projects" aria-label={`${PRODUCT_NAME}首页`}>
       <BrandLogo className="brand__mark" />
-      <strong>AI电网投标助手</strong>
+      <strong>{PRODUCT_NAME}</strong>
     </AppLink>
   );
 }
@@ -461,7 +453,7 @@ export function AppShell({
           )}
 
           <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
-            {currentRoute !== 'enterprise-assets' && currentRoute !== 'history-prices' ? (
+            {currentRoute !== 'enterprise-assets' ? (
               <button
                 className="task-status-button"
                 type="button"

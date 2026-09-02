@@ -26,10 +26,11 @@ describe('AppShell mobile navigation', () => {
   it('uses the full product name in navigation branding', () => {
     renderShell();
 
-    expect(screen.getAllByText('AI电网投标助手').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('电网投标助手').length).toBeGreaterThan(0);
     expect(
-      screen.getAllByRole('link', { name: 'AI电网投标助手首页' }).length,
+      screen.getAllByRole('link', { name: '电网投标助手首页' }).length,
     ).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: '历史报价' })).not.toBeInTheDocument();
   });
 
   it('moves focus into the dialog, traps it, hides the background, and restores the trigger on Escape', async () => {
@@ -131,7 +132,7 @@ describe('AppShell mobile navigation', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it.each(['enterprise-assets', 'history-prices'] as const)(
+  it.each(['enterprise-assets'] as const)(
     'removes project task progress and top account context from the %s global page',
     (currentRoute) => {
       render(

@@ -13,12 +13,6 @@ import {
   toBackendEditorContent,
   type OfficeMockSavePayload,
 } from '../domains/editor';
-import { HistoryPricesPage } from '../domains/history';
-import type {
-  HistoricalQuoteRecord,
-  HistoryMaterialDetail,
-  HistoryPriceSource,
-} from '../domains/history/types';
 import { LandingPage } from '../domains/marketing/LandingPage';
 import { PricingCenter } from '../domains/pricing/PricingCenter';
 import type {
@@ -94,6 +88,7 @@ import {
   type TenderNoticeImportJob,
 } from '../shared/backend-api';
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
+import { PRODUCT_NAME } from '../shared/product-brand';
 import { ApiTestPanel } from './ApiTestPanel';
 import { AppShell } from './AppShell';
 import { BackendApiStatusBar } from './BackendApiStatusBar';
@@ -111,7 +106,6 @@ import {
   findLatestActiveBidGenerateTask,
   findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
-  isImageDescribeProgressComplete,
   isActiveTaskStatus,
   isProjectNotFound,
   isReviewScoreUnavailable,
@@ -159,7 +153,6 @@ type ProjectData = {
   agentRun?: AgentRunViewModel;
   deliverables: Deliverable[];
   deliverableVersions: DeliverableVersionsById;
-  historyRecords: HistoricalQuoteRecord[];
   materials: ProjectMaterial[];
   overview?: ProjectOverviewView;
   quote: QuoteCalculationView;
@@ -170,12 +163,6 @@ type ProjectData = {
   snapshots: ProjectSnapshot[];
   tenderNotices: TenderNoticeImportJob[];
   tasks: PublicTaskEvent[];
-};
-
-type HistoryState = {
-  records: HistoricalQuoteRecord[];
-  samples: HistoryPriceSample[];
-  total: number;
 };
 
 type ActiveEditor = {
@@ -294,7 +281,6 @@ export function App() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsTotal, setProjectsTotal] = useState(0);
-  const [history, setHistory] = useState<HistoryState>({ records: [], samples: [], total: 0 });
   const [imageDescribeProgress, setImageDescribeProgress] = useState<ImageDescribeProgress | null>(null);
   const [projectData, setProjectData] = useState<Record<string, ProjectData>>({});
   const [enterpriseAssets, setEnterpriseAssets] = useState<EnterpriseAsset[]>([]);
@@ -345,7 +331,6 @@ export function App() {
     projectListRequestRef.current += 1;
     setProjects(empty.projects);
     setProjectsTotal(empty.projectsTotal);
-    setHistory(empty.history);
     setImageDescribeProgress(null);
     setProjectData(empty.projectData);
     setEnterpriseAssets(empty.enterpriseAssets);
@@ -533,91 +518,17 @@ export function App() {
     return request;
   }, []);
 
-  const loadHistory = useCallback(async () => {
-    const generation = tenantGuardRef.current.capture();
-    const payload = await backendApi.quotes.history({ limit: 200 });
-    const parsed = readHistorySamples(payload);
-    const samples = adaptBackendHistorySamples(parsed.samples, parsed.snapshotIds);
-    const record = payload && typeof payload === 'object' && !Array.isArray(payload)
-      ? payload as Record<string, unknown>
-      : {};
-    const total = typeof record.sample_count === 'number' ? record.sample_count : samples.length;
-    tenantGuardRef.current.commit(generation, () => {
-      setHistory({ records: toHistoryRecords(samples), samples, total });
-    });
-  }, []);
-
-  const loadHistorySources = useCallback(async (): Promise<HistoryPriceSource[]> => {
-    if (localPreviewActive) return [];
-    const sources = await backendApi.quotes.sourceMetadata();
-    return sources.map((source) => ({
-      id: source.provider_id,
-      name: source.source_name,
-      fetchedAt: source.fetched_at,
-      coverage: source.coverage,
-      updatePolicy: source.update_policy,
-      readonlyVerified: source.readonly_verified,
-    }));
-  }, [localPreviewActive]);
-
-  const loadHistoryMaterial = useCallback(async (materialRef: string): Promise<HistoryMaterialDetail> => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('读取真实行情样本与趋势');
-    const [samples, trend] = await Promise.all([
-      backendApi.quotes.samples(materialRef),
-      backendApi.quotes.trend(materialRef),
-    ]);
-    const numberOrNull = (value: number | string | null) => {
-      const parsed = value === null ? Number.NaN : Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-    return {
-      records: toHistoryRecords(adaptBackendHistorySamples(samples)),
-      trend: {
-        materialRef: trend.material_ref,
-        sampleCount: trend.sample_count,
-        minimum: numberOrNull(trend.min_price),
-        maximum: numberOrNull(trend.max_price),
-        average: numberOrNull(trend.avg_price),
-        median: numberOrNull(trend.median_price),
-        latest: numberOrNull(trend.latest_price),
-        latestAt: trend.latest_date ?? '',
-        readonly: trend.readonly,
-      },
-    };
-  }, [localPreviewActive]);
-
-  const importHistorySamples = useCallback(async (file: File, target: 'public' | 'private') => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('导入历史报价样本');
-    const result = await backendApi.quotes.importHistory(file, target);
-    await loadHistory();
-    return {
-      imported: result.imported,
-      skipped: result.skipped,
-      parsedTotal: result.parsed_total,
-      skippedRows: result.skipped_rows,
-      scope: result.scope,
-    };
-  }, [loadHistory, localPreviewActive]);
-
-  const loadHistorySampleDetail = useCallback(async (sampleId: string): Promise<HistoricalQuoteRecord> => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('读取单条历史报价样本');
-    const sample = await backendApi.quotes.sampleDetail(sampleId);
-    const [record] = toHistoryRecords(adaptBackendHistorySamples([sample]));
-    if (!record) throw new Error('后端未返回可展示的样本详情。');
-    return record;
-  }, [localPreviewActive]);
-
   useEffect(() => {
     if (authState !== 'authenticated' || localPreviewActive) return;
     const generation = tenantGuardRef.current.capture();
-    void Promise.all([loadProjects(), loadEnterprise(), loadHistory(), backendApi.review.listProviders()])
-      .then(([, , , providers]) => tenantGuardRef.current.commit(generation, () => {
+    void Promise.all([loadProjects(), loadEnterprise(), backendApi.review.listProviders()])
+      .then(([, , providers]) => tenantGuardRef.current.commit(generation, () => {
         setReviewProviders(adaptBackendReviewProviders(providers));
       }))
       .catch((error) => {
         if (tenantGuardRef.current.isCurrent(generation)) setError(error, '基础数据加载失败');
       });
-  }, [authState, loadEnterprise, loadHistory, loadProjects, localPreviewActive, setError]);
+  }, [authState, loadEnterprise, loadProjects, localPreviewActive, setError]);
 
   useEffect(() => {
     if (authState !== 'authenticated' || localPreviewActive) return undefined;
@@ -767,7 +678,6 @@ export function App() {
         const previous = current[projectId] ?? {
           deliverables: [],
           deliverableVersions: {},
-          historyRecords: [],
           materials: [],
           quote: emptyQuote(projectId),
           quoteSamples: [],
@@ -825,7 +735,6 @@ export function App() {
         if (quoteResult.status === 'fulfilled') {
           next.quote = quoteResult.value.quote;
           next.quoteSamples = quoteResult.value.samples;
-          next.historyRecords = toHistoryRecords(quoteResult.value.samples);
         }
         next.overview = adaptBackendProjectOverview(
           next.deliverables,
@@ -1253,7 +1162,7 @@ export function App() {
 
   const pageMeta = useMemo(() => pageMetadata(route.name), [route.name]);
   useEffect(() => {
-    document.title = `${pageMeta.title} · AI电网投标助手`;
+    document.title = `${pageMeta.title} · ${PRODUCT_NAME}`;
     document.getElementById('main-content')?.focus();
   }, [pageMeta.title, routeProjectId]);
 
@@ -1342,16 +1251,10 @@ export function App() {
     setEnterpriseAssets(preview.localPreviewEnterpriseAssets);
     setEnterpriseCategories(preview.localPreviewEnterpriseCategories);
     setReviewProviders(preview.localPreviewProviders);
-    setHistory({
-      records: preview.localPreviewHistoryRecords,
-      samples: preview.localPreviewQuoteSamples,
-      total: preview.localPreviewHistoryRecords.length,
-    });
     setProjectData({
       [preview.LOCAL_PREVIEW_PROJECT_ID]: {
         deliverables: preview.localPreviewDeliverables,
         deliverableVersions: {},
-        historyRecords: preview.localPreviewHistoryRecords,
         materials: preview.localPreviewMaterials,
         quote: preview.localPreviewQuote,
         quoteSamples: preview.localPreviewQuoteSamples,
@@ -2404,7 +2307,6 @@ export function App() {
             <AppLink to={`/projects/${localPreviewProjectId}/pricing`}>报价测算</AppLink>
             <AppLink to={`/projects/${localPreviewProjectId}/deliverables/technical/versions/latest`}>成果编辑器</AppLink>
             <AppLink to="/enterprise-assets">企业资料</AppLink>
-            <AppLink to="/history-prices">历史报价</AppLink>
           </nav>
         </aside>
       ) : null}
@@ -2412,23 +2314,11 @@ export function App() {
         && shouldShowImageDescribeProgress(imageDescribeProgress) ? (
         <div className="integration-status integration-status--info" role="status">
           <span>
-            {isImageDescribeProgressComplete(imageDescribeProgress)
-              ? '后台图片识别已全部完成：'
-              : '后台图片识别：'}
-            完成 {imageDescribeProgress.done} 项，执行中 {imageDescribeProgress.running} 项，
-            排队 {imageDescribeProgress.queued} 项；
-            已生成 {imageDescribeProgress.described_images} 张图片描述
-            {imageDescribeProgress.failed_terminal > 0
-              ? `，${imageDescribeProgress.failed_terminal} 项失败，请在资料列表查看具体状态`
-              : '。'}
+            后台图片识别执行中：执行中 {imageDescribeProgress.running} 项，
+            排队 {imageDescribeProgress.queued} 项，
+            剩余 {imageDescribeProgress.remaining} 项。任务完成后此提示会自动消失。
           </span>
-          <progress
-            aria-label="后台图片识别进度"
-            max={Math.max(1, imageDescribeProgress.done
-              + imageDescribeProgress.failed_terminal
-              + imageDescribeProgress.remaining)}
-            value={imageDescribeProgress.done + imageDescribeProgress.failed_terminal}
-          />
+          <progress aria-label="后台图片识别进度" />
         </div>
       ) : null}
       {statusMessage ? (
@@ -2493,16 +2383,6 @@ export function App() {
             setError(error, '企业资料字段纠正失败');
             throw error;
           })}
-        />
-      ) : null}
-      {route.name === 'history-prices' ? (
-        <HistoryPricesPage
-          records={history.records}
-          totalCount={history.total}
-          onLoadSources={loadHistorySources}
-          onOpenMaterial={loadHistoryMaterial}
-          onImportHistory={localPreviewActive ? undefined : importHistorySamples}
-          onOpenSampleDetail={localPreviewActive ? undefined : loadHistorySampleDetail}
         />
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
@@ -2742,9 +2622,8 @@ function pageMetadata(route: string) {
     'review-center': { eyebrow: '项目工作台', title: '外部评审中心' },
     'pricing-center': { eyebrow: '项目工作台', title: '报价测算中心' },
     'deliverable-editor': { eyebrow: '项目工作台', title: '成果在线编辑' },
-    'history-prices': { eyebrow: '报价数据中心', title: '历史报价' },
   };
-  return labels[route] ?? { eyebrow: 'AI电网投标助手', title: '页面' };
+  return labels[route] ?? { eyebrow: PRODUCT_NAME, title: '页面' };
 }
 
 function readableError(error: unknown, fallback: string) {
@@ -2824,44 +2703,6 @@ function readHistorySamples(payload: unknown) {
         && ('win_date' in sample || 'publish_date' in sample))),
     snapshotIds: snapshotIds.filter((id): id is string | number => typeof id === 'string' || typeof id === 'number'),
   };
-}
-
-function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[] {
-  return samples.map((sample) => ({
-    id: sample.id,
-    sampleId: sample.sampleId,
-    materialRef: sample.materialRef,
-    projectName: sample.packageName || sample.materialName,
-    tenderer: sample.publisher || sample.region || '—',
-    year: Number(sample.occurredAt.slice(0, 4)) || 0,
-    packageName: sample.packageName || '—',
-    materialName: sample.category || sample.materialName,
-    materialCode: sample.noticeId || sample.materialCode || sample.materialRef || sample.id,
-    specification: sample.priceMode || sample.specification,
-    region: sample.region || '—',
-    quantity: undefined,
-    supplier: '—',
-    unitPrice: Number.isFinite(Number(sample.price)) ? Number(sample.price) : undefined,
-    taxRate: sample.taxIncluded === undefined
-      ? '税口径未提供'
-      : sample.taxIncluded
-        ? '含税（税率未提供）'
-        : '未税',
-    awardedAt: sample.occurredAt,
-    source: sample.sourceLabel,
-    parameterDifference: '—',
-    similarity: 'reference',
-    category: sample.category,
-    priceMode: sample.priceMode,
-    limitPrice: Number.isFinite(Number(sample.limitPrice)) ? Number(sample.limitPrice) : undefined,
-    winRatio: Number.isFinite(Number(sample.winRatio)) ? Number(sample.winRatio) : undefined,
-    noticeId: sample.noticeId,
-    scope: sample.scope,
-    limitEvidence: sample.limitEvidence,
-    winEvidence: sample.winEvidence,
-    limitEvidenceUrl: sample.limitEvidenceUrl,
-    winEvidenceUrl: sample.winEvidenceUrl,
-  }));
 }
 
 function taskPhaseLabel(phase: string) {

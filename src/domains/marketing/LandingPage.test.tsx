@@ -16,7 +16,8 @@ describe('LandingPage', () => {
     expect(screen.getByRole('heading', { name: '企业资料自动归类' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '本次材料严格隔离' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '评审机制不一定是文档' })).toBeInTheDocument();
-    expect(screen.getByText(/外部历史数据库保持只读/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '报价测算可复核，算法结果有依据' })).toBeInTheDocument();
+    expect(screen.queryByText(/历史报价数据库/)).not.toBeInTheDocument();
 
     const trialLinks = screen.getAllByRole('link', { name: /立即试用/ });
     expect(trialLinks.length).toBeGreaterThanOrEqual(3);
@@ -59,7 +60,7 @@ describe('LandingPage', () => {
       'tel:15312065105',
     );
     expect(
-      screen.getByRole('img', { name: 'AI电网投标助手联系人微信二维码' }),
+      screen.getByRole('img', { name: '电网投标助手联系人微信二维码' }),
     ).toHaveAttribute('src', '/contact-qr.png');
   });
 });
