@@ -44,8 +44,8 @@ import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
 import {
   EnterpriseAssetsPage,
   type EnterpriseAsset,
+  type EnterpriseAssetPreview,
   type EnterpriseAssetCategoryFolder,
-  type EnterpriseIngestionItem,
 } from '../features/enterprise-assets';
 import {
   ProjectMaterialsPage,
@@ -98,7 +98,6 @@ import { ApiTestPanel } from './ApiTestPanel';
 import { AppShell } from './AppShell';
 import { BackendApiStatusBar } from './BackendApiStatusBar';
 import { shouldShowApiTestPanel } from './api-test-panel-gate';
-import { adaptEnterpriseIngestion } from './enterprise-ingestion';
 import {
   BACKEND_SESSION_EXPIRED_EVENT,
   clearBackendSession,
@@ -126,6 +125,7 @@ import {
 import { getEditorDraftScopeKey, type AppSession } from './session';
 import { createEmptyTenantDomainState, createTenantGenerationGuard } from './tenant-isolation';
 import { readUploadOutcome, uploadExpansionMessage, uploadOutcomeError } from './upload-outcome';
+import { buildEnterpriseUploadRecords } from './enterprise-upload-records';
 import { createEditorSaveGate } from './editor-save-gate';
 import { buildPageApiActivity } from './page-api-activity';
 import { pageApiCatalog } from './page-api-catalog';
@@ -135,13 +135,9 @@ import {
   reduceBackendReachability,
 } from './backend-reachability';
 import {
-  ENTERPRISE_INGESTION_DISCOVERY_WINDOW_MS,
-  ENTERPRISE_INGESTION_POLL_INTERVAL_MS,
   fetchEnterpriseAssetBundle,
   fetchEnterpriseOverview,
-  hasActiveEnterpriseIngestion,
   refreshEnterpriseAfterUpload,
-  shouldPollEnterpriseIngestions,
 } from './enterprise-data';
 import {
   buildProjectOverviewVersionOptions,
@@ -303,8 +299,6 @@ export function App() {
   const [projectData, setProjectData] = useState<Record<string, ProjectData>>({});
   const [enterpriseAssets, setEnterpriseAssets] = useState<EnterpriseAsset[]>([]);
   const [enterpriseCategories, setEnterpriseCategories] = useState<EnterpriseAssetCategoryFolder[]>([]);
-  const [enterpriseIngestions, setEnterpriseIngestions] = useState<EnterpriseIngestionItem[]>([]);
-  const [enterpriseIngestionDiscoveryUntil, setEnterpriseIngestionDiscoveryUntil] = useState(0);
   const [reviewProviders, setReviewProviders] = useState<ReviewProvider[]>([]);
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
   const [answeringAgentAskId, setAnsweringAgentAskId] = useState<string | null>(null);
@@ -338,8 +332,6 @@ export function App() {
   const enterpriseCategoryRecordsRef = useRef<EnterpriseCategory[]>([]);
   const enterpriseAssetDetailRequestRef = useRef(new Map<string, Promise<EnterpriseAsset | void>>());
   const enterpriseOverviewRequestRef = useRef(0);
-  const enterpriseIngestionRequestRef = useRef(0);
-  const enterpriseIngestionDiscoveryBaselineRef = useRef(0);
   const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
   const localPreviewLoadRef = useRef(false);
   const apiRouteStartedAtRef = useRef(Date.now());
@@ -358,8 +350,6 @@ export function App() {
     setProjectData(empty.projectData);
     setEnterpriseAssets(empty.enterpriseAssets);
     setEnterpriseCategories(empty.enterpriseCategories);
-    setEnterpriseIngestions(empty.enterpriseIngestions);
-    setEnterpriseIngestionDiscoveryUntil(0);
     setReviewProviders(empty.reviewProviders);
     setLocalPreviewProjectId(null);
     localPreviewPayloadRef.current = null;
@@ -389,8 +379,6 @@ export function App() {
     enterpriseCategoryRecordsRef.current = [];
     enterpriseAssetDetailRequestRef.current.clear();
     enterpriseOverviewRequestRef.current += 1;
-    enterpriseIngestionRequestRef.current += 1;
-    enterpriseIngestionDiscoveryBaselineRef.current = 0;
   }, []);
 
   const becomeAnonymous = useCallback((options: { clearStoredSession?: boolean } = {}) => {
@@ -505,8 +493,7 @@ export function App() {
   const loadEnterprise = useCallback(async () => {
     const generation = tenantGuardRef.current.capture();
     const overviewRequestId = ++enterpriseOverviewRequestRef.current;
-    const ingestionRequestId = ++enterpriseIngestionRequestRef.current;
-    const { assets, categories, ingestions } = await fetchEnterpriseOverview(backendApi.enterprise);
+    const { assets, categories } = await fetchEnterpriseOverview(backendApi.enterprise);
     if (overviewRequestId !== enterpriseOverviewRequestRef.current) return;
     tenantGuardRef.current.commit(generation, () => {
       enterpriseCategoryRecordsRef.current = categories;
@@ -515,22 +502,7 @@ export function App() {
         categories,
       ));
       setEnterpriseCategories(adaptBackendEnterpriseCategories(categories));
-      if (ingestionRequestId === enterpriseIngestionRequestRef.current) {
-        setEnterpriseIngestions(ingestions.map(adaptEnterpriseIngestion));
-      }
     });
-  }, []);
-
-  const loadEnterpriseIngestions = useCallback(async () => {
-    const generation = tenantGuardRef.current.capture();
-    const requestId = ++enterpriseIngestionRequestRef.current;
-    const response = await backendApi.enterprise.listIngestions();
-    const items = response.items.map(adaptEnterpriseIngestion);
-    if (requestId !== enterpriseIngestionRequestRef.current) return undefined;
-    const committed = tenantGuardRef.current.commit(generation, () => {
-      setEnterpriseIngestions(items);
-    });
-    return committed ? items : undefined;
   }, []);
 
   const loadEnterpriseAssetDetail = useCallback((assetId: string) => {
@@ -560,12 +532,6 @@ export function App() {
     enterpriseAssetDetailRequestRef.current.set(assetId, request);
     return request;
   }, []);
-
-  const hasActiveEnterpriseIngestionTask = hasActiveEnterpriseIngestion(enterpriseIngestions);
-  const shouldPollEnterpriseIngestionTask = shouldPollEnterpriseIngestions(
-    enterpriseIngestions,
-    enterpriseIngestionDiscoveryUntil,
-  );
 
   const loadHistory = useCallback(async () => {
     const generation = tenantGuardRef.current.capture();
@@ -652,60 +618,6 @@ export function App() {
         if (tenantGuardRef.current.isCurrent(generation)) setError(error, '基础数据加载失败');
       });
   }, [authState, loadEnterprise, loadHistory, loadProjects, localPreviewActive, setError]);
-
-  useEffect(() => {
-    if (authState !== 'authenticated'
-      || localPreviewActive
-      || !shouldPollEnterpriseIngestionTask) return undefined;
-    let stopped = false;
-    let requestInFlight = false;
-    const refreshActiveIngestions = async () => {
-      if (stopped || requestInFlight) return;
-      requestInFlight = true;
-      try {
-        const items = await loadEnterpriseIngestions();
-        if (stopped || !items) return;
-        const nextHasActiveTask = hasActiveEnterpriseIngestion(items);
-        const discoveredTask = items.some((item) => {
-          const id = Number(item.id);
-          return Number.isFinite(id) && id > enterpriseIngestionDiscoveryBaselineRef.current;
-        });
-        if ((hasActiveEnterpriseIngestionTask && !nextHasActiveTask)
-          || (discoveredTask && !nextHasActiveTask)) {
-          void loadEnterprise().catch(() => undefined);
-        }
-        if (discoveredTask || (!nextHasActiveTask && Date.now() >= enterpriseIngestionDiscoveryUntil)) {
-          setEnterpriseIngestionDiscoveryUntil(0);
-        }
-      } catch {
-        // The request monitor records transient polling failures. Keep the last
-        // successful task state and retry instead of replacing it with an outage.
-      } finally {
-        requestInFlight = false;
-        if (!hasActiveEnterpriseIngestionTask
-          && enterpriseIngestionDiscoveryUntil > 0
-          && Date.now() >= enterpriseIngestionDiscoveryUntil) {
-          setEnterpriseIngestionDiscoveryUntil(0);
-        }
-      }
-    };
-    void refreshActiveIngestions();
-    const timer = window.setInterval(() => {
-      void refreshActiveIngestions();
-    }, ENTERPRISE_INGESTION_POLL_INTERVAL_MS);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, [
-    authState,
-    enterpriseIngestionDiscoveryUntil,
-    hasActiveEnterpriseIngestionTask,
-    loadEnterprise,
-    loadEnterpriseIngestions,
-    localPreviewActive,
-    shouldPollEnterpriseIngestionTask,
-  ]);
 
   useEffect(() => {
     if (authState !== 'authenticated' || localPreviewActive) return undefined;
@@ -1429,7 +1341,6 @@ export function App() {
     setProjectsTotal(1);
     setEnterpriseAssets(preview.localPreviewEnterpriseAssets);
     setEnterpriseCategories(preview.localPreviewEnterpriseCategories);
-    setEnterpriseIngestions(preview.localPreviewIngestions);
     setReviewProviders(preview.localPreviewProviders);
     setHistory({
       records: preview.localPreviewHistoryRecords,
@@ -1508,17 +1419,13 @@ export function App() {
     const result = await backendApi.files.upload({ target: 'enterprise', files });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     const outcome = readUploadOutcome(result.files);
+    const records = buildEnterpriseUploadRecords(result.files);
     const uploadedIds = outcome.uploaded.map((file) => file.file_id);
     const outcomeError = uploadOutcomeError('企业资料', uploadedIds.length, outcome.errors);
     if (uploadedIds.length > 0) tenantGuardRef.current.commit(generation, () => {
-      enterpriseIngestionDiscoveryBaselineRef.current = Math.max(
-        0,
-        ...enterpriseIngestions.map((item) => Number(item.id)).filter(Number.isFinite),
-      );
-      setEnterpriseIngestionDiscoveryUntil(Date.now() + ENTERPRISE_INGESTION_DISCOVERY_WINDOW_MS);
       setStatusMessage({
         tone: 'info',
-        text: `已受理 ${uploadedIds.length} 份企业资料，服务端正在入库并更新处理状态${uploadExpansionMessage(outcome)}。`,
+        text: `已受理 ${uploadedIds.length} 份企业资料，服务端已自动入库${uploadExpansionMessage(outcome)}。`,
       });
     });
     if (uploadedIds.length > 0) {
@@ -1530,10 +1437,17 @@ export function App() {
         });
       });
     }
-    if (outcomeError) throw outcomeError;
     return {
-      message: '企业资料已受理，可关闭窗口，后台处理状态会在页面持续更新。',
+      message: outcomeError?.message
+        ?? '企业资料已受理，可关闭窗口并在页面查看本次上传记录。',
+      records,
+      type: outcomeError ? 'error' as const : 'success' as const,
     };
+  };
+
+  const handleEnterpriseUploadFromWorkspace = async (files: File[]) => {
+    const result = await handleEnterpriseUpload(files);
+    if (result?.type === 'error') throw new Error(result.message);
   };
 
   const handleCorrectEnterpriseFact = async (assetId: string, factId: string, value: string) => {
@@ -1556,6 +1470,62 @@ export function App() {
       return undefined;
     }
   };
+
+  const loadEnterpriseAssetPreview = useCallback(async (
+    fileId: string,
+    fileName: string,
+  ): Promise<EnterpriseAssetPreview> => {
+    const extension = fileName.split('.').at(-1)?.toLocaleLowerCase() ?? '';
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(extension)) {
+      const blob = await backendApi.files.download(fileId);
+      const imageMimeByExtension: Record<string, string> = {
+        bmp: 'image/bmp',
+        gif: 'image/gif',
+        jpeg: 'image/jpeg',
+        jpg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+      };
+      return {
+        blob,
+        kind: 'image',
+        mimeType: blob.type.startsWith('image/')
+          ? blob.type
+          : imageMimeByExtension[extension] ?? 'application/octet-stream',
+      };
+    }
+    if (extension === 'pdf') {
+      const blob = await backendApi.files.download(fileId);
+      return {
+        blob,
+        kind: 'pdf',
+        mimeType: blob.type === 'application/pdf' ? blob.type : 'application/pdf',
+      };
+    }
+    if (['doc', 'docx', 'xls', 'xlsx', 'csv', 'ppt', 'pptx', 'txt', 'md', 'html', 'htm', 'ofd'].includes(extension)) {
+      const blocks = await backendApi.files.blocksAll(fileId);
+      return {
+        kind: 'text',
+        blocks: blocks.flatMap((block) => {
+          const text = block.text?.trim();
+          return text ? [{
+            id: String(block.block_id),
+            pageNo: block.page_no ?? undefined,
+            text,
+          }] : [];
+        }),
+      };
+    }
+    return {
+      kind: 'unsupported',
+      message: '当前格式暂不支持在线预览，请下载原文件查看。',
+    };
+  }, []);
+
+  const downloadEnterpriseAssetFile = useCallback(async (fileId: string, fileName: string) => {
+    const blob = await backendApi.files.download(fileId);
+    downloadBlob(blob, fileName);
+  }, []);
 
   const handleProjectUpload = async (
     projectId: string,
@@ -2506,8 +2476,9 @@ export function App() {
           assets={enterpriseAssets}
           categories={enterpriseCategories}
           enterpriseName={session.enterpriseName}
-          ingestionItems={enterpriseIngestions}
           onLoadAssetDetail={loadEnterpriseAssetDetail}
+          onLoadAssetPreview={loadEnterpriseAssetPreview}
+          onDownloadAssetFile={downloadEnterpriseAssetFile}
           onRefresh={() => (localPreviewActive
             ? Promise.reject(blockLocalPreviewWrite('刷新企业资料'))
             : loadEnterprise()).catch((error) => {
@@ -2542,7 +2513,7 @@ export function App() {
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -2584,7 +2555,7 @@ export function App() {
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={activeMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -2628,7 +2599,7 @@ export function App() {
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -2660,7 +2631,7 @@ export function App() {
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -2702,7 +2673,7 @@ export function App() {
           isBackendConnected={!localPreviewActive}
           isReadOnly={Boolean(editor.readOnlyReason)}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUpload(files).then(() => undefined).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}

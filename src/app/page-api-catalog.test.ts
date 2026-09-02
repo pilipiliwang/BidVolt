@@ -324,13 +324,19 @@ describe('page API catalog', () => {
     });
   });
 
-  it('marks login password recovery and enterprise revision content as unavailable', () => {
+  it('marks login password recovery unavailable and exposes enterprise preview APIs', () => {
     const login = pageApiCatalog({ name: 'login' });
     const enterprise = pageApiCatalog({ name: 'enterprise-assets' });
 
     expect(login.find((item) => item.id === 'auth-forgot-password')?.unavailableReason)
       .toContain('尚未提供');
-    expect(enterprise.find((item) => item.id === 'enterprise-revision-content')?.unavailableReason)
-      .toContain('版本摘要');
+    expect(enterprise.find((item) => item.id === 'enterprise-file-preview-download')).toMatchObject({
+      method: 'GET',
+      path: '/files/{fileId}/download',
+    });
+    expect(enterprise.find((item) => item.id === 'enterprise-file-preview-blocks')).toMatchObject({
+      method: 'GET',
+      path: '/files/{fileId}/blocks',
+    });
   });
 });

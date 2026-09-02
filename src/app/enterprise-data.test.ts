@@ -5,14 +5,11 @@ import type {
   EnterpriseAssetDetail,
   EnterpriseAssetRevision,
   EnterpriseCategory,
-  EnterpriseIngestion,
 } from '../shared/backend-api';
 import {
   fetchEnterpriseAssetBundle,
   fetchEnterpriseOverview,
-  hasActiveEnterpriseIngestion,
   refreshEnterpriseAfterUpload,
-  shouldPollEnterpriseIngestions,
 } from './enterprise-data';
 
 const category: EnterpriseCategory = { category_id: 3, name: '证照', parent_id: null };
@@ -24,28 +21,18 @@ const asset: EnterpriseAsset = {
   source_file_id: 12,
   status: 2,
 };
-const ingestion: EnterpriseIngestion = {
-  asset_ids: [8],
-  created_at: null,
-  ingest_id: 5,
-  status: 1,
-  task_id: 9,
-};
-
 describe('enterprise data loading', () => {
   it('loads list resources without issuing per-asset detail or revision requests', async () => {
     const api = {
       getAsset: vi.fn(),
       listAssets: vi.fn().mockResolvedValue([asset]),
       listCategories: vi.fn().mockResolvedValue([category]),
-      listIngestions: vi.fn().mockResolvedValue({ items: [ingestion] }),
       listRevisions: vi.fn(),
     };
 
     await expect(fetchEnterpriseOverview(api)).resolves.toEqual({
       assets: [asset],
       categories: [category],
-      ingestions: [ingestion],
     });
     expect(api.getAsset).not.toHaveBeenCalled();
     expect(api.listRevisions).not.toHaveBeenCalled();
@@ -75,20 +62,6 @@ describe('enterprise data loading', () => {
     expect(api.getAsset).toHaveBeenCalledOnce();
     expect(api.getAsset).toHaveBeenCalledWith('8');
     expect(api.listRevisions).toHaveBeenCalledWith('8');
-  });
-
-  it('polls only queued or executing ingestion states', () => {
-    expect(hasActiveEnterpriseIngestion([{ status: 'queued' }])).toBe(true);
-    expect(hasActiveEnterpriseIngestion([{ status: 'classifying' }])).toBe(true);
-    expect(hasActiveEnterpriseIngestion([{ status: 'extracting' }])).toBe(true);
-    expect(hasActiveEnterpriseIngestion([{ status: 'pending_confirmation' }])).toBe(false);
-    expect(hasActiveEnterpriseIngestion([{ status: 'completed' }, { status: 'failed' }])).toBe(false);
-  });
-
-  it('keeps polling briefly after upload while waiting for the task to appear', () => {
-    expect(shouldPollEnterpriseIngestions([], 30_000, 10_000)).toBe(true);
-    expect(shouldPollEnterpriseIngestions([], 30_000, 30_001)).toBe(false);
-    expect(shouldPollEnterpriseIngestions([{ status: 'classifying' }], 0, 30_001)).toBe(true);
   });
 
   it('starts the post-upload refresh without waiting and reports a later refresh failure', async () => {

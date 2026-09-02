@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 
 import { EnterpriseAssetDetail } from './components/EnterpriseAssetDetail';
 import { EnterpriseAssetUpload } from './components/EnterpriseAssetUpload';
+import { EnterpriseUploadHistory } from './components/EnterpriseUploadHistory';
 import {
   ALL_ENTERPRISE_ASSETS_FOLDER_ID,
   buildEnterpriseAssetFolders,
@@ -28,16 +29,10 @@ import {
 import type {
   EnterpriseAsset,
   EnterpriseAssetPageProps,
+  EnterpriseUploadRecord,
   EnterpriseUploadState,
 } from './types';
 import './enterprise-assets.css';
-
-const statusLabel = {
-  processing: '处理中',
-  needs_review: '待确认',
-  ready: '已归档',
-  failed: '处理失败',
-} as const;
 
 function getAssetFileMeta(asset: EnterpriseAsset) {
   const extension = asset.name.split('.').at(-1)?.toLocaleLowerCase();
@@ -61,10 +56,11 @@ export function EnterpriseAssetsPage({
   enterpriseName,
   assets,
   categories,
-  ingestionItems,
   onUpload,
   onCorrectFact,
   onLoadAssetDetail,
+  onLoadAssetPreview,
+  onDownloadAssetFile,
   onRefresh,
   onSelectRevision,
 }: EnterpriseAssetPageProps) {
@@ -72,12 +68,14 @@ export function EnterpriseAssetsPage({
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [isUploadOpen, setUploadOpen] = useState(false);
+  const [isUploadHistoryOpen, setUploadHistoryOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
   const [uploadState, setUploadState] = useState<EnterpriseUploadState>({
     message: '',
     type: 'idle',
   });
+  const [uploadRecords, setUploadRecords] = useState<EnterpriseUploadRecord[]>([]);
   const [loadedAsset, setLoadedAsset] = useState<EnterpriseAsset | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState('');
@@ -117,15 +115,16 @@ export function EnterpriseAssetsPage({
   const selectedAsset = loadedAsset?.id === selectedAssetId
     ? loadedAsset
     : assets.find((asset) => asset.id === selectedAssetId);
-  const processingCount = (ingestionItems ?? []).filter(
-    (item) => ['queued', 'classifying', 'extracting'].includes(item.status),
-  ).length;
-  const confirmationCount = (ingestionItems ?? []).filter(
-    (item) => item.status === 'pending_confirmation',
-  ).length;
-  const completedCount = (ingestionItems ?? []).filter((item) => item.status === 'completed').length;
-  const failedCount = (ingestionItems ?? []).filter((item) => item.status === 'failed').length;
-  const showActivity = uploadState.type !== 'idle' || (ingestionItems?.length ?? 0) > 0;
+  const showActivity = uploadState.type !== 'idle' || uploadRecords.length > 0;
+
+  const uploadFiles = async (files: File[]) => {
+    const result = await onUpload?.(files);
+    const records = result?.records;
+    if (records?.length) {
+      setUploadRecords((current) => [...records, ...current]);
+    }
+    return result;
+  };
 
   const openAssetDetail = async (assetId: string) => {
     const requestId = detailRequestRef.current + 1;
@@ -186,7 +185,7 @@ export function EnterpriseAssetsPage({
         >
           <Upload aria-hidden="true" size={18} />
           上传资料
-          {processingCount > 0 ? <em>{processingCount}</em> : null}
+          {uploadState.type === 'loading' ? <em>1</em> : null}
         </button>
       </header>
 
@@ -216,17 +215,11 @@ export function EnterpriseAssetsPage({
               </span>
             </div>
           ) : null}
-          {(ingestionItems?.length ?? 0) > 0 ? (
-            <div className="enterprise-activity__summary" aria-label="企业资料处理汇总">
-              <span><strong>{processingCount}</strong> 处理中</span>
-              <span><strong>{confirmationCount}</strong> 待核对</span>
-              <span><strong>{completedCount}</strong> 已完成</span>
-              <span className={failedCount > 0 ? 'enterprise-activity__summary-failed' : ''}>
-                <strong>{failedCount}</strong> 失败
-              </span>
-            </div>
+          {uploadRecords.length > 0 ? (
+            <button type="button" onClick={() => setUploadHistoryOpen(true)}>
+              查看上传记录（{uploadRecords.length}）
+            </button>
           ) : null}
-          <button type="button" onClick={() => setUploadOpen(true)}>查看处理详情</button>
         </section>
       ) : null}
 
@@ -294,7 +287,6 @@ export function EnterpriseAssetsPage({
                 <th>文件名称</th>
                 <th>文件类型</th>
                 <th>所属文件夹</th>
-                <th>识别状态</th>
                 <th>更新时间 ↓</th>
               </tr>
             </thead>
@@ -319,11 +311,6 @@ export function EnterpriseAssetsPage({
                     </td>
                     <td>{fileMeta.label}</td>
                     <td>{asset.categoryLabel}</td>
-                    <td>
-                      <span className={`enterprise-status enterprise-status--${asset.status}`}>
-                        {statusLabel[asset.status]}
-                      </span>
-                    </td>
                     <td>{asset.updatedAt}</td>
                   </tr>
                 );
@@ -370,10 +357,43 @@ export function EnterpriseAssetsPage({
             </header>
             <EnterpriseAssetUpload
               enterpriseName={enterpriseName}
-              ingestionItems={ingestionItems}
-              onUpload={onUpload}
+              onUpload={onUpload ? uploadFiles : undefined}
               uploadState={uploadState}
               onUploadStateChange={setUploadState}
+            />
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+
+      {isUploadHistoryOpen ? createPortal(
+        <div className="enterprise-modal-layer">
+          <button
+            className="enterprise-modal-backdrop"
+            type="button"
+            aria-label="点击遮罩关闭上传记录"
+            onClick={() => setUploadHistoryOpen(false)}
+          />
+          <section
+            className="enterprise-modal enterprise-modal--upload-history"
+            role="dialog"
+            aria-modal="true"
+            aria-label="企业资料上传记录"
+          >
+            <button
+              className="enterprise-modal__close enterprise-modal__close--floating"
+              type="button"
+              aria-label="关闭上传记录"
+              onClick={() => setUploadHistoryOpen(false)}
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+            <EnterpriseUploadHistory
+              records={uploadRecords}
+              onOpenAsset={(assetId) => {
+                setUploadHistoryOpen(false);
+                void openAssetDetail(assetId);
+              }}
             />
           </section>
         </div>,
@@ -416,6 +436,8 @@ export function EnterpriseAssetsPage({
             ) : null}
             <EnterpriseAssetDetail
               asset={selectedAsset}
+              onLoadPreview={onLoadAssetPreview}
+              onDownloadFile={onDownloadAssetFile}
               onCorrectFact={onCorrectFact ? correctAssetFact : undefined}
               onSelectRevision={onSelectRevision}
             />
@@ -433,7 +455,9 @@ export type {
   EnterpriseAssetCategoryFolder,
   EnterpriseAssetPageProps,
   EnterpriseAssetRevision,
+  EnterpriseAssetPreview,
   EnterpriseAssetStatus,
   EnterpriseFact,
+  EnterpriseUploadRecord,
   EnterpriseIngestionItem,
 } from './types';

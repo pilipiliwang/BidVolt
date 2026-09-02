@@ -105,14 +105,6 @@ describe('EnterpriseAssetsPage', () => {
         enterpriseName="华东电气设备有限公司"
         assets={assets}
         categories={categories}
-        ingestionItems={[
-          {
-            id: 'ingestion-1',
-            name: '近三年业绩.xlsx',
-            status: 'classifying',
-            progress: 42,
-          },
-        ]}
       />,
     );
 
@@ -121,6 +113,7 @@ describe('EnterpriseAssetsPage', () => {
     expect(screen.getByRole('note')).toHaveTextContent('自动分类不会改变其数据归属');
     expect(screen.getByRole('note')).toHaveTextContent('项目材料也不会进入企业库');
     expect(screen.getByRole('table')).toHaveTextContent('华东电气营业执照.pdf');
+    expect(screen.getByRole('table')).not.toHaveTextContent('识别状态');
     expect(screen.getByRole('button', { name: /企业证照/ })).toHaveTextContent('1');
     expect(screen.getByRole('button', { name: /检测报告/ })).toHaveTextContent('0');
 
@@ -129,16 +122,14 @@ describe('EnterpriseAssetsPage', () => {
     const detailDialog = screen.getByRole('dialog', { name: '华东电气营业执照.pdf详情' });
     expect(detailDialog).toBeInTheDocument();
     expect(detailDialog.parentElement?.parentElement).toBe(document.body);
-    expect(screen.getByLabelText('自动分类置信度')).toHaveTextContent('96%');
+    expect(detailDialog).toHaveTextContent('资料状态：待复核');
     expect(screen.getByText('统一社会信用代码')).toBeInTheDocument();
     expect(screen.getAllByText('来源：营业执照原件 · 第 1 页')).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: '版本记录' }));
     expect(screen.getByText('自动识别为企业证照并抽取字段')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '关闭资料详情' }));
-    await user.click(screen.getByRole('button', { name: /上传资料/ }));
-    expect(screen.getByRole('progressbar', { name: '近三年业绩.xlsx处理进度' })).toHaveAttribute(
-      'aria-valuenow',
-      '42',
-    );
+    expect(screen.queryByText(/资料归类任务/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/待用户核对/)).not.toBeInTheDocument();
   });
 
   it('uploads through the enterprise entry and submits a fact correction', async () => {
@@ -231,12 +222,12 @@ describe('EnterpriseAssetsPage', () => {
     await user.type(correctionInput, '91310000NEW');
     await user.click(within(creditCodeFact!).getByRole('button', { name: '保存' }));
 
-    expect(await screen.findByText('版本 3')).toBeInTheDocument();
     expect(within(creditCodeFact!).getByText('置信度 99%')).toBeInTheDocument();
     expect(within(creditCodeFact!).getByText('来源：人工确认')).toBeInTheDocument();
     expect(within(creditCodeFact!).queryByText('待确认')).not.toBeInTheDocument();
-    expect(screen.getByText('可复用')).toBeInTheDocument();
-    expect(screen.getByLabelText('自动分类置信度')).toHaveTextContent('98%');
+    expect(screen.getByText('资料状态：可复用')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '版本记录' }));
+    expect(await screen.findByText('版本 3')).toBeInTheDocument();
   });
 
   it('shows an enterprise upload rejection in the upload dialog', async () => {
@@ -258,6 +249,28 @@ describe('EnterpriseAssetsPage', () => {
 
     const uploadDialog = screen.getByRole('dialog', { name: '上传并自动归档' });
     expect(await within(uploadDialog).findByRole('alert')).toHaveTextContent('资质.pdf：文件损坏');
+  });
+
+  it('does not report success when the enterprise upload API is not configured', async () => {
+    const user = userEvent.setup();
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        categories={categories}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
+    await user.upload(
+      screen.getByLabelText(/选择文件或拖拽到此处/),
+      new File(['qualification'], '资质.pdf', { type: 'application/pdf' }),
+    );
+
+    const uploadDialog = screen.getByRole('dialog', { name: '上传并自动归档' });
+    expect(await within(uploadDialog).findByRole('alert'))
+      .toHaveTextContent('当前环境未配置企业资料上传能力');
+    expect(screen.queryByText('上传已受理')).not.toBeInTheDocument();
   });
 
   it('keeps upload progress and the accepted result visible after closing the dialog', async () => {
@@ -326,24 +339,41 @@ describe('EnterpriseAssetsPage', () => {
     expect(activity).toHaveTextContent('损坏资料.pdf：文件损坏');
   });
 
-  it('does not count pending confirmation as still processing', () => {
+  it('shows the actual per-file upload receipt instead of a synthetic classification task', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn().mockResolvedValue({
+      message: '企业资料已受理，可在页面查看本次上传记录。',
+      type: 'success' as const,
+      records: [{
+        id: 'record-1',
+        fileName: '华东电气营业执照.pdf',
+        status: 'accepted' as const,
+        createdAt: '2026-09-02T10:00:00+08:00',
+        fileId: '88',
+        assetId: 'asset-license-1',
+      }],
+    });
+
     render(
       <EnterpriseAssetsPage
         enterpriseName="华东电气设备有限公司"
         assets={assets}
         categories={categories}
-        ingestionItems={[
-          { id: 'processing', name: '处理中.pdf', status: 'extracting' },
-          { id: 'confirmation', name: '待核对.pdf', status: 'pending_confirmation' },
-          { id: 'failed', name: '失败.pdf', status: 'failed' },
-        ]}
+        onUpload={onUpload}
       />,
     );
 
-    const summary = screen.getByLabelText('企业资料处理汇总');
-    expect(summary).toHaveTextContent('1 处理中');
-    expect(summary).toHaveTextContent('1 待核对');
-    expect(summary).toHaveTextContent('1 失败');
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
+    const file = new File(['license'], '华东电气营业执照.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText(/选择文件或拖拽到此处/), file);
+    await user.click(screen.getByRole('button', { name: '关闭上传资料窗口' }));
+    await user.click(screen.getByRole('button', { name: '查看上传记录（1）' }));
+
+    const history = screen.getByRole('dialog', { name: '企业资料上传记录' });
+    expect(history).toHaveTextContent('以下内容来自后端逐文件上传回执');
+    expect(history).toHaveTextContent('文件编号#88');
+    expect(history).toHaveTextContent('资料编号#asset-license-1');
+    expect(history).not.toHaveTextContent('资料归类任务');
   });
 
   it('refreshes from the backend and reports a refresh failure without pretending success', async () => {

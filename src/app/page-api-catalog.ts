@@ -63,7 +63,6 @@ const commonAuthenticatedOperations = (): PageApiOperation[] => [
   ),
   operation('bootstrap-enterprise-categories', '全局预加载：企业分类', '自动：登录成功后；企业资料页刷新时', 'GET', '/enterprise/categories'),
   operation('bootstrap-enterprise-assets', '全局预加载：企业资料列表', '自动：登录成功后；企业资料页刷新或上传后', 'GET', '/enterprise/assets'),
-  operation('bootstrap-enterprise-ingestions', '全局预加载：企业归类任务', '自动：登录成功后；企业资料页刷新或上传后', 'GET', '/enterprise/ingest'),
   operation(
     'image-describe-progress',
     '后台图片识别进度',
@@ -449,13 +448,16 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       ...operations,
       operation('enterprise-upload', '上传企业资料', '操作：选择或拖入企业文件', 'POST', '/files/upload'),
       operation('enterprise-ingest', '重新执行企业资料归类', '当前页面暂无手动重归类入口', 'POST', '/enterprise/ingest', {
-        notIntegratedReason: '企业资料上传响应会自动创建归类任务，页面直接读取资产详情中的图片描述，不重复发起归类。',
+        notIntegratedReason: '企业资料上传已由后端自动分类；上传流程不会创建可确认的归类任务，页面不重复发起手动任务。',
       }),
       operation('enterprise-update-fact', '纠正企业资料字段', '操作：编辑字段并确认', 'PUT', '/enterprise/facts/{factId}', {
         matchPathname: /^\/enterprise\/facts\/[^/]+$/,
       }),
-      operation('enterprise-revision-content', '读取企业资料历史版本内容', '操作：选择某个历史版本', 'GET', '/enterprise/assets/{assetId}/revisions/{revisionId}', {
-        unavailableReason: '当前后端只返回版本摘要，尚未提供历史版本内容读取接口。',
+      operation('enterprise-file-preview-download', '读取企业资料原文件预览', '操作：打开图片、PDF或下载原文件', 'GET', '/files/{fileId}/download', {
+        matchPathname: /^\/files\/[^/]+\/download$/,
+      }),
+      operation('enterprise-file-preview-blocks', '读取企业资料解析文本', '操作：预览 Word、Excel、PPT 等文档', 'GET', '/files/{fileId}/blocks', {
+        matchPathname: /^\/files\/[^/]+\/blocks$/,
       }),
     ];
   }

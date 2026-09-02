@@ -1,12 +1,13 @@
-import { Check, Clock3, FileText, History, PencilLine, Save, X } from 'lucide-react';
+import { Check, Clock3, Eye, FileText, History, PencilLine, Save, X } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { ImageDescriptionSummary } from '../../../shared/ui/ImageDescriptionSummary';
-import type { EnterpriseAsset, EnterpriseFact } from '../types';
+import type { EnterpriseAsset, EnterpriseAssetPreview as EnterpriseAssetPreviewData, EnterpriseFact } from '../types';
+import { EnterpriseAssetPreview } from './EnterpriseAssetPreview';
 
 const statusLabel = {
   processing: '处理中',
-  needs_review: '需要确认',
+  needs_review: '待复核',
   ready: '可复用',
   failed: '处理失败',
 } as const;
@@ -18,6 +19,8 @@ interface EnterpriseAssetDetailProps {
     factId: string,
     value: string,
   ) => Promise<EnterpriseAsset | void> | EnterpriseAsset | void;
+  onLoadPreview?: (fileId: string, fileName: string) => Promise<EnterpriseAssetPreviewData>;
+  onDownloadFile?: (fileId: string, fileName: string) => Promise<void> | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }
 
@@ -139,11 +142,22 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
 export function EnterpriseAssetDetail({
   asset,
   onCorrectFact,
+  onLoadPreview,
+  onDownloadFile,
   onSelectRevision,
 }: EnterpriseAssetDetailProps) {
-  const classificationPercent = asset.classificationConfidence === undefined
-    ? undefined
-    : confidencePercent(asset.classificationConfidence);
+  const defaultFileId = asset.sourceFileId
+    ?? asset.revisions.find((revision) => revision.isCurrent)?.fileId
+    ?? asset.revisions.find((revision) => revision.fileId)?.fileId;
+  const [activeTab, setActiveTab] = useState<'preview' | 'recognition' | 'revisions'>(
+    defaultFileId ? 'preview' : 'recognition',
+  );
+  const [previewFileId, setPreviewFileId] = useState(defaultFileId);
+
+  useEffect(() => {
+    setPreviewFileId(defaultFileId);
+    setActiveTab(defaultFileId ? 'preview' : 'recognition');
+  }, [asset.id, defaultFileId]);
 
   return (
     <section className="enterprise-detail" aria-labelledby="enterprise-detail-title">
@@ -152,20 +166,11 @@ export function EnterpriseAssetDetail({
           <div className="enterprise-detail__tags">
             <span className="enterprise-chip">{asset.categoryLabel}</span>
             <span className={`enterprise-status enterprise-status--${asset.status}`}>
-              {statusLabel[asset.status]}
+              资料状态：{statusLabel[asset.status]}
             </span>
           </div>
           <h2 id="enterprise-detail-title">{asset.name}</h2>
           <p>最近更新 {asset.updatedAt}</p>
-        </div>
-        <div className="enterprise-classification" aria-label="自动分类置信度">
-          <span>自动分类置信度</span>
-          <strong>{classificationPercent === undefined ? '未提供' : `${classificationPercent}%`}</strong>
-          {classificationPercent !== undefined ? (
-            <div className="enterprise-classification__bar" aria-hidden="true">
-              <span style={{ width: `${classificationPercent}%` }} />
-            </div>
-          ) : null}
         </div>
       </header>
 
@@ -176,20 +181,56 @@ export function EnterpriseAssetDetail({
         </div>
       )}
 
-      {asset.imageDescription ? (
-        <section className="enterprise-panel enterprise-panel--image-description" aria-labelledby="enterprise-image-description-title">
-          <div className="enterprise-panel__heading">
-            <FileText aria-hidden="true" size={18} />
-            <div>
-              <h3 id="enterprise-image-description-title">图片识别与编号复核</h3>
-              <p>识别结果来自后端；若两次编号读数冲突，请以原件人工核对。</p>
-            </div>
-          </div>
-          <ImageDescriptionSummary description={asset.imageDescription} />
-        </section>
+      <nav className="enterprise-detail__tabs" aria-label="资料详情内容">
+        <button
+          className={activeTab === 'preview' ? 'is-active' : ''}
+          type="button"
+          onClick={() => setActiveTab('preview')}
+        >
+          <Eye aria-hidden="true" size={16} />
+          原件预览
+        </button>
+        <button
+          className={activeTab === 'recognition' ? 'is-active' : ''}
+          type="button"
+          onClick={() => setActiveTab('recognition')}
+        >
+          <FileText aria-hidden="true" size={16} />
+          识别结果
+        </button>
+        <button
+          className={activeTab === 'revisions' ? 'is-active' : ''}
+          type="button"
+          onClick={() => setActiveTab('revisions')}
+        >
+          <History aria-hidden="true" size={16} />
+          版本记录
+        </button>
+      </nav>
+
+      {activeTab === 'preview' ? (
+        <EnterpriseAssetPreview
+          fileId={previewFileId}
+          fileName={asset.name}
+          onLoadPreview={onLoadPreview}
+          onDownloadFile={onDownloadFile}
+        />
       ) : null}
 
-      <div className="enterprise-detail__grid">
+      {activeTab === 'recognition' ? (
+        <div className="enterprise-detail__recognition">
+          {asset.imageDescription ? (
+            <section className="enterprise-panel enterprise-panel--image-description" aria-labelledby="enterprise-image-description-title">
+              <div className="enterprise-panel__heading">
+                <FileText aria-hidden="true" size={18} />
+                <div>
+                  <h3 id="enterprise-image-description-title">图片识别与编号复核</h3>
+                  <p>识别结果来自后端；若两次编号读数冲突，请以原件人工核对。</p>
+                </div>
+              </div>
+              <ImageDescriptionSummary description={asset.imageDescription} />
+            </section>
+          ) : null}
         <section className="enterprise-panel" aria-labelledby="enterprise-facts-title">
           <div className="enterprise-panel__heading">
             <FileText aria-hidden="true" size={18} />
@@ -213,7 +254,10 @@ export function EnterpriseAssetDetail({
             )}
           </div>
         </section>
+        </div>
+      ) : null}
 
+      {activeTab === 'revisions' ? (
         <section className="enterprise-panel" aria-labelledby="enterprise-revisions-title">
           <div className="enterprise-panel__heading">
             <History aria-hidden="true" size={18} />
@@ -240,11 +284,15 @@ export function EnterpriseAssetDetail({
 
               return (
                 <li key={revision.id}>
-                  {onSelectRevision ? (
+                  {revision.fileId ? (
                     <button
                       type="button"
                       className={revision.isCurrent ? 'enterprise-revision enterprise-revision--current' : 'enterprise-revision'}
-                      onClick={() => onSelectRevision(asset.id, revision.id)}
+                      onClick={() => {
+                        setPreviewFileId(revision.fileId);
+                        setActiveTab('preview');
+                        onSelectRevision?.(asset.id, revision.id);
+                      }}
                     >
                       {revisionContent}
                     </button>
@@ -260,7 +308,7 @@ export function EnterpriseAssetDetail({
             })}
           </ol>
         </section>
-      </div>
+      ) : null}
     </section>
   );
 }

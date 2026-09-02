@@ -3,15 +3,6 @@ import { useId, useState, type ChangeEvent, type DragEvent } from 'react';
 
 import type { EnterpriseAssetUploadProps, EnterpriseUploadState } from '../types';
 
-const ingestionStatusLabel = {
-  queued: '等待处理',
-  classifying: '正在自动分类',
-  extracting: '正在抽取字段',
-  pending_confirmation: '待用户核对',
-  completed: '处理完成',
-  failed: '处理失败',
-} as const;
-
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const BACKEND_UPLOAD_ACCEPT = '.pdf,.ofd,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.jpg,.jpeg,.png,.bmp,.tiff,.zip,.html,.htm';
 
@@ -32,7 +23,6 @@ function validateFiles(files: FileList) {
 
 export function EnterpriseAssetUpload({
   enterpriseName,
-  ingestionItems = [],
   onUpload,
   uploadState: controlledUploadState,
   onUploadStateChange,
@@ -62,8 +52,8 @@ export function EnterpriseAssetUpload({
       setUploadState({ message: '正在上传企业资料…', type: 'loading' });
       const result = await onUpload(Array.from(files));
       setUploadState({
-        message: result?.message ?? '企业资料上传完成，待服务端返回归类状态。',
-        type: 'success',
+        message: result?.message ?? '企业资料已提交，请刷新列表查看服务端返回结果。',
+        type: result?.type ?? 'success',
       });
     } catch (error) {
       setUploadState({
@@ -130,48 +120,6 @@ export function EnterpriseAssetUpload({
           {uploadState.message}
         </p>
       ) : null}
-
-      {ingestionItems.length > 0 && (
-        <div className="enterprise-ingestion" aria-label="企业资料处理队列">
-          {ingestionItems.map((item) => {
-            const isComplete = item.status === 'completed';
-            const needsConfirmation = item.status === 'pending_confirmation';
-            return (
-              <article className="enterprise-ingestion__item" key={item.id}>
-                <span className="enterprise-ingestion__state" aria-hidden="true">
-                  {isComplete
-                    ? <CheckCircle2 size={18} />
-                    : needsConfirmation
-                      ? <AlertCircle size={18} />
-                      : <LoaderCircle size={18} />}
-                </span>
-                <div className="enterprise-ingestion__content">
-                  <div className="enterprise-ingestion__meta">
-                    <strong>{item.name}</strong>
-                    <span>{ingestionStatusLabel[item.status]}</span>
-                  </div>
-                  {item.progress === undefined ? (
-                    <small className="enterprise-progress-unknown">
-                      {needsConfirmation ? '请核对自动分类和抽取字段' : '后端未提供百分比进度'}
-                    </small>
-                  ) : (
-                    <div
-                      className="enterprise-progress"
-                      role="progressbar"
-                      aria-label={`${item.name}处理进度`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={item.progress}
-                    >
-                      <span style={{ width: `${Math.min(100, Math.max(0, item.progress))}%` }} />
-                    </div>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
     </section>
   );
 }

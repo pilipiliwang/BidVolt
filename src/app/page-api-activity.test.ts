@@ -57,7 +57,7 @@ describe('page API activity', () => {
     expect(identity?.actualPath).toBeUndefined();
   });
 
-  it('reports failures and missing backend capabilities separately', () => {
+  it('reports failures and intentionally unintegrated capabilities separately', () => {
     const definitions = pageApiCatalog({ name: 'enterprise-assets' });
     const result = buildPageApiActivity(definitions, [
       requestEvent({
@@ -73,8 +73,8 @@ describe('page API activity', () => {
     expect(result.status).toBe('degraded');
     expect(result.checks.find((check) => check.id === 'enterprise-update-fact'))
       .toMatchObject({ status: 'failed', callCount: 1 });
-    expect(result.checks.find((check) => check.id === 'enterprise-revision-content'))
-      .toMatchObject({ status: 'unavailable', callCount: 0 });
+    expect(result.checks.find((check) => check.id === 'enterprise-ingest'))
+      .toMatchObject({ status: 'not-integrated', callCount: 0 });
   });
 
   it('shows Agent streaming as untriggered, then captures the real SSE request including since', () => {

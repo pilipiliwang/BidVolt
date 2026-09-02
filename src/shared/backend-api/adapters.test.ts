@@ -315,6 +315,7 @@ describe('backend DTO adapters', () => {
       category: 'license',
       categoryId: '1',
       categoryLabel: '证照',
+      sourceFileId: '7',
       status: 'needs_review',
     });
     expect(result.facts[0]).toMatchObject({
@@ -324,7 +325,11 @@ describe('backend DTO adapters', () => {
       value: '91310000ABC',
       needsReview: true,
     });
-    expect(result.revisions[0]).toMatchObject({ isCurrent: true, createdBy: '用户 #3' });
+    expect(result.revisions[0]).toMatchObject({
+      fileId: '7',
+      isCurrent: true,
+      createdBy: '用户 #3',
+    });
   });
 
   it('adapts an enterprise list item without requiring eager detail or revision requests', () => {
@@ -344,6 +349,7 @@ describe('backend DTO adapters', () => {
       id: '6',
       category: 'qualification',
       categoryId: '2',
+      sourceFileId: '13',
       facts: [],
       revisions: [],
       status: 'processing',

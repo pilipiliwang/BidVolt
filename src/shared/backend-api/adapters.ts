@@ -279,6 +279,9 @@ export function adaptBackendEnterpriseAsset(
   return {
     id: String(bundle.asset.asset_id),
     name: bundle.asset.name,
+    sourceFileId: bundle.asset.source_file_id === null
+      ? undefined
+      : String(bundle.asset.source_file_id),
     category: assetCategory(bundle.asset, categoryIndex),
     categoryId: bundle.asset.category_id === null ? null : String(bundle.asset.category_id),
     categoryLabel: backendCategory
@@ -309,6 +312,7 @@ export function adaptBackendEnterpriseAsset(
     revisions: revisions.map((revision) => ({
       id: String(revision.revision_id),
       revisionNo: revision.revision_no,
+      fileId: revision.file_id === null ? undefined : String(revision.file_id),
       createdAt: revision.created_at ?? '创建时间未提供',
       createdBy: revision.created_by === null ? '创建人未提供' : `用户 #${revision.created_by}`,
       changeNote: '变更说明未提供',

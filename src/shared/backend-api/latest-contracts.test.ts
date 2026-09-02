@@ -6,6 +6,34 @@ const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
 
 describe('latest backend contract 439fcfc', () => {
+  it('loads every page of parsed file blocks for document preview', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({
+        items: [
+          { block_id: 1, block_type: 'paragraph', page_no: 1, block_index: 0, text: '第一页' },
+          { block_id: 2, block_type: 'paragraph', page_no: 1, block_index: 1, text: '第一页续' },
+        ],
+        total: 3,
+        page: 1,
+        size: 2,
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [
+          { block_id: 3, block_type: 'paragraph', page_no: 2, block_index: 0, text: '第二页' },
+        ],
+        total: 3,
+        page: 2,
+        size: 2,
+      }));
+    const api = createBackendApi({ baseUrl: '/api/v1', fetchImpl });
+
+    await expect(api.files.blocksAll(88, 2)).resolves.toHaveLength(3);
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/files/88/blocks?page=1&size=2',
+      '/api/v1/files/88/blocks?page=2&size=2',
+    ]);
+  });
+
   it('starts and steers the project-scoped agent main session', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ task_id: 31 }))

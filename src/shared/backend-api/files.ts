@@ -34,6 +34,23 @@ export const createFilesApi = (client: BackendApiClient) => {
     return items;
   };
 
+  const blocks = (fileId: BackendId, params: { page?: number; size?: number } = {}) =>
+    client.request<Page<FileBlock>>(`/files/${idPath(fileId)}/blocks${queryString(params)}`);
+
+  const blocksAll = async (fileId: BackendId, pageSize = 100) => {
+    const items: FileBlock[] = [];
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+    while (items.length < total) {
+      const response = await blocks(fileId, { page, size: pageSize });
+      total = Math.max(0, response.total);
+      items.push(...response.items);
+      if (response.items.length === 0) break;
+      page += 1;
+    }
+    return items;
+  };
+
   return {
     list,
     listAll,
@@ -52,8 +69,8 @@ export const createFilesApi = (client: BackendApiClient) => {
     remove: (fileId: BackendId) => client.requestVoid(`/files/${idPath(fileId)}`, { method: 'DELETE' }),
     parseStatus: (fileId: BackendId) =>
       client.request<FileParseStatus>(`/files/${idPath(fileId)}/parse-status`),
-    blocks: (fileId: BackendId, params: { page?: number; size?: number } = {}) =>
-      client.request<Page<FileBlock>>(`/files/${idPath(fileId)}/blocks${queryString(params)}`),
+    blocks,
+    blocksAll,
     projectMaterials: (projectId: BackendId) =>
       client.request<ProjectMaterial[]>(`/files/projects/${idPath(projectId)}/materials`),
     imageDescribeProgress: () =>
