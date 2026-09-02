@@ -441,6 +441,17 @@ const bidMarketLibraryOperations = (): PageApiOperation[] => [
       unavailableReason: '后端尚未提供投标行情内容上传及分类入库接口；通用文件上传不能替代内容库契约。',
     },
   ),
+  operation(
+    'bid-market-content-import-url',
+    '从网址导入投标行情内容',
+    '计划：粘贴公众号文章或视频公开地址并归入所选分类',
+    'POST',
+    '后端未定义',
+    {
+      trackRuntime: false,
+      unavailableReason: '后端尚未提供公开 URL 下载、解析及分类入库接口；该过程不能由浏览器直接代替后端持久化。',
+    },
+  ),
 ];
 
 export function pageApiCatalog(route: AppRoute): PageApiOperation[] {

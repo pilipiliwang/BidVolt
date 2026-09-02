@@ -101,7 +101,7 @@ const knownUnavailableOperations = [
 const knownUnavailableCapabilities = [
   'RAR/7Z 压缩包解包（现有上传与解包接口仅支持 ZIP）',
   '历史标书成果智能提取企业资料（后端尚未定义启动接口）',
-  '投标行情内容库（文章、视频和文档的分类、列表搜索、详情预览与上传接口尚未定义）',
+  '投标行情内容库（公众号文章、公众号视频、文档和其他资料的列表搜索、详情预览、文件上传与 URL 导入接口尚未定义）',
 ];
 
 const response = await fetch(openApiUrl, { signal: AbortSignal.timeout(15_000) });

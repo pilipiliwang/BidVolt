@@ -42,6 +42,7 @@ import {
   type EnterpriseAssetCategoryFolder,
 } from '../features/enterprise-assets';
 import {
+  BID_MARKET_MOCK_ITEMS,
   BidMarketLibraryPage,
 } from '../features/bid-market-library';
 import {
@@ -278,6 +279,7 @@ export function App() {
   const routeProjectId = 'projectId' in route ? route.projectId : undefined;
   const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking');
   const [localPreviewActive, setLocalPreviewActive] = useState(false);
+  const bidMarketDemoActive = import.meta.env.DEV || localPreviewActive;
   const [localPreviewProjectId, setLocalPreviewProjectId] = useState<string | null>(null);
   const [session, setSession] = useState<AppSession | null>(null);
   const [loginError, setLoginError] = useState('');
@@ -2392,10 +2394,10 @@ export function App() {
       ) : null}
       {route.name === 'bid-market-library' ? (
         <BidMarketLibraryPage
-          categories={[]}
-          items={[]}
-          state="unavailable"
-          unavailableMessage="后端暂未提供文章、视频和文档型投标行情内容库接口。"
+          dataSource={bidMarketDemoActive ? 'mock' : 'api'}
+          items={bidMarketDemoActive ? BID_MARKET_MOCK_ITEMS : []}
+          state={bidMarketDemoActive ? 'ready' : 'unavailable'}
+          unavailableMessage="后端暂未提供投标行情内容库接口。"
         />
       ) : null}
       {route.name === 'project-overview' && activeProject ? (

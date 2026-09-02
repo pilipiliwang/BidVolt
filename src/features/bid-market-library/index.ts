@@ -1,2 +1,13 @@
 export { BidMarketLibraryPage } from './BidMarketLibraryPage';
-export type { BidMarketCategory, BidMarketContent, BidMarketContentKind, BidMarketLibraryProps, BidMarketLoadState, BidMarketUploadResult } from './types';
+export { BID_MARKET_CATEGORIES, BID_MARKET_MOCK_ITEMS } from './mock-data';
+export type {
+  BidMarketCategory,
+  BidMarketCategoryId,
+  BidMarketContent,
+  BidMarketContentKind,
+  BidMarketDataSource,
+  BidMarketLibraryProps,
+  BidMarketLoadState,
+  BidMarketUploadResult,
+  BidMarketUrlImportPayload,
+} from './types';

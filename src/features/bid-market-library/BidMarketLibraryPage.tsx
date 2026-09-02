@@ -3,8 +3,11 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  File,
   FileText,
   FolderOpen,
+  Info,
+  Link2,
   LoaderCircle,
   PlayCircle,
   RefreshCw,
@@ -22,37 +25,41 @@ import {
 } from 'react';
 
 import type {
-  BidMarketCategory,
+  BidMarketCategoryId,
   BidMarketContent,
   BidMarketContentKind,
   BidMarketLibraryProps,
 } from './types';
+import { BID_MARKET_CATEGORIES } from './mock-data';
 import './bid-market-library.css';
 
 const kindMeta: Record<BidMarketContentKind, { label: string; Icon: typeof BookOpen }> = {
   article: { label: '文章', Icon: BookOpen },
   video: { label: '视频', Icon: PlayCircle },
   document: { label: '文档', Icon: FileText },
+  other: { label: '其他', Icon: File },
 };
 
 export function BidMarketLibraryPage({
   state,
-  categories,
   items,
+  dataSource = 'api',
   errorMessage,
   unavailableMessage,
   pageSize = 8,
   onRefresh,
-  onUpload,
+  onImportUrl,
+  onUploadFiles,
 }: BidMarketLibraryProps) {
   const [query, setQuery] = useState('');
-  const [categoryId, setCategoryId] = useState('all');
+  const [categoryId, setCategoryId] = useState<BidMarketCategoryId | 'all'>('all');
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string>();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const previewTriggerRef = useRef<HTMLButtonElement>(null);
   const uploadTriggerRef = useRef<HTMLButtonElement>(null);
+  const categories = BID_MARKET_CATEGORIES;
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase('zh-CN');
@@ -83,21 +90,20 @@ export function BidMarketLibraryPage({
   return (
     <section className="bid-market-library">
       <header className="bid-market-library__header">
-        <p>
-          管理员统一维护投标行情资料，支持文章、视频、文档上传与归类，
-          用户可直接查看已归类内容。
-        </p>
+        <div className="bid-market-library__header-copy">
+          <p>
+            管理员统一维护投标行情资料，支持公众号文章、公众号视频、文档及其他资料上传与归类。
+          </p>
+          {dataSource === 'mock' && state === 'ready' ? (
+            <span className="bid-market-library__source-badge" role="status">
+              <Info aria-hidden="true" size={14} />
+              当前为 Mock 演示数据，真实内容以后端接口为准
+            </span>
+          ) : null}
+        </div>
         <div className="bid-market-library__actions">
           <button
-            aria-label="刷新投标行情库"
-            disabled={!onRefresh || state === 'loading'}
-            type="button"
-            onClick={() => void onRefresh?.()}
-          >
-            <RefreshCw aria-hidden="true" size={17} />
-          </button>
-          <button
-            className="is-primary"
+            className="bid-market-library__upload"
             ref={uploadTriggerRef}
             type="button"
             onClick={() => setUploadOpen(true)}
@@ -118,6 +124,15 @@ export function BidMarketLibraryPage({
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
         </label>
+        <button
+          aria-label="刷新投标行情库"
+          className="bid-market-library__refresh"
+          disabled={!onRefresh || state === 'loading'}
+          type="button"
+          onClick={() => void onRefresh?.()}
+        >
+          <RefreshCw aria-hidden="true" size={18} />
+        </button>
       </div>
 
       <nav className="bid-market-library__categories" aria-label="投标行情资料分类">
@@ -232,10 +247,10 @@ export function BidMarketLibraryPage({
       {uploadOpen ? (
         <UploadDialog
           categories={categories}
-          disabled={unavailable || !onUpload}
           returnFocusRef={uploadTriggerRef}
           onClose={() => setUploadOpen(false)}
-          onUpload={onUpload}
+          onImportUrl={onImportUrl}
+          onUploadFiles={onUploadFiles}
         />
       ) : null}
     </section>
@@ -274,7 +289,14 @@ function ContentTable({
                 key={item.id}
               >
                 <td>
-                  <strong>{item.title}</strong>
+                  <button
+                    aria-label={`选择${item.title}`}
+                    className="bid-market-library__title-button"
+                    type="button"
+                    onClick={() => onSelect(item.id)}
+                  >
+                    {item.title}
+                  </button>
                   <small>{item.source || '来源未提供'}</small>
                 </td>
                 <td>
@@ -327,9 +349,13 @@ function PreviewSummary({
       {thumbnailUrl ? (
         <img alt="" src={thumbnailUrl} />
       ) : (
-        <span className={`bid-market-card__icon bid-market-card__icon--${item.kind}`}>
-          <Icon aria-hidden="true" size={25} />
-        </span>
+        <div className={`bid-market-library__preview-cover bid-market-library__preview-cover--${item.kind}`}>
+          <span className={`bid-market-card__icon bid-market-card__icon--${item.kind}`}>
+            <Icon aria-hidden="true" size={28} />
+          </span>
+          <small>{item.categoryLabel}</small>
+          <strong>{item.title}</strong>
+        </div>
       )}
       <h3>{item.title}</h3>
       <p>{item.summary || '暂无摘要'}</p>
@@ -434,38 +460,62 @@ function PreviewDialog({
 
 function UploadDialog({
   categories,
-  disabled,
   returnFocusRef,
   onClose,
-  onUpload,
+  onImportUrl,
+  onUploadFiles,
 }: {
-  categories: BidMarketCategory[];
-  disabled: boolean;
+  categories: typeof BID_MARKET_CATEGORIES;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
-  onUpload?: BidMarketLibraryProps['onUpload'];
+  onImportUrl?: BidMarketLibraryProps['onImportUrl'];
+  onUploadFiles?: BidMarketLibraryProps['onUploadFiles'];
 }) {
+  const [mode, setMode] = useState<'url' | 'file'>('url');
   const [files, setFiles] = useState<File[]>([]);
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
+  const [url, setUrl] = useState('');
+  const [categoryId, setCategoryId] = useState<BidMarketCategoryId>(
+    categories[0]?.id ?? 'wechat-article',
+  );
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const dialogRef = useRef<HTMLFormElement>(null);
   const busy = status === 'loading';
+  const submissionUnavailable = mode === 'url' ? !onImportUrl : !onUploadFiles;
   useModal(dialogRef, onClose, !busy, returnFocusRef);
+
+  const selectMode = (nextMode: 'url' | 'file') => {
+    if (busy) return;
+    setMode(nextMode);
+    setStatus('idle');
+    setMessage('');
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (disabled || !onUpload || !categoryId || files.length === 0) return;
+    if (busy || submissionUnavailable) return;
+
+    const normalizedUrl = mode === 'url' ? validImportUrl(url) : undefined;
+    if (mode === 'url' && !normalizedUrl) {
+      setStatus('error');
+      setMessage('请输入有效的 HTTP 或 HTTPS 地址。');
+      return;
+    }
+    if (mode === 'file' && files.length === 0) return;
+
     setStatus('loading');
     setMessage('');
     try {
-      const result = await onUpload(files, categoryId);
+      const result = mode === 'url'
+        ? await onImportUrl?.({ categoryId, url: normalizedUrl! })
+        : await onUploadFiles?.(files, categoryId);
       setStatus('success');
       setFiles([]);
-      setMessage(result?.message ?? '资料已提交。');
+      setUrl('');
+      setMessage(result?.message ?? (mode === 'url' ? '网址已提交解析。' : '资料已提交。'));
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : '上传失败，请重试。');
+      setMessage(error instanceof Error ? error.message : '提交失败，请重试。');
     }
   };
 
@@ -505,47 +555,118 @@ function UploadDialog({
           <label>
             <span>资料分类</span>
             <select
-              disabled={disabled || busy || categories.length === 0}
+              aria-label="资料分类"
+              disabled={busy}
               value={categoryId}
-              onChange={(event) => setCategoryId(event.currentTarget.value)}
+              onChange={(event) => setCategoryId(event.currentTarget.value as BidMarketCategoryId)}
             >
-              <option value="">请选择</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{category.label}</option>
               ))}
             </select>
           </label>
-          <label className="bid-market-upload__file">
-            <Upload aria-hidden="true" size={24} />
-            <strong>{files.length ? `已选择 ${files.length} 个文件` : '选择文章、视频或文档'}</strong>
-            <span>支持常见文档、图片及 MP4、MOV、WebM 视频</span>
-            <input
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.mp4,.mov,.webm,image/*"
-              disabled={disabled || busy}
-              multiple
-              type="file"
-              onChange={(event) => {
-                setFiles(Array.from(event.currentTarget.files ?? []));
-                setStatus('idle');
-                setMessage('');
-              }}
-            />
-          </label>
-          {disabled ? <p role="status">后端上传接口暂未可用。</p> : null}
+
+          <div aria-label="资料提交方式" className="bid-market-upload__modes" role="group">
+            <button
+              aria-pressed={mode === 'url'}
+              className={mode === 'url' ? 'is-active' : ''}
+              disabled={busy}
+              type="button"
+              onClick={() => selectMode('url')}
+            >
+              <Link2 aria-hidden="true" size={17} />
+              粘贴网址
+            </button>
+            <button
+              aria-pressed={mode === 'file'}
+              className={mode === 'file' ? 'is-active' : ''}
+              disabled={busy}
+              type="button"
+              onClick={() => selectMode('file')}
+            >
+              <Upload aria-hidden="true" size={17} />
+              上传文件
+            </button>
+          </div>
+
+          {mode === 'url' ? (
+            <label className="bid-market-upload__url">
+              <span>文章或视频地址</span>
+              <div>
+                <Link2 aria-hidden="true" size={18} />
+                <input
+                  aria-label="文章或视频地址"
+                  disabled={busy}
+                  placeholder="粘贴微信公众号文章或视频的公开 URL"
+                  inputMode="url"
+                  type="text"
+                  value={url}
+                  onChange={(event) => {
+                    setUrl(event.currentTarget.value);
+                    setStatus('idle');
+                    setMessage('');
+                  }}
+                />
+              </div>
+              <small>仅支持公开可访问的 HTTP/HTTPS 地址。</small>
+            </label>
+          ) : (
+            <label className="bid-market-upload__file">
+              <Upload aria-hidden="true" size={24} />
+              <strong>{files.length ? `已选择 ${files.length} 个文件` : '选择文章、视频或文档'}</strong>
+              <span>支持常见文档、图片及 MP4、MOV、WebM 视频</span>
+              <input
+                aria-label="选择文章、视频或文档"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.html,.htm,.mp4,.mov,.webm,image/*"
+                disabled={busy}
+                multiple
+                type="file"
+                onChange={(event) => {
+                  setFiles(Array.from(event.currentTarget.files ?? []));
+                  setStatus('idle');
+                  setMessage('');
+                }}
+              />
+            </label>
+          )}
+
+          {submissionUnavailable ? (
+            <p role="status">
+              后端{mode === 'url' ? '网址解析入库' : '文件存储'}接口待接入，当前可体验表单但不能提交。
+            </p>
+          ) : null}
           {message ? (
-            <p className={status === 'error' ? 'is-error' : ''} role="status">{message}</p>
+            <p
+              className={status === 'error' ? 'is-error' : ''}
+              role={status === 'error' ? 'alert' : 'status'}
+            >
+              {message}
+            </p>
           ) : null}
           <button
             className="is-primary"
-            disabled={disabled || status === 'loading' || !categoryId || files.length === 0}
+            disabled={
+              busy
+              || submissionUnavailable
+              || (mode === 'url' ? !url.trim() : files.length === 0)
+            }
             type="submit"
           >
-            {status === 'loading' ? '上传中…' : '确认上传'}
+            {busy ? '提交中…' : mode === 'url' ? '导入并解析' : '确认上传'}
           </button>
         </div>
       </form>
     </div>
   );
+}
+
+function validImportUrl(value: string) {
+  try {
+    const parsed = new URL(value.trim());
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function contentTypeLabel(item: BidMarketContent) {

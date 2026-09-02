@@ -347,8 +347,9 @@ describe('page API catalog', () => {
       'bid-market-content-detail',
       'bid-market-content-preview',
       'bid-market-content-upload',
+      'bid-market-content-import-url',
     ]);
-    expect(contentOperations).toHaveLength(5);
+    expect(contentOperations).toHaveLength(6);
     contentOperations.forEach((item) => {
       expect(item).toMatchObject({
         path: '后端未定义',

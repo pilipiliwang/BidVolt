@@ -136,7 +136,7 @@ describe('App local read-only preview', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('opens the bid market library without substituting preview data for missing APIs', async () => {
+  it('opens the bid market library with explicitly labelled mock data while APIs are missing', async () => {
     const user = userEvent.setup();
     const fetchSpy = vi.fn<typeof fetch>();
     vi.stubGlobal('fetch', fetchSpy);
@@ -148,10 +148,10 @@ describe('App local read-only preview', () => {
     await user.click(within(previewNavigation).getByRole('link', { name: '投标行情库' }));
 
     expect(await screen.findByRole('heading', { name: '投标行情库' })).toBeInTheDocument();
-    expect(screen.getByText('行情库服务暂未接入')).toBeInTheDocument();
+    expect(screen.getByText(/当前为 Mock 演示数据/)).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '标题' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '政策解读' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/界面预览.*行情/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /公众号文章/ })).toBeInTheDocument();
+    expect(screen.getAllByText('电网投标政策重点解读')).toHaveLength(3);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
