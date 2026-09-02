@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { BackendApiError, createBackendApiClient } from './client';
 
 describe('backend API client', () => {
+  it('preserves caller cancellation instead of reporting the backend as unreachable', async () => {
+    const abortError = new DOMException('request cancelled', 'AbortError');
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(abortError);
+    const client = createBackendApiClient({ fetchImpl });
+
+    const error = await client.request('/projects').catch((cause: unknown) => cause);
+
+    expect(error).toBe(abortError);
+    expect(error).not.toBeInstanceOf(BackendApiError);
+  });
+
   it('returns raw JSON and sends bearer plus JSON body', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ project_id: 7 }), { status: 201 }),

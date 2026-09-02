@@ -50,6 +50,11 @@ const parseTextAsJson = (text: string): unknown => {
   if (!text) return undefined;
   try { return JSON.parse(text) as unknown; } catch { return undefined; }
 };
+const isAbortError = (error: unknown) =>
+  typeof error === 'object'
+  && error !== null
+  && 'name' in error
+  && error.name === 'AbortError';
 const validationMessage = (detail: unknown): string => {
   if (typeof detail === 'string') return detail;
   if (isRecord(detail) && typeof detail.message === 'string') return detail.message;
@@ -127,6 +132,9 @@ export const createBackendApiClient = ({
       };
     }
     catch (cause) {
+      // An AbortSignal cancellation is an expected caller-controlled outcome,
+      // not evidence that the backend is unreachable.
+      if (isAbortError(cause)) throw cause;
       throw new BackendApiError(0, '无法连接后端服务', cause, {
         accessToken: request.accessToken,
         cause,
@@ -195,7 +203,10 @@ export const createBackendApiClient = ({
       return result;
     } catch (error) {
       if (isExpectedEmptyResponse(path, options, error)) lifecycle.expectedEmpty();
-      else lifecycle.failed();
+      else if (isAbortError(error)) lifecycle.cancelled();
+      else lifecycle.failed(error instanceof BackendApiError && error.status === 0
+        ? 'network'
+        : 'response');
       throw error;
     }
   };

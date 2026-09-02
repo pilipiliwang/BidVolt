@@ -171,4 +171,18 @@ describe('page API activity', () => {
       detail: '正常空态：后端确认该项目尚未评标。',
     });
   });
+
+  it('does not present a caller-cancelled request as an API failure', () => {
+    const definitions = pageApiCatalog({ name: 'projects' });
+    const result = buildPageApiActivity(definitions, [
+      requestEvent({ status: 'cancelled' }),
+    ]);
+
+    expect(result.checks.find((check) => check.id === 'auth-me')).toMatchObject({
+      callCount: 0,
+      status: 'not-run',
+    });
+    expect(result.status).toBe('checking');
+    expect(result.message).toContain('正在等待');
+  });
 });

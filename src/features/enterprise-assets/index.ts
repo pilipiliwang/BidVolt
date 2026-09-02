@@ -15,6 +15,7 @@ export type {
   EnterpriseAssetRevision,
   EnterpriseAssetStatus,
   EnterpriseAssetUploadProps,
+  EnterpriseUploadState,
   EnterpriseFact,
   EnterpriseIngestionItem,
 } from './types';

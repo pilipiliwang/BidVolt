@@ -102,7 +102,9 @@ function unknownChecks(
       ? 'checking'
       : latest.status === 'succeeded' || latest.status === 'expected-empty'
         ? 'success'
-        : 'failed';
+        : latest.status === 'cancelled'
+          ? 'not-run'
+          : 'failed';
     return {
       id: `runtime:${key}`,
       feature: '运行时捕获：清单外接口',
@@ -126,9 +128,10 @@ export function buildPageApiActivity(
   events: readonly BackendApiRequestEvent[],
   options: { preview?: boolean } = {},
 ): PageApiActivitySummary {
+  const observableEvents = events.filter((event) => event.status !== 'cancelled');
   const checks = [
-    ...definitions.map((definition) => checkFromEvents(definition, events)),
-    ...unknownChecks(definitions, events),
+    ...definitions.map((definition) => checkFromEvents(definition, observableEvents)),
+    ...unknownChecks(definitions, observableEvents),
   ];
   if (options.preview) {
     return {
@@ -149,7 +152,7 @@ export function buildPageApiActivity(
     };
   }
 
-  const latest = latestEvent(events);
+  const latest = latestEvent(observableEvents);
   const countByStatus = checks.reduce((counts, check) => {
     counts[check.status] += 1;
     return counts;
@@ -165,14 +168,14 @@ export function buildPageApiActivity(
     || countByStatus.unavailable > 0
     || countByStatus['not-integrated'] > 0
     ? 'degraded'
-    : countByStatus.checking > 0 || events.length === 0
+    : countByStatus.checking > 0 || observableEvents.length === 0
       ? 'checking'
       : countByStatus.success > 0
         ? 'connected'
         : 'disconnected';
-  const message = events.length === 0
+  const message = observableEvents.length === 0
     ? '已列出当前页面需要的接口，正在等待页面自动加载或用户操作触发真实请求。'
-    : `已捕获 ${events.length} 次真实 API 调用：成功 ${countByStatus.success} 项、失败 ${countByStatus.failed} 项、调用中 ${countByStatus.checking} 项、未触发 ${countByStatus['not-run']} 项、前端未接入 ${countByStatus['not-integrated']} 项、后端未提供 ${countByStatus.unavailable} 项。`;
+    : `已捕获 ${observableEvents.length} 次真实 API 调用：成功 ${countByStatus.success} 项、失败 ${countByStatus.failed} 项、调用中 ${countByStatus.checking} 项、未触发 ${countByStatus['not-run']} 项、前端未接入 ${countByStatus['not-integrated']} 项、后端未提供 ${countByStatus.unavailable} 项。`;
 
   return {
     status,

@@ -60,16 +60,28 @@ export interface EnterpriseIngestionItem {
   progress?: number;
 }
 
+export interface EnterpriseUploadState {
+  message: string;
+  type: 'error' | 'idle' | 'loading' | 'success';
+}
+
 export interface EnterpriseAssetUploadProps {
   enterpriseName: string;
   ingestionItems?: EnterpriseIngestionItem[];
   onUpload?: (files: File[]) => Promise<{ message?: string } | void> | void;
+  uploadState?: EnterpriseUploadState;
+  onUploadStateChange?: (state: EnterpriseUploadState) => void;
 }
 
 export interface EnterpriseAssetPageProps extends EnterpriseAssetUploadProps {
   assets: EnterpriseAsset[];
   categories: EnterpriseAssetCategoryFolder[];
-  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
+  onCorrectFact?: (
+    assetId: string,
+    factId: string,
+    value: string,
+  ) => Promise<EnterpriseAsset | void> | EnterpriseAsset | void;
+  onLoadAssetDetail?: (assetId: string) => Promise<EnterpriseAsset | void>;
   onRefresh?: () => Promise<void> | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }

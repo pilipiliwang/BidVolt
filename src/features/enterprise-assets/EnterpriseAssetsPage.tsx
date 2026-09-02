@@ -1,5 +1,7 @@
 import {
   Archive,
+  AlertCircle,
+  CheckCircle2,
   ChevronRight,
   FileArchive,
   FileImage,
@@ -7,13 +9,14 @@ import {
   FileText,
   FileType2,
   Folder,
+  LoaderCircle,
   RefreshCw,
   Search,
   ShieldCheck,
   Upload,
   X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { EnterpriseAssetDetail } from './components/EnterpriseAssetDetail';
@@ -25,6 +28,7 @@ import {
 import type {
   EnterpriseAsset,
   EnterpriseAssetPageProps,
+  EnterpriseUploadState,
 } from './types';
 import './enterprise-assets.css';
 
@@ -60,6 +64,7 @@ export function EnterpriseAssetsPage({
   ingestionItems,
   onUpload,
   onCorrectFact,
+  onLoadAssetDetail,
   onRefresh,
   onSelectRevision,
 }: EnterpriseAssetPageProps) {
@@ -69,6 +74,14 @@ export function EnterpriseAssetsPage({
   const [isUploadOpen, setUploadOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
+  const [uploadState, setUploadState] = useState<EnterpriseUploadState>({
+    message: '',
+    type: 'idle',
+  });
+  const [loadedAsset, setLoadedAsset] = useState<EnterpriseAsset | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailLoadError, setDetailLoadError] = useState('');
+  const detailRequestRef = useRef(0);
 
   const refreshAssets = async () => {
     if (isRefreshing) return;
@@ -101,10 +114,63 @@ export function EnterpriseAssetsPage({
     });
   }, [query, selectedFolder.items]);
 
-  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
+  const selectedAsset = loadedAsset?.id === selectedAssetId
+    ? loadedAsset
+    : assets.find((asset) => asset.id === selectedAssetId);
   const processingCount = (ingestionItems ?? []).filter(
-    (item) => !['completed', 'failed'].includes(item.status),
+    (item) => ['queued', 'classifying', 'extracting'].includes(item.status),
   ).length;
+  const confirmationCount = (ingestionItems ?? []).filter(
+    (item) => item.status === 'pending_confirmation',
+  ).length;
+  const completedCount = (ingestionItems ?? []).filter((item) => item.status === 'completed').length;
+  const failedCount = (ingestionItems ?? []).filter((item) => item.status === 'failed').length;
+  const showActivity = uploadState.type !== 'idle' || (ingestionItems?.length ?? 0) > 0;
+
+  const openAssetDetail = async (assetId: string) => {
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
+    setSelectedAssetId(assetId);
+    setLoadedAsset(null);
+    setDetailLoadError('');
+    if (!onLoadAssetDetail) return;
+    setIsDetailLoading(true);
+    try {
+      const detail = await onLoadAssetDetail(assetId);
+      if (detailRequestRef.current === requestId && detail) setLoadedAsset(detail);
+    } catch (error) {
+      if (detailRequestRef.current === requestId) {
+        setDetailLoadError(
+          error instanceof Error && error.message
+            ? error.message
+            : '资料详情加载失败，请稍后重试。',
+        );
+      }
+    } finally {
+      if (detailRequestRef.current === requestId) setIsDetailLoading(false);
+    }
+  };
+
+  const closeAssetDetail = () => {
+    detailRequestRef.current += 1;
+    setSelectedAssetId(null);
+    setLoadedAsset(null);
+    setDetailLoadError('');
+    setIsDetailLoading(false);
+  };
+
+  const correctAssetFact = async (assetId: string, factId: string, value: string) => {
+    const detailRequestId = detailRequestRef.current;
+    const refreshedAsset = await onCorrectFact?.(assetId, factId, value);
+    if (
+      refreshedAsset
+      && refreshedAsset.id === assetId
+      && detailRequestRef.current === detailRequestId
+    ) {
+      setLoadedAsset(refreshedAsset);
+    }
+    return refreshedAsset;
+  };
 
   return (
     <section className="enterprise-page">
@@ -123,6 +189,46 @@ export function EnterpriseAssetsPage({
           {processingCount > 0 ? <em>{processingCount}</em> : null}
         </button>
       </header>
+
+      {showActivity ? (
+        <section className="enterprise-activity" aria-label="企业资料上传与处理状态">
+          {uploadState.type !== 'idle' ? (
+            <div
+              className={`enterprise-activity__upload enterprise-activity__upload--${uploadState.type}`}
+              role={uploadState.type === 'error' ? 'alert' : 'status'}
+            >
+              <span className="enterprise-activity__icon" aria-hidden="true">
+                {uploadState.type === 'loading'
+                  ? <LoaderCircle size={19} />
+                  : uploadState.type === 'error'
+                    ? <AlertCircle size={19} />
+                    : <CheckCircle2 size={19} />}
+              </span>
+              <span>
+                <strong>
+                  {uploadState.type === 'loading'
+                    ? '上传中'
+                    : uploadState.type === 'error'
+                      ? '上传失败'
+                      : '上传已受理'}
+                </strong>
+                <small>{uploadState.message}</small>
+              </span>
+            </div>
+          ) : null}
+          {(ingestionItems?.length ?? 0) > 0 ? (
+            <div className="enterprise-activity__summary" aria-label="企业资料处理汇总">
+              <span><strong>{processingCount}</strong> 处理中</span>
+              <span><strong>{confirmationCount}</strong> 待核对</span>
+              <span><strong>{completedCount}</strong> 已完成</span>
+              <span className={failedCount > 0 ? 'enterprise-activity__summary-failed' : ''}>
+                <strong>{failedCount}</strong> 失败
+              </span>
+            </div>
+          ) : null}
+          <button type="button" onClick={() => setUploadOpen(true)}>查看处理详情</button>
+        </section>
+      ) : null}
 
       <div className="enterprise-toolbar">
         <label className="enterprise-search">
@@ -202,7 +308,7 @@ export function EnterpriseAssetsPage({
                       <button
                         className="enterprise-file-link"
                         type="button"
-                        onClick={() => setSelectedAssetId(asset.id)}
+                        onClick={() => void openAssetDetail(asset.id)}
                         aria-label={`查看${asset.name}详情`}
                       >
                         <span className={`enterprise-file-icon enterprise-file-icon--${fileMeta.tone}`}>
@@ -266,6 +372,8 @@ export function EnterpriseAssetsPage({
               enterpriseName={enterpriseName}
               ingestionItems={ingestionItems}
               onUpload={onUpload}
+              uploadState={uploadState}
+              onUploadStateChange={setUploadState}
             />
           </section>
         </div>,
@@ -278,7 +386,7 @@ export function EnterpriseAssetsPage({
             className="enterprise-modal-backdrop"
             type="button"
             aria-label="点击遮罩关闭资料详情"
-            onClick={() => setSelectedAssetId(null)}
+            onClick={closeAssetDetail}
           />
           <section
             className="enterprise-modal enterprise-modal--detail"
@@ -290,13 +398,25 @@ export function EnterpriseAssetsPage({
               className="enterprise-modal__close enterprise-modal__close--floating"
               type="button"
               aria-label="关闭资料详情"
-              onClick={() => setSelectedAssetId(null)}
+              onClick={closeAssetDetail}
             >
               <X aria-hidden="true" size={20} />
             </button>
+            {isDetailLoading ? (
+              <p className="enterprise-detail-load-state" role="status">
+                <LoaderCircle aria-hidden="true" size={18} />
+                正在加载资料详情…
+              </p>
+            ) : null}
+            {detailLoadError ? (
+              <p className="enterprise-detail-load-state enterprise-detail-load-state--error" role="alert">
+                <AlertCircle aria-hidden="true" size={18} />
+                {detailLoadError}
+              </p>
+            ) : null}
             <EnterpriseAssetDetail
               asset={selectedAsset}
-              onCorrectFact={onCorrectFact}
+              onCorrectFact={onCorrectFact ? correctAssetFact : undefined}
               onSelectRevision={onSelectRevision}
             />
           </section>

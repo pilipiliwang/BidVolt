@@ -327,6 +327,29 @@ describe('backend DTO adapters', () => {
     expect(result.revisions[0]).toMatchObject({ isCurrent: true, createdBy: '用户 #3' });
   });
 
+  it('adapts an enterprise list item without requiring eager detail or revision requests', () => {
+    const asset: EnterpriseAsset = {
+      asset_id: 6,
+      name: '企业资质.pdf',
+      asset_type: '资质',
+      category_id: 2,
+      status: 1,
+      source_file_id: 13,
+    };
+
+    expect(adaptBackendEnterpriseAsset(
+      { asset },
+      [{ category_id: 2, name: '资质', parent_id: null }],
+    )).toMatchObject({
+      id: '6',
+      category: 'qualification',
+      categoryId: '2',
+      facts: [],
+      revisions: [],
+      status: 'processing',
+    });
+  });
+
   it('keeps backend enterprise category ids, labels, and hierarchy without mock folders', () => {
     expect(adaptBackendEnterpriseCategories([
       { category_id: 10, name: ' 企业证照 ', parent_id: null },

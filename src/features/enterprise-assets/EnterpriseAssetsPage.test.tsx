@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -60,6 +60,16 @@ const assets: EnterpriseAsset[] = [
     ],
   },
 ];
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 describe('EnterpriseAssetsPage', () => {
   it('shows the backend second-pass identifier readings without hiding conflicts', async () => {
@@ -168,7 +178,65 @@ describe('EnterpriseAssetsPage', () => {
       'credit_code',
       '91310000NEW',
     );
+    expect(screen.getByText('91310000NEW')).toBeInTheDocument();
     expect(screen.getByText('人工纠正会创建新版本，原值和来源始终保留')).toBeInTheDocument();
+  });
+
+  it('replaces the open detail with the complete refreshed asset after a fact correction', async () => {
+    const user = userEvent.setup();
+    const refreshedAsset: EnterpriseAsset = {
+      ...assets[0],
+      classificationConfidence: 0.98,
+      status: 'ready',
+      updatedAt: '2026-08-05 10:30',
+      facts: assets[0].facts.map((fact) => fact.key === 'credit_code'
+        ? {
+            ...fact,
+            value: '91310000NEW',
+            confidence: 0.99,
+            sourceLabel: '人工确认',
+            sourcePage: undefined,
+            needsReview: false,
+          }
+        : fact),
+      revisions: [
+        {
+          id: 'revision-3',
+          revisionNo: 3,
+          createdAt: '2026-08-05 10:30',
+          createdBy: '张经理',
+          changeNote: '人工纠正统一社会信用代码',
+          isCurrent: true,
+        },
+        ...assets[0].revisions.map((revision) => ({ ...revision, isCurrent: false })),
+      ],
+    };
+    const onCorrectFact = vi.fn().mockResolvedValue(refreshedAsset);
+
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        categories={categories}
+        onCorrectFact={onCorrectFact}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
+    const creditCodeFact = screen.getByText('统一社会信用代码').closest('article');
+    expect(creditCodeFact).not.toBeNull();
+    await user.click(within(creditCodeFact!).getByRole('button', { name: '纠正字段' }));
+    const correctionInput = screen.getByLabelText('修正统一社会信用代码');
+    await user.clear(correctionInput);
+    await user.type(correctionInput, '91310000NEW');
+    await user.click(within(creditCodeFact!).getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByText('版本 3')).toBeInTheDocument();
+    expect(within(creditCodeFact!).getByText('置信度 99%')).toBeInTheDocument();
+    expect(within(creditCodeFact!).getByText('来源：人工确认')).toBeInTheDocument();
+    expect(within(creditCodeFact!).queryByText('待确认')).not.toBeInTheDocument();
+    expect(screen.getByText('可复用')).toBeInTheDocument();
+    expect(screen.getByLabelText('自动分类置信度')).toHaveTextContent('98%');
   });
 
   it('shows an enterprise upload rejection in the upload dialog', async () => {
@@ -188,7 +256,94 @@ describe('EnterpriseAssetsPage', () => {
     const file = new File(['broken'], '资质.pdf', { type: 'application/pdf' });
     await user.upload(screen.getByLabelText(/选择文件或拖拽到此处/), file);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('资质.pdf：文件损坏');
+    const uploadDialog = screen.getByRole('dialog', { name: '上传并自动归档' });
+    expect(await within(uploadDialog).findByRole('alert')).toHaveTextContent('资质.pdf：文件损坏');
+  });
+
+  it('keeps upload progress and the accepted result visible after closing the dialog', async () => {
+    const user = userEvent.setup();
+    const pendingUpload = createDeferred<{ message: string }>();
+    const onUpload = vi.fn(() => pendingUpload.promise);
+
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        categories={categories}
+        onUpload={onUpload}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
+    const file = new File(['qualification'], '待处理资质.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText(/选择文件或拖拽到此处/), file);
+
+    const activity = screen.getByLabelText('企业资料上传与处理状态');
+    expect(within(activity).getByText('上传中')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '关闭上传资料窗口' }));
+    expect(screen.queryByRole('dialog', { name: /上传并自动归档/ })).not.toBeInTheDocument();
+    expect(within(activity).getByText('上传中')).toBeInTheDocument();
+
+    await act(async () => {
+      pendingUpload.resolve({ message: '资料已由后端受理，正在自动归类。' });
+      await pendingUpload.promise;
+    });
+
+    expect(within(activity).getByText('上传已受理')).toBeInTheDocument();
+    expect(activity).toHaveTextContent('资料已由后端受理，正在自动归类。');
+  });
+
+  it('keeps an upload failure visible after closing the dialog', async () => {
+    const user = userEvent.setup();
+    const pendingUpload = createDeferred<{ message: string }>();
+    const onUpload = vi.fn(() => pendingUpload.promise);
+
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        categories={categories}
+        onUpload={onUpload}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /上传资料/ }));
+    const file = new File(['broken'], '损坏资料.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText(/选择文件或拖拽到此处/), file);
+    await user.click(screen.getByRole('button', { name: '关闭上传资料窗口' }));
+
+    await act(async () => {
+      pendingUpload.reject(new Error('损坏资料.pdf：文件损坏'));
+      try {
+        await pendingUpload.promise;
+      } catch {
+        // The component converts the rejected upload into a persistent page status.
+      }
+    });
+
+    const activity = screen.getByLabelText('企业资料上传与处理状态');
+    expect(within(activity).getByRole('alert')).toHaveTextContent('上传失败');
+    expect(activity).toHaveTextContent('损坏资料.pdf：文件损坏');
+  });
+
+  it('does not count pending confirmation as still processing', () => {
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={assets}
+        categories={categories}
+        ingestionItems={[
+          { id: 'processing', name: '处理中.pdf', status: 'extracting' },
+          { id: 'confirmation', name: '待核对.pdf', status: 'pending_confirmation' },
+          { id: 'failed', name: '失败.pdf', status: 'failed' },
+        ]}
+      />,
+    );
+
+    const summary = screen.getByLabelText('企业资料处理汇总');
+    expect(summary).toHaveTextContent('1 处理中');
+    expect(summary).toHaveTextContent('1 待核对');
+    expect(summary).toHaveTextContent('1 失败');
   });
 
   it('refreshes from the backend and reports a refresh failure without pretending success', async () => {

@@ -1,5 +1,5 @@
 import { Check, Clock3, FileText, History, PencilLine, Save, X } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import { ImageDescriptionSummary } from '../../../shared/ui/ImageDescriptionSummary';
 import type { EnterpriseAsset, EnterpriseFact } from '../types';
@@ -13,14 +13,22 @@ const statusLabel = {
 
 interface EnterpriseAssetDetailProps {
   asset: EnterpriseAsset;
-  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
+  onCorrectFact?: (
+    assetId: string,
+    factId: string,
+    value: string,
+  ) => Promise<EnterpriseAsset | void> | EnterpriseAsset | void;
   onSelectRevision?: (assetId: string, revisionId: string) => void;
 }
 
 interface FactRowProps {
   assetId: string;
   fact: EnterpriseFact;
-  onCorrectFact?: (assetId: string, factId: string, value: string) => Promise<void> | void;
+  onCorrectFact?: (
+    assetId: string,
+    factId: string,
+    value: string,
+  ) => Promise<EnterpriseAsset | void> | EnterpriseAsset | void;
 }
 
 function confidencePercent(value: number) {
@@ -30,8 +38,14 @@ function confidencePercent(value: number) {
 function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(fact.value);
+  const [displayValue, setDisplayValue] = useState(fact.value);
   const [saveError, setSaveError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setDisplayValue(fact.value);
+    setDraftValue(fact.value);
+  }, [fact.value]);
 
   const submitCorrection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,6 +55,8 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
     setSaveError('');
     try {
       await onCorrectFact?.(assetId, fact.id ?? fact.key, nextValue);
+      setDisplayValue(nextValue);
+      setDraftValue(nextValue);
       setIsEditing(false);
     } catch (error) {
       setSaveError(error instanceof Error && error.message
@@ -81,7 +97,7 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
             disabled={isSaving}
             type="button"
             onClick={() => {
-              setDraftValue(fact.value);
+                setDraftValue(displayValue);
               setSaveError('');
               setIsEditing(false);
             }}
@@ -93,7 +109,7 @@ function EnterpriseFactRow({ assetId, fact, onCorrectFact }: FactRowProps) {
         </form>
       ) : (
         <div className="enterprise-fact__value-row">
-          <strong>{fact.value || '—'}</strong>
+          <strong>{displayValue || '—'}</strong>
           {onCorrectFact ? (
             <button
               className="enterprise-text-button"

@@ -35,6 +35,7 @@ export {
 } from './request-monitor';
 export type {
   BackendApiRequestEvent,
+  BackendApiRequestFailureKind,
   BackendApiRequestEventListener,
   BackendApiRequestEventStatus,
   BackendApiRequestMethod,

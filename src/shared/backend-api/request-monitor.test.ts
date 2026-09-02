@@ -44,7 +44,8 @@ describe('backend API request monitor', () => {
     const lifecycle = startBackendApiRequestLifecycle('GET', '/projects/7?view=overview');
     lifecycle.succeeded();
     lifecycle.expectedEmpty();
-    lifecycle.failed();
+    lifecycle.failed('response');
+    lifecycle.cancelled();
 
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
@@ -54,6 +55,7 @@ describe('backend API request monitor', () => {
       status: 'started',
       finishedAt: null,
       latencyMs: null,
+      failureKind: null,
     });
     expect(events[1]).toMatchObject({
       requestId: events[0].requestId,
@@ -62,8 +64,44 @@ describe('backend API request monitor', () => {
       startedAt: '1970-01-01T00:00:01.000Z',
       finishedAt: '1970-01-01T00:00:01.042Z',
       latencyMs: 42,
+      failureKind: null,
     });
     expect(Object.isFrozen(events[0])).toBe(true);
+  });
+
+  it('classifies transport failures separately from HTTP response failures', async () => {
+    const { events } = collectEvents();
+    const client = createBackendApiClient({
+      fetchImpl: vi.fn<typeof fetch>()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'temporarily unavailable' }), {
+          status: 503,
+        })),
+    });
+
+    await expect(client.request('/projects')).rejects.toMatchObject({ status: 0 });
+    await expect(client.request('/enterprise/assets')).rejects.toMatchObject({ status: 503 });
+
+    expect(events.filter((event) => event.finishedAt)).toMatchObject([
+      { status: 'failed', failureKind: 'network' },
+      { status: 'failed', failureKind: 'response' },
+    ]);
+  });
+
+  it('publishes an aborted fetch as cancelled without leaking the abort as a network failure', async () => {
+    const abortError = new DOMException('request cancelled', 'AbortError');
+    const { events } = collectEvents();
+    const client = createBackendApiClient({
+      fetchImpl: vi.fn<typeof fetch>().mockRejectedValue(abortError),
+    });
+
+    const error = await client.request('/projects').catch((cause: unknown) => cause);
+
+    expect(error).toBe(abortError);
+    expect(events).toMatchObject([
+      { status: 'started', failureKind: null },
+      { status: 'cancelled', failureKind: null },
+    ]);
   });
 
   it('publishes the exact not-reviewed score response as an expected empty state', async () => {
@@ -248,6 +286,7 @@ describe('backend API request monitor', () => {
     )).rejects.toThrow(/end/);
 
     expect(events.map((event) => event.status)).toEqual(['started', 'failed']);
+    expect(events.at(-1)?.failureKind).toBe('response');
   });
 
   it('preserves AbortError semantics when a streaming consumer is cancelled', async () => {
@@ -274,7 +313,8 @@ describe('backend API request monitor', () => {
     controller.abort();
 
     await expect(stream).rejects.toMatchObject({ name: 'AbortError' });
-    expect(events.map((event) => event.status)).toEqual(['started', 'failed']);
+    expect(events.map((event) => event.status)).toEqual(['started', 'cancelled']);
+    expect(events.at(-1)?.failureKind).toBeNull();
   });
 
   it('counts a 401 refresh and replay as one logical client request', async () => {

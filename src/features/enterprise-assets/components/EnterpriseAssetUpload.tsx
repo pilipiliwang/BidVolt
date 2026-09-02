@@ -1,7 +1,7 @@
 import { AlertCircle, Building2, CheckCircle2, FileUp, LoaderCircle } from 'lucide-react';
 import { useId, useState, type ChangeEvent, type DragEvent } from 'react';
 
-import type { EnterpriseAssetUploadProps } from '../types';
+import type { EnterpriseAssetUploadProps, EnterpriseUploadState } from '../types';
 
 const ingestionStatusLabel = {
   queued: '等待处理',
@@ -34,12 +34,22 @@ export function EnterpriseAssetUpload({
   enterpriseName,
   ingestionItems = [],
   onUpload,
+  uploadState: controlledUploadState,
+  onUploadStateChange,
 }: EnterpriseAssetUploadProps) {
   const inputId = useId();
-  const [uploadState, setUploadState] = useState<{
-    message: string;
-    type: 'error' | 'idle' | 'loading' | 'success';
-  }>({ message: '', type: 'idle' });
+  const [localUploadState, setLocalUploadState] = useState<EnterpriseUploadState>({
+    message: '',
+    type: 'idle',
+  });
+  const uploadState = controlledUploadState ?? localUploadState;
+  const setUploadState = (state: EnterpriseUploadState) => {
+    if (onUploadStateChange) {
+      onUploadStateChange(state);
+      return;
+    }
+    setLocalUploadState(state);
+  };
 
   const dispatchFiles = async (files: FileList | null) => {
     if (!files?.length || uploadState.type === 'loading') return;

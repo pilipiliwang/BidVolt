@@ -4,7 +4,10 @@ export type BackendApiRequestEventStatus =
   | 'started'
   | 'succeeded'
   | 'expected-empty'
+  | 'cancelled'
   | 'failed';
+
+export type BackendApiRequestFailureKind = 'network' | 'response';
 
 export type BackendApiRequestEvent = Readonly<{
   requestId: string;
@@ -16,6 +19,8 @@ export type BackendApiRequestEvent = Readonly<{
   finishedAt: string | null;
   latencyMs: number | null;
   status: BackendApiRequestEventStatus;
+  /** Present on failed requests only; no raw error or response payload is exposed. */
+  failureKind?: BackendApiRequestFailureKind | null;
 }>;
 
 export type BackendApiRequestEventListener = (event: BackendApiRequestEvent) => void;
@@ -23,7 +28,8 @@ export type BackendApiRequestEventListener = (event: BackendApiRequestEvent) => 
 export type BackendApiRequestLifecycle = {
   succeeded: () => void;
   expectedEmpty: () => void;
-  failed: () => void;
+  cancelled: () => void;
+  failed: (failureKind: BackendApiRequestFailureKind) => void;
 };
 
 const listeners = new Set<BackendApiRequestEventListener>();
@@ -132,9 +138,13 @@ export function startBackendApiRequestLifecycle(
     finishedAt: null,
     latencyMs: null,
     status: 'started',
+    failureKind: null,
   });
 
-  const finish = (status: Exclude<BackendApiRequestEventStatus, 'started'>) => {
+  const finish = (
+    status: Exclude<BackendApiRequestEventStatus, 'started'>,
+    failureKind: BackendApiRequestFailureKind | null = null,
+  ) => {
     if (finished) return;
     finished = true;
     const finishedAtEpochMs = Date.now();
@@ -148,12 +158,14 @@ export function startBackendApiRequestLifecycle(
       finishedAt: new Date(finishedAtEpochMs).toISOString(),
       latencyMs: Math.max(0, Math.round(finishedAtEpochMs - startedAtEpochMs)),
       status,
+      failureKind,
     });
   };
 
   return {
     succeeded: () => finish('succeeded'),
     expectedEmpty: () => finish('expected-empty'),
-    failed: () => finish('failed'),
+    cancelled: () => finish('cancelled'),
+    failed: (failureKind) => finish('failed', failureKind),
   };
 }

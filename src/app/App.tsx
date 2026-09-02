@@ -86,6 +86,7 @@ import {
   type Deliverable,
   type DeliverableContent,
   type EditorSession,
+  type EnterpriseCategory,
   type JsonObject,
   type ImageDescribeProgress,
   type MeResponse,
@@ -129,6 +130,19 @@ import { createEditorSaveGate } from './editor-save-gate';
 import { buildPageApiActivity } from './page-api-activity';
 import { pageApiCatalog } from './page-api-catalog';
 import { tenderNoticeImportErrorMessage } from './backend-capability-errors';
+import {
+  initialBackendReachabilityState,
+  reduceBackendReachability,
+} from './backend-reachability';
+import {
+  ENTERPRISE_INGESTION_DISCOVERY_WINDOW_MS,
+  ENTERPRISE_INGESTION_POLL_INTERVAL_MS,
+  fetchEnterpriseAssetBundle,
+  fetchEnterpriseOverview,
+  hasActiveEnterpriseIngestion,
+  refreshEnterpriseAfterUpload,
+  shouldPollEnterpriseIngestions,
+} from './enterprise-data';
 import {
   buildProjectOverviewVersionOptions,
   loadDeliverableVersionLists,
@@ -290,6 +304,7 @@ export function App() {
   const [enterpriseAssets, setEnterpriseAssets] = useState<EnterpriseAsset[]>([]);
   const [enterpriseCategories, setEnterpriseCategories] = useState<EnterpriseAssetCategoryFolder[]>([]);
   const [enterpriseIngestions, setEnterpriseIngestions] = useState<EnterpriseIngestionItem[]>([]);
+  const [enterpriseIngestionDiscoveryUntil, setEnterpriseIngestionDiscoveryUntil] = useState(0);
   const [reviewProviders, setReviewProviders] = useState<ReviewProvider[]>([]);
   const [taskDrawerProjectId, setTaskDrawerProjectId] = useState<string | null>(null);
   const [answeringAgentAskId, setAnsweringAgentAskId] = useState<string | null>(null);
@@ -301,6 +316,7 @@ export function App() {
     status: 'idle',
   });
   const [statusMessage, setStatusMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
+  const [backendReachability, setBackendReachability] = useState(initialBackendReachabilityState);
   const [snapshotDetail, setSnapshotDetail] = useState<{ id: string; value: unknown } | null>(null);
   const [editor, setEditor] = useState<ActiveEditor | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
@@ -319,6 +335,11 @@ export function App() {
   const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
   const taskLoadGenerationRef = useRef<Record<string, number>>({});
   const taskSnapshotRequestRef = useRef(new Map<string, Promise<BackendTask[]>>());
+  const enterpriseCategoryRecordsRef = useRef<EnterpriseCategory[]>([]);
+  const enterpriseAssetDetailRequestRef = useRef(new Map<string, Promise<EnterpriseAsset | void>>());
+  const enterpriseOverviewRequestRef = useRef(0);
+  const enterpriseIngestionRequestRef = useRef(0);
+  const enterpriseIngestionDiscoveryBaselineRef = useRef(0);
   const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
   const localPreviewLoadRef = useRef(false);
   const apiRouteStartedAtRef = useRef(Date.now());
@@ -338,6 +359,7 @@ export function App() {
     setEnterpriseAssets(empty.enterpriseAssets);
     setEnterpriseCategories(empty.enterpriseCategories);
     setEnterpriseIngestions(empty.enterpriseIngestions);
+    setEnterpriseIngestionDiscoveryUntil(0);
     setReviewProviders(empty.reviewProviders);
     setLocalPreviewProjectId(null);
     localPreviewPayloadRef.current = null;
@@ -357,12 +379,18 @@ export function App() {
     setProjectResourceErrors({});
     apiRouteStartedAtRef.current = Date.now();
     setBackendRequestEvents({});
+    setBackendReachability(initialBackendReachabilityState);
     setStatusMessage(empty.statusMessage);
     editorLoadKeyRef.current = '';
     projectResourceGenerationRef.current = {};
     taskEventsRef.current = {};
     taskLoadGenerationRef.current = {};
     taskSnapshotRequestRef.current.clear();
+    enterpriseCategoryRecordsRef.current = [];
+    enterpriseAssetDetailRequestRef.current.clear();
+    enterpriseOverviewRequestRef.current += 1;
+    enterpriseIngestionRequestRef.current += 1;
+    enterpriseIngestionDiscoveryBaselineRef.current = 0;
   }, []);
 
   const becomeAnonymous = useCallback((options: { clearStoredSession?: boolean } = {}) => {
@@ -382,6 +410,10 @@ export function App() {
       navigate('/login', { replace: true });
       return;
     }
+    // Transport failures are rendered by the independent reachability state.
+    // They must not replace a confirmed business result such as an accepted upload.
+    if (error instanceof BackendApiError && error.status === 0) return;
+    if (error instanceof Error && error.name === 'AbortError') return;
     setStatusMessage({ tone: 'error', text: readableError(error, fallback) });
   }, [becomeAnonymous]);
 
@@ -390,6 +422,7 @@ export function App() {
     : `${route.name}:${routeProjectId ?? ''}`;
 
   useEffect(() => subscribeToBackendApiRequests((event) => {
+    setBackendReachability((current) => reduceBackendReachability(current, event));
     if (Date.parse(event.startedAt) < apiRouteStartedAtRef.current) return;
     setBackendRequestEvents((current) => {
       const next = { ...current, [event.requestId]: event };
@@ -471,24 +504,68 @@ export function App() {
 
   const loadEnterprise = useCallback(async () => {
     const generation = tenantGuardRef.current.capture();
-    const [categories, assets, ingestionResponse] = await Promise.all([
-      backendApi.enterprise.listCategories(),
-      backendApi.enterprise.listAssets(),
-      backendApi.enterprise.listIngestions(),
-    ]);
-    const bundles = await Promise.all(assets.map(async (asset) => {
-      const [detail, revisions] = await Promise.all([
-        backendApi.enterprise.getAsset(asset.asset_id),
-        backendApi.enterprise.listRevisions(asset.asset_id).then((response) => response.items),
-      ]);
-      return { asset, detail, revisions };
-    }));
+    const overviewRequestId = ++enterpriseOverviewRequestRef.current;
+    const ingestionRequestId = ++enterpriseIngestionRequestRef.current;
+    const { assets, categories, ingestions } = await fetchEnterpriseOverview(backendApi.enterprise);
+    if (overviewRequestId !== enterpriseOverviewRequestRef.current) return;
     tenantGuardRef.current.commit(generation, () => {
-      setEnterpriseAssets(adaptBackendEnterpriseAssets(bundles, categories));
+      enterpriseCategoryRecordsRef.current = categories;
+      setEnterpriseAssets(adaptBackendEnterpriseAssets(
+        assets.map((asset) => ({ asset })),
+        categories,
+      ));
       setEnterpriseCategories(adaptBackendEnterpriseCategories(categories));
-      setEnterpriseIngestions(ingestionResponse.items.map(adaptEnterpriseIngestion));
+      if (ingestionRequestId === enterpriseIngestionRequestRef.current) {
+        setEnterpriseIngestions(ingestions.map(adaptEnterpriseIngestion));
+      }
     });
   }, []);
+
+  const loadEnterpriseIngestions = useCallback(async () => {
+    const generation = tenantGuardRef.current.capture();
+    const requestId = ++enterpriseIngestionRequestRef.current;
+    const response = await backendApi.enterprise.listIngestions();
+    const items = response.items.map(adaptEnterpriseIngestion);
+    if (requestId !== enterpriseIngestionRequestRef.current) return undefined;
+    const committed = tenantGuardRef.current.commit(generation, () => {
+      setEnterpriseIngestions(items);
+    });
+    return committed ? items : undefined;
+  }, []);
+
+  const loadEnterpriseAssetDetail = useCallback((assetId: string) => {
+    const existing = enterpriseAssetDetailRequestRef.current.get(assetId);
+    if (existing) return existing;
+
+    const generation = tenantGuardRef.current.capture();
+    const request: Promise<EnterpriseAsset | void> = fetchEnterpriseAssetBundle(
+      backendApi.enterprise,
+      assetId,
+    ).then((bundle) => {
+      const adapted = adaptBackendEnterpriseAssets(
+        [bundle],
+        enterpriseCategoryRecordsRef.current,
+      )[0];
+      if (!adapted) return undefined;
+      const committed = tenantGuardRef.current.commit(generation, () => {
+        setEnterpriseAssets((current) => current.map((asset) =>
+          asset.id === assetId ? adapted : asset));
+      });
+      return committed ? adapted : undefined;
+    }).finally(() => {
+      if (enterpriseAssetDetailRequestRef.current.get(assetId) === request) {
+        enterpriseAssetDetailRequestRef.current.delete(assetId);
+      }
+    });
+    enterpriseAssetDetailRequestRef.current.set(assetId, request);
+    return request;
+  }, []);
+
+  const hasActiveEnterpriseIngestionTask = hasActiveEnterpriseIngestion(enterpriseIngestions);
+  const shouldPollEnterpriseIngestionTask = shouldPollEnterpriseIngestions(
+    enterpriseIngestions,
+    enterpriseIngestionDiscoveryUntil,
+  );
 
   const loadHistory = useCallback(async () => {
     const generation = tenantGuardRef.current.capture();
@@ -575,6 +652,60 @@ export function App() {
         if (tenantGuardRef.current.isCurrent(generation)) setError(error, '基础数据加载失败');
       });
   }, [authState, loadEnterprise, loadHistory, loadProjects, localPreviewActive, setError]);
+
+  useEffect(() => {
+    if (authState !== 'authenticated'
+      || localPreviewActive
+      || !shouldPollEnterpriseIngestionTask) return undefined;
+    let stopped = false;
+    let requestInFlight = false;
+    const refreshActiveIngestions = async () => {
+      if (stopped || requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const items = await loadEnterpriseIngestions();
+        if (stopped || !items) return;
+        const nextHasActiveTask = hasActiveEnterpriseIngestion(items);
+        const discoveredTask = items.some((item) => {
+          const id = Number(item.id);
+          return Number.isFinite(id) && id > enterpriseIngestionDiscoveryBaselineRef.current;
+        });
+        if ((hasActiveEnterpriseIngestionTask && !nextHasActiveTask)
+          || (discoveredTask && !nextHasActiveTask)) {
+          void loadEnterprise().catch(() => undefined);
+        }
+        if (discoveredTask || (!nextHasActiveTask && Date.now() >= enterpriseIngestionDiscoveryUntil)) {
+          setEnterpriseIngestionDiscoveryUntil(0);
+        }
+      } catch {
+        // The request monitor records transient polling failures. Keep the last
+        // successful task state and retry instead of replacing it with an outage.
+      } finally {
+        requestInFlight = false;
+        if (!hasActiveEnterpriseIngestionTask
+          && enterpriseIngestionDiscoveryUntil > 0
+          && Date.now() >= enterpriseIngestionDiscoveryUntil) {
+          setEnterpriseIngestionDiscoveryUntil(0);
+        }
+      }
+    };
+    void refreshActiveIngestions();
+    const timer = window.setInterval(() => {
+      void refreshActiveIngestions();
+    }, ENTERPRISE_INGESTION_POLL_INTERVAL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    authState,
+    enterpriseIngestionDiscoveryUntil,
+    hasActiveEnterpriseIngestionTask,
+    loadEnterprise,
+    loadEnterpriseIngestions,
+    localPreviewActive,
+    shouldPollEnterpriseIngestionTask,
+  ]);
 
   useEffect(() => {
     if (authState !== 'authenticated' || localPreviewActive) return undefined;
@@ -1378,20 +1509,30 @@ export function App() {
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     const outcome = readUploadOutcome(result.files);
     const uploadedIds = outcome.uploaded.map((file) => file.file_id);
-    if (uploadedIds.length > 0) {
-      await loadEnterprise();
-    }
-    if (!tenantGuardRef.current.isCurrent(generation)) return;
     const outcomeError = uploadOutcomeError('企业资料', uploadedIds.length, outcome.errors);
-    if (outcomeError) throw outcomeError;
-    tenantGuardRef.current.commit(generation, () => {
+    if (uploadedIds.length > 0) tenantGuardRef.current.commit(generation, () => {
+      enterpriseIngestionDiscoveryBaselineRef.current = Math.max(
+        0,
+        ...enterpriseIngestions.map((item) => Number(item.id)).filter(Number.isFinite),
+      );
+      setEnterpriseIngestionDiscoveryUntil(Date.now() + ENTERPRISE_INGESTION_DISCOVERY_WINDOW_MS);
       setStatusMessage({
         tone: 'info',
-        text: `已上传 ${uploadedIds.length} 份企业资料，服务端已自动创建资产、分类并抽取初始字段${uploadExpansionMessage(outcome)}。`,
+        text: `已受理 ${uploadedIds.length} 份企业资料，服务端正在入库并更新处理状态${uploadExpansionMessage(outcome)}。`,
       });
     });
+    if (uploadedIds.length > 0) {
+      refreshEnterpriseAfterUpload(loadEnterprise, (error) => {
+        if (!tenantGuardRef.current.isCurrent(generation)) return;
+        setStatusMessage({
+          tone: 'info',
+          text: `企业资料已受理；资料列表暂未刷新，请稍后手动刷新（${readableError(error, '列表刷新失败')}）。`,
+        });
+      });
+    }
+    if (outcomeError) throw outcomeError;
     return {
-      message: '企业资料上传完成，服务端已自动入库并返回处理状态。',
+      message: '企业资料已受理，可关闭窗口，后台处理状态会在页面持续更新。',
     };
   };
 
@@ -1404,7 +1545,16 @@ export function App() {
       note: `企业资料 ${assetId} 人工纠正`,
     });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    await loadEnterprise();
+    try {
+      return await loadEnterpriseAssetDetail(assetId);
+    } catch (error) {
+      if (!tenantGuardRef.current.isCurrent(generation)) return;
+      setStatusMessage({
+        tone: 'info',
+        text: `字段已保存，但最新版本信息暂未刷新（${readableError(error, '详情刷新失败')}）。`,
+      });
+      return undefined;
+    }
   };
 
   const handleProjectUpload = async (
@@ -2317,6 +2467,16 @@ export function App() {
           <button aria-label="关闭提示" type="button" onClick={() => setStatusMessage(null)}>×</button>
         </div>
       ) : null}
+      {backendReachability.notice ? (
+        <div className="integration-status integration-status--error" role="alert">
+          <span>{backendReachability.notice.text}</span>
+          <button
+            aria-label="关闭连接状态提示"
+            type="button"
+            onClick={() => setBackendReachability((current) => ({ ...current, notice: null }))}
+          >×</button>
+        </div>
+      ) : null}
       {routeProjectId && projectResourceErrors[routeProjectId]
         && Object.keys(projectResourceErrors[routeProjectId]).length > 0 ? (
         <div className="integration-status integration-status--error" role="alert">
@@ -2347,6 +2507,7 @@ export function App() {
           categories={enterpriseCategories}
           enterpriseName={session.enterpriseName}
           ingestionItems={enterpriseIngestions}
+          onLoadAssetDetail={loadEnterpriseAssetDetail}
           onRefresh={() => (localPreviewActive
             ? Promise.reject(blockLocalPreviewWrite('刷新企业资料'))
             : loadEnterprise()).catch((error) => {
