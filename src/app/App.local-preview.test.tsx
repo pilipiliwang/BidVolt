@@ -135,4 +135,23 @@ describe('App local read-only preview', () => {
     expect(within(reviewMetrics).getAllByText('接口待提供')).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it('opens the bid market library without substituting preview data for missing APIs', async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: '进入本地只读预览' }));
+
+    const previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
+    await user.click(within(previewNavigation).getByRole('link', { name: '投标行情库' }));
+
+    expect(await screen.findByRole('heading', { name: '投标行情库' })).toBeInTheDocument();
+    expect(screen.getByText('行情库服务暂未接入')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '标题' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '政策解读' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/界面预览.*行情/)).not.toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

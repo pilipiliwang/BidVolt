@@ -12,6 +12,7 @@ export type AppRoute =
   | { name: 'project-overview'; projectId: string }
   | { name: 'project-materials'; projectId: string }
   | { name: 'enterprise-assets' }
+  | { name: 'bid-market-library' }
   | { name: 'review-center'; projectId: string }
   | { name: 'pricing-center'; projectId: string }
   | {
@@ -56,6 +57,10 @@ export function matchRoute(pathname: string): AppRoute {
 
   if (path === '/enterprise-assets') {
     return { name: 'enterprise-assets' };
+  }
+
+  if (path === '/bid-market') {
+    return { name: 'bid-market-library' };
   }
 
   const deliverableEditorMatch = path.match(

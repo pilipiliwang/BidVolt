@@ -385,6 +385,64 @@ const loginOperations = (): PageApiOperation[] => [
   }),
 ];
 
+const bidMarketLibraryOperations = (): PageApiOperation[] => [
+  operation(
+    'bid-market-content-list-search',
+    '加载与搜索投标行情内容',
+    '计划：进入页面或调整关键词、分类、类型及分页条件时加载',
+    'GET',
+    '后端未定义',
+    {
+      trackRuntime: false,
+      unavailableReason: '后端尚未提供文章、视频和文档统一内容列表，以及配套的搜索、筛选和分页接口。',
+    },
+  ),
+  operation(
+    'bid-market-content-categories',
+    '加载投标行情内容分类',
+    '计划：进入投标行情库时加载可用分类及数量',
+    'GET',
+    '后端未定义',
+    {
+      trackRuntime: false,
+      unavailableReason: '后端尚未提供投标行情内容分类目录接口。',
+    },
+  ),
+  operation(
+    'bid-market-content-detail',
+    '读取投标行情内容详情',
+    '计划：打开文章、视频或文档资料时加载',
+    'GET',
+    '后端未定义',
+    {
+      trackRuntime: false,
+      unavailableReason: '后端尚未提供统一的投标行情内容详情接口。',
+    },
+  ),
+  operation(
+    'bid-market-content-preview',
+    '预览投标行情内容',
+    '计划：在详情弹窗中预览正文、视频或文档',
+    'GET',
+    '后端未定义',
+    {
+      trackRuntime: false,
+      unavailableReason: '后端尚未提供文章正文、视频流或文档预览内容接口。',
+    },
+  ),
+  operation(
+    'bid-market-content-upload',
+    '上传投标行情内容',
+    '计划：上传文章、视频或文档并归入所选分类',
+    'POST',
+    '后端未定义',
+    {
+      trackRuntime: false,
+      unavailableReason: '后端尚未提供投标行情内容上传及分类入库接口；通用文件上传不能替代内容库契约。',
+    },
+  ),
+];
+
 export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'login') return loginOperations();
   if (route.name === 'landing' || route.name === 'not-found') return [];
@@ -444,6 +502,10 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
         unavailableReason: '当前后端仅提供资料详情读取和分类修改接口，尚未提供企业资料名称更新接口。',
       }),
     ];
+  }
+
+  if (route.name === 'bid-market-library') {
+    return [...operations, ...bidMarketLibraryOperations()];
   }
 
   const projectId = route.projectId;

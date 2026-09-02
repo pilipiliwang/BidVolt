@@ -26,6 +26,8 @@ describe('matchRoute', () => {
 
   it('routes login and global read-only history outside project scope', () => {
     expect(matchRoute('/login')).toEqual({ name: 'login' });
+    expect(matchRoute('/bid-market')).toEqual({ name: 'bid-market-library' });
+    expect(matchRoute('/bid-market/')).toEqual({ name: 'bid-market-library' });
     expect(matchRoute('/history-prices')).toEqual({ name: 'not-found' });
     expect(matchRoute('/history')).toEqual({ name: 'not-found' });
   });

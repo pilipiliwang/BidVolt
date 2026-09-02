@@ -115,7 +115,7 @@
   margin-top: 24px;
 }
 
-.ui0802-shell--enterprise-assets .app-shell__body {
+.ui0802-shell--knowledge-library .app-shell__body {
   display: grid;
   height: 100dvh;
   min-height: 0;
@@ -123,18 +123,18 @@
   overflow: hidden;
 }
 
-.ui0802-shell--enterprise-assets .topbar {
+.ui0802-shell--knowledge-library .topbar {
   min-height: 82px;
   align-items: flex-end;
   padding-top: 8px;
   padding-bottom: 6px;
 }
 
-.ui0802-shell--enterprise-assets .topbar__heading h1 {
+.ui0802-shell--knowledge-library .topbar__heading h1 {
   font-size: 30px;
 }
 
-.ui0802-shell--enterprise-assets .page-content {
+.ui0802-shell--knowledge-library .page-content {
   display: flex;
   min-height: 0;
   flex-direction: column;
@@ -168,14 +168,14 @@
     right: 16px;
   }
 
-  .ui0802-shell--enterprise-assets .app-shell__body {
+  .ui0802-shell--knowledge-library .app-shell__body {
     display: block;
     height: auto;
     min-height: 100dvh;
     overflow: visible;
   }
 
-  .ui0802-shell--enterprise-assets .page-content {
+  .ui0802-shell--knowledge-library .page-content {
     display: block;
     overflow: visible;
   }

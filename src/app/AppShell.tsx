@@ -10,6 +10,7 @@ import {
   FolderKanban,
   LogOut,
   Menu,
+  Newspaper,
   X,
 } from 'lucide-react';
 
@@ -76,6 +77,14 @@ function getNavigationItems(projectId?: string) {
       icon: Building2,
       href: '/enterprise-assets',
       activeFor: ['enterprise-assets'] satisfies AppRoute['name'][],
+    },
+    {
+      label: '投标行情库',
+      ariaLabel: undefined,
+      caption: '行业资讯与投标资料',
+      icon: Newspaper,
+      href: '/bid-market',
+      activeFor: ['bid-market-library'] satisfies AppRoute['name'][],
     },
     {
       label: '评审中心',
@@ -303,6 +312,7 @@ export function AppShell({
     );
   const projectSummary = projectSummaryOverride;
   const isEnterpriseAssetsMode = currentRoute === 'enterprise-assets';
+  const isKnowledgeLibraryMode = isEnterpriseAssetsMode || currentRoute === 'bid-market-library';
   const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileNavId = useId();
   const mobileNavRef = useRef<HTMLElement>(null);
@@ -365,7 +375,7 @@ export function AppShell({
 
   return (
     <div
-      className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}${isEnterpriseAssetsMode ? ' ui0802-shell--enterprise-assets' : ''}`}
+      className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}${isKnowledgeLibraryMode ? ' ui0802-shell--knowledge-library' : ''}${isEnterpriseAssetsMode ? ' ui0802-shell--enterprise-assets' : ''}`}
     >
       <a
         className="skip-link"
@@ -441,7 +451,7 @@ export function AppShell({
             </>
           )}
 
-          {currentRoute !== 'enterprise-assets' ? (
+          {!isKnowledgeLibraryMode ? (
             <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
               <button
                 className="task-status-button"

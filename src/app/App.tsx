@@ -42,6 +42,9 @@ import {
   type EnterpriseAssetCategoryFolder,
 } from '../features/enterprise-assets';
 import {
+  BidMarketLibraryPage,
+} from '../features/bid-market-library';
+import {
   ProjectMaterialsPage,
   type ProjectMaterial,
   type ProjectRequirement,
@@ -2308,6 +2311,7 @@ export function App() {
             <AppLink to={`/projects/${localPreviewProjectId}/pricing`}>报价测算</AppLink>
             <AppLink to={`/projects/${localPreviewProjectId}/deliverables/technical/versions/latest`}>成果编辑器</AppLink>
             <AppLink to="/enterprise-assets">企业资料</AppLink>
+            <AppLink to="/bid-market">投标行情库</AppLink>
           </nav>
         </aside>
       ) : null}
@@ -2384,6 +2388,14 @@ export function App() {
             setError(error, '企业资料字段纠正失败');
             throw error;
           })}
+        />
+      ) : null}
+      {route.name === 'bid-market-library' ? (
+        <BidMarketLibraryPage
+          categories={[]}
+          items={[]}
+          state="unavailable"
+          unavailableMessage="后端暂未提供文章、视频和文档型投标行情内容库接口。"
         />
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
@@ -2620,6 +2632,7 @@ function pageMetadata(route: string) {
     'project-overview': { eyebrow: '项目工作台', title: '项目概览' },
     'project-materials': { eyebrow: '项目工作台', title: '当前招标材料' },
     'enterprise-assets': { eyebrow: '企业知识中心', title: '企业资料库' },
+    'bid-market-library': { eyebrow: '企业知识中心', title: '投标行情库' },
     'review-center': { eyebrow: '项目工作台', title: '外部评审中心' },
     'pricing-center': { eyebrow: '项目工作台', title: '报价测算中心' },
     'deliverable-editor': { eyebrow: '项目工作台', title: '成果在线编辑' },

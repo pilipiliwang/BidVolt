@@ -11,6 +11,7 @@ describe('page API catalog', () => {
       { name: 'login' as const },
       { name: 'projects' as const },
       { name: 'enterprise-assets' as const },
+      { name: 'bid-market-library' as const },
       { name: 'project-overview' as const, projectId: '7' },
       { name: 'project-materials' as const, projectId: '7' },
       { name: 'review-center' as const, projectId: '7' },
@@ -333,6 +334,31 @@ describe('page API catalog', () => {
       isTask: true,
       trackRuntime: false,
       unavailableReason: expect.stringContaining('尚未提供'),
+    });
+  });
+
+  it('lists unavailable bid market content contracts without treating placeholders as requests', () => {
+    const catalog = pageApiCatalog({ name: 'bid-market-library' });
+    const contentOperations = catalog.filter((item) => item.id.startsWith('bid-market-content-'));
+
+    expect(contentOperations.map((item) => item.id)).toEqual([
+      'bid-market-content-list-search',
+      'bid-market-content-categories',
+      'bid-market-content-detail',
+      'bid-market-content-preview',
+      'bid-market-content-upload',
+    ]);
+    expect(contentOperations).toHaveLength(5);
+    contentOperations.forEach((item) => {
+      expect(item).toMatchObject({
+        path: '后端未定义',
+        trackRuntime: false,
+        unavailableReason: expect.any(String),
+      });
+      expect(pageApiOperationMatches(item, {
+        method: item.method,
+        path: '/hypothetical-bid-market-content-endpoint',
+      })).toBe(false);
     });
   });
 });

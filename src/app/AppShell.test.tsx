@@ -30,6 +30,7 @@ describe('AppShell mobile navigation', () => {
     expect(
       screen.getAllByRole('link', { name: '电网投标助手首页' }).length,
     ).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: '投标行情库' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: '历史报价' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /通知/ })).not.toBeInTheDocument();
   });
@@ -56,7 +57,32 @@ describe('AppShell mobile navigation', () => {
     expect(main).toHaveTextContent('企业资料业务区');
     expect(main.lastElementChild).toBe(diagnostics);
     expect(diagnostics).toHaveTextContent('接口调用明细');
+    expect(container.querySelector('.ui0802-shell--knowledge-library')).toBeInTheDocument();
     expect(container.querySelector('.ui0802-shell--enterprise-assets')).toBeInTheDocument();
+  });
+
+  it('marks the bid market library navigation entry active', () => {
+    const { container } = render(
+      <AppShell
+        currentRoute="bid-market-library"
+        eyebrow="行情数据中心"
+        enterpriseName="测试企业"
+        onLogout={vi.fn()}
+        onOpenTasks={vi.fn()}
+        taskCount={0}
+        title="投标行情库"
+        user={{ displayName: '测试用户', role: '投标经理' }}
+      >
+        <section>行情库业务区</section>
+      </AppShell>,
+    );
+
+    const desktopNavigation = within(document.querySelector<HTMLElement>('.desktop-sidebar')!)
+      .getByRole('navigation', { name: '主导航' });
+    expect(within(desktopNavigation).getByRole('link', { name: '投标行情库' }))
+      .toHaveAttribute('aria-current', 'page');
+    expect(container.querySelector('.ui0802-shell--knowledge-library')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /查看任务进度/ })).not.toBeInTheDocument();
   });
 
   it('moves focus into the dialog, traps it, hides the background, and restores the trigger on Escape', async () => {
@@ -158,7 +184,7 @@ describe('AppShell mobile navigation', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it.each(['enterprise-assets'] as const)(
+  it.each(['enterprise-assets', 'bid-market-library'] as const)(
     'removes project task progress and top account context from the %s global page',
     (currentRoute) => {
       render(
