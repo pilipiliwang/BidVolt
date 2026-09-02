@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -76,6 +76,24 @@ describe('ProjectListPage', () => {
 
     await user.type(screen.getByRole('searchbox', { name: '搜索项目' }), '风电场');
     expect(paginationStatus).toHaveTextContent('展示 1 条');
+  });
+
+  it('forwards the visible search term to backend q search', async () => {
+    const user = userEvent.setup();
+    const onSearchProjects = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProjectListPage
+        projects={projectSummaries}
+        onCreateProject={vi.fn()}
+        onSearchProjects={onSearchProjects}
+      />,
+    );
+
+    const search = screen.getByRole('searchbox', { name: '搜索项目' });
+    expect(search.closest('label')).not.toHaveClass('sr-only');
+    await user.type(search, '沿海新能源');
+
+    await waitFor(() => expect(onSearchProjects).toHaveBeenLastCalledWith('沿海新能源'));
   });
 
   it('opens the create-project dialog and focuses the first field', async () => {

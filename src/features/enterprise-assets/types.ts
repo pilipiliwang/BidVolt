@@ -1,3 +1,5 @@
+import type { ImageDescriptionPayload } from '../../shared/backend-api/types';
+
 export type EnterpriseAssetCategory =
   | 'license'
   | 'qualification'
@@ -46,6 +48,7 @@ export interface EnterpriseAsset {
   status: EnterpriseAssetStatus;
   updatedAt: string;
   expiresAt?: string;
+  imageDescription?: ImageDescriptionPayload | null;
   facts: EnterpriseFact[];
   revisions: EnterpriseAssetRevision[];
 }
@@ -53,7 +56,7 @@ export interface EnterpriseAsset {
 export interface EnterpriseIngestionItem {
   id: string;
   name: string;
-  status: 'queued' | 'classifying' | 'extracting' | 'completed' | 'failed';
+  status: 'queued' | 'classifying' | 'extracting' | 'pending_confirmation' | 'completed' | 'failed';
   progress?: number;
 }
 

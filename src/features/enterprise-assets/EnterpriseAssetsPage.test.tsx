@@ -62,6 +62,32 @@ const assets: EnterpriseAsset[] = [
 ];
 
 describe('EnterpriseAssetsPage', () => {
+  it('shows the backend second-pass identifier readings without hiding conflicts', async () => {
+    const user = userEvent.setup();
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={[{
+          ...assets[0],
+          imageDescription: {
+            doc_type: '营业执照',
+            numbers_pass1: ['91310000O'],
+            numbers_verified: ['913100000'],
+            numbers_conflict: ['91310000O'],
+            verify_mode: 'pillow_tiles',
+          },
+        }]}
+        categories={categories}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /查看.*详情/ }));
+
+    expect(screen.getByRole('heading', { name: '图片识别与编号复核' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('两次编号识别不一致');
+    expect(screen.getByText('913100000')).toBeInTheDocument();
+  });
+
   it('shows screenshot-aligned library browsing and opens traceable details', async () => {
     const user = userEvent.setup();
     render(

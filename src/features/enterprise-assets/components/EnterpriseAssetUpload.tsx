@@ -7,6 +7,7 @@ const ingestionStatusLabel = {
   queued: '等待处理',
   classifying: '正在自动分类',
   extracting: '正在抽取字段',
+  pending_confirmation: '待用户核对',
   completed: '处理完成',
   failed: '处理失败',
 } as const;
@@ -124,10 +125,15 @@ export function EnterpriseAssetUpload({
         <div className="enterprise-ingestion" aria-label="企业资料处理队列">
           {ingestionItems.map((item) => {
             const isComplete = item.status === 'completed';
+            const needsConfirmation = item.status === 'pending_confirmation';
             return (
               <article className="enterprise-ingestion__item" key={item.id}>
                 <span className="enterprise-ingestion__state" aria-hidden="true">
-                  {isComplete ? <CheckCircle2 size={18} /> : <LoaderCircle size={18} />}
+                  {isComplete
+                    ? <CheckCircle2 size={18} />
+                    : needsConfirmation
+                      ? <AlertCircle size={18} />
+                      : <LoaderCircle size={18} />}
                 </span>
                 <div className="enterprise-ingestion__content">
                   <div className="enterprise-ingestion__meta">
@@ -135,7 +141,9 @@ export function EnterpriseAssetUpload({
                     <span>{ingestionStatusLabel[item.status]}</span>
                   </div>
                   {item.progress === undefined ? (
-                    <small className="enterprise-progress-unknown">后端未提供百分比进度</small>
+                    <small className="enterprise-progress-unknown">
+                      {needsConfirmation ? '请核对自动分类和抽取字段' : '后端未提供百分比进度'}
+                    </small>
                   ) : (
                     <div
                       className="enterprise-progress"

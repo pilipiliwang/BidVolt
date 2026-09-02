@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { HistoryPricesPage } from './HistoryPricesPage';
 import type { HistoricalQuoteRecord } from './types';
@@ -85,6 +85,47 @@ describe('HistoryPricesPage', () => {
     expect(row).not.toHaveTextContent('0.00');
   });
 
+  it('renders backend history-library fields and evidence links instead of fixed placeholders', () => {
+    render(
+      <HistoryPricesPage
+        records={[{
+          ...records[0],
+          id: 'library-row',
+          projectName: '主变压器标包 1',
+          tenderer: '某省电网公司',
+          materialName: '变压器',
+          materialCode: 'NOTICE-2026-001',
+          specification: '固定总价',
+          packageName: '主变压器标包 1',
+          category: '变压器',
+          noticeId: 'NOTICE-2026-001',
+          priceMode: '固定总价',
+          limitPrice: 120,
+          unitPrice: 110.5,
+          winRatio: 0.9208,
+          source: '公共历史中标价行情库',
+          limitEvidence: '公告限价 120 万元',
+          winEvidence: '中标公告金额 110.5 万元',
+          limitEvidenceUrl: 'https://example.com/limit',
+          winEvidenceUrl: 'https://example.com/win',
+        }]}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /主变压器标包 1/ });
+    expect(row).toHaveTextContent('某省电网公司');
+    expect(row).toHaveTextContent('变压器');
+    expect(row).toHaveTextContent('NOTICE-2026-001');
+    expect(row).toHaveTextContent('固定总价');
+    expect(row).toHaveTextContent('120.00');
+    expect(row).toHaveTextContent('110.50');
+    expect(row).toHaveTextContent('92.08%');
+    expect(within(row).getByRole('link', { name: '限价证据' }))
+      .toHaveAttribute('href', 'https://example.com/limit');
+    expect(within(row).getByRole('link', { name: '中标证据' }))
+      .toHaveAttribute('href', 'https://example.com/win');
+  });
+
   it('filters records and switches to a trend detail without mutating history', async () => {
     const user = userEvent.setup();
     renderHistory();
@@ -142,5 +183,101 @@ describe('HistoryPricesPage', () => {
     await user.click(screen.getByRole('button', { name: '查询' }));
     expect(screen.getByText('第 1 / 1 页')).toHaveAttribute('aria-current', 'page');
     expect(within(table).getByText('国网浙江省电力')).toBeInTheDocument();
+  });
+
+  it('loads source metadata and opens material details from real API callbacks', async () => {
+    const user = userEvent.setup();
+    const onLoadSources = vi.fn().mockResolvedValue([{
+      id: 'history_price_library',
+      name: '历史中标价行情库',
+      fetchedAt: '2026-09-02',
+      coverage: '公共 8 条 / 本企业 2 条',
+      updatePolicy: '只读快照',
+      readonlyVerified: true,
+    }]);
+    const detailRecords = records.slice(0, 2).map((record) => ({
+      ...record,
+      materialRef: '03010101',
+    }));
+    const onOpenMaterial = vi.fn().mockResolvedValue({
+      records: detailRecords,
+      trend: {
+        materialRef: '03010101',
+        sampleCount: 2,
+        minimum: 12600,
+        maximum: 12850,
+        average: 12725,
+        median: 12725,
+        latest: 12850,
+        latestAt: '2024-05-18',
+        readonly: true,
+      },
+    });
+
+    render(
+      <HistoryPricesPage
+        records={records.map((record) => ({ ...record, materialRef: '03010101' }))}
+        onLoadSources={onLoadSources}
+        onOpenMaterial={onOpenMaterial}
+      />,
+    );
+
+    expect(await screen.findByText('历史中标价行情库')).toBeInTheDocument();
+    expect(screen.getByText(/只读已验证/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '2024年配网设备协议库存招标' }));
+
+    expect(onOpenMaterial).toHaveBeenCalledWith('03010101');
+    expect(await screen.findByRole('img', { name: /10kV高压开关柜历史中标价趋势/ })).toBeInTheDocument();
+    expect(screen.getAllByText('12,725.00')).toHaveLength(2);
+  });
+
+  it('imports an XLSX into the selected backend scope', async () => {
+    const user = userEvent.setup();
+    const onImportHistory = vi.fn().mockResolvedValue({
+      imported: 3,
+      skipped: 1,
+      parsedTotal: 5,
+      skippedRows: 1,
+      scope: 'public',
+    });
+    render(<HistoryPricesPage records={records} onImportHistory={onImportHistory} />);
+
+    await user.selectOptions(screen.getByLabelText('导入范围'), 'public');
+    const file = new File(['xlsx-bytes'], 'history.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await user.upload(screen.getByLabelText('选择 XLSX 文件'), file);
+    await user.click(screen.getByRole('button', { name: '导入行情' }));
+
+    expect(onImportHistory).toHaveBeenCalledWith(file, 'public');
+    expect(await screen.findByText(/已导入 3 条/)).toBeInTheDocument();
+  });
+
+  it('opens single sample detail only with the genuine sample_id returned by the backend', async () => {
+    const user = userEvent.setup();
+    const materialRecord = { ...records[0], materialRef: '03010101' };
+    const detailRecord = { ...materialRecord, id: 'sample-row', sampleId: '42' };
+    const onOpenMaterial = vi.fn().mockResolvedValue({
+      records: [detailRecord],
+      trend: {
+        materialRef: '03010101', sampleCount: 1, minimum: 12850, maximum: 12850,
+        average: 12850, median: 12850, latest: 12850, latestAt: '2024-05-18', readonly: true,
+      },
+    });
+    const onOpenSampleDetail = vi.fn().mockResolvedValue(detailRecord);
+    render(
+      <HistoryPricesPage
+        records={[materialRecord]}
+        onOpenMaterial={onOpenMaterial}
+        onOpenSampleDetail={onOpenSampleDetail}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: materialRecord.projectName }));
+    await user.click(await screen.findByRole('button', { name: '查看' }));
+
+    expect(onOpenSampleDetail).toHaveBeenCalledWith('42');
+    expect(await screen.findByRole('region', { name: '单条历史报价样本详情' }))
+      .toHaveTextContent('样本详情 #42');
   });
 });

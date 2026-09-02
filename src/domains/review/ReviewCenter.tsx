@@ -81,6 +81,9 @@ type ReviewCenterProps = {
   run: ReviewRunView;
   onRun?: (providerId: string) => void | Promise<void>;
   onSaveSuggestion?: (runId: string, findingId: string, suggestion: string) => void | Promise<void>;
+  onConfirmFinding?: (findingId: string, action: ReviewDecision) => void | Promise<void>;
+  onConfirmFindings?: (findingIds: string[], action: ReviewDecision) => void | Promise<void>;
+  onReEvaluate?: (findingIds: string[]) => void | Promise<void>;
   runAllowed?: boolean;
   runBlockReason?: string;
 };
@@ -93,6 +96,15 @@ type SuggestionEditState = {
 };
 
 type FindingFilter = 'all' | 'fail' | 'actionable' | `category:${string}`;
+type ReviewDecision = 'confirm' | 'reject';
+
+const findingStatusLabels = {
+  pending_confirm: '待确认',
+  confirmed: '已确认',
+  rejected: '不采纳',
+  re_reviewed: '已重审',
+  unknown: '状态未知',
+} as const;
 
 export function ReviewCenter({
   enterpriseCategories = [],
@@ -108,6 +120,9 @@ export function ReviewCenter({
   run,
   onRun,
   onSaveSuggestion,
+  onConfirmFinding,
+  onConfirmFindings,
+  onReEvaluate,
   runAllowed = true,
   runBlockReason,
 }: ReviewCenterProps) {
@@ -120,6 +135,10 @@ export function ReviewCenter({
   const [findingFilter, setFindingFilter] = useState<FindingFilter>('all');
   const [isSubmittingRun, setIsSubmittingRun] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [reviewMutation, setReviewMutation] = useState<{ error: string | null; key: string | null }>({
+    error: null,
+    key: null,
+  });
   const hasCompletedFindings = run.status === 'succeeded' && run.findings.length > 0;
   const validatedSummary = hasCompletedFindings ? run.validatedSummary : undefined;
   const totalFindingCount = validatedSummary?.totalFindingCount ?? run.findings.length;
@@ -154,6 +173,14 @@ export function ReviewCenter({
     return run.findings.filter((finding) => finding.category === category);
   }, [findingFilter, hasCompletedFindings, run.findings]);
   const activeSuggestionEdit = suggestionEdit?.runId === run.id ? suggestionEdit : null;
+  const pendingFindingIds = useMemo(
+    () => run.findings.filter((finding) => finding.status === 'pending_confirm').map((finding) => finding.id),
+    [run.findings],
+  );
+  const confirmedFindingIds = useMemo(
+    () => run.findings.filter((finding) => finding.status === 'confirmed').map((finding) => finding.id),
+    [run.findings],
+  );
 
   useEffect(() => {
     if (providers.some((provider) => provider.id === selectedProviderId && provider.available)) return;
@@ -164,6 +191,7 @@ export function ReviewCenter({
     setFindingFilter('all');
     setRunError(null);
     setIsSubmittingRun(false);
+    setReviewMutation({ error: null, key: null });
   }, [run.id]);
 
   const selectFindingFilter = (filter: FindingFilter) => {
@@ -221,6 +249,20 @@ export function ReviewCenter({
       setSuggestionEdit({
         ...activeSuggestionEdit,
         error: saveError instanceof Error ? saveError.message : '建议保存失败，请重试',
+      });
+    }
+  };
+
+  const applyReviewMutation = async (key: string, mutation: () => void | Promise<void>) => {
+    if (reviewMutation.key) return;
+    setReviewMutation({ error: null, key });
+    try {
+      await mutation();
+      setReviewMutation({ error: null, key: null });
+    } catch (error) {
+      setReviewMutation({
+        error: error instanceof Error && error.message ? error.message : '评审操作失败，请重试',
+        key: null,
       });
     }
   };
@@ -321,6 +363,45 @@ export function ReviewCenter({
               </button>
             </div>
 
+            {onConfirmFinding || onConfirmFindings || onReEvaluate ? (
+              <div className={styles.reviewActions} aria-label="评审建议处理">
+                {onConfirmFindings ? (
+                  <button
+                    disabled={pendingFindingIds.length === 0 || Boolean(reviewMutation.key)}
+                    type="button"
+                    onClick={() => void applyReviewMutation(
+                      'confirm-all',
+                      () => onConfirmFindings(pendingFindingIds, 'confirm'),
+                    )}
+                  >
+                    <CheckCircle2 aria-hidden="true" size={15} />
+                    {reviewMutation.key === 'confirm-all'
+                      ? '正在确认…'
+                      : `确认全部待处理建议（${pendingFindingIds.length}）`}
+                  </button>
+                ) : null}
+                {onReEvaluate ? (
+                  <button
+                    disabled={confirmedFindingIds.length === 0 || Boolean(reviewMutation.key)}
+                    type="button"
+                    onClick={() => void applyReviewMutation(
+                      're-evaluate',
+                      () => onReEvaluate(confirmedFindingIds),
+                    )}
+                  >
+                    <Sparkles aria-hidden="true" size={15} />
+                    {reviewMutation.key === 're-evaluate'
+                      ? '正在重新评审…'
+                      : `重新评审已确认建议（${confirmedFindingIds.length}）`}
+                  </button>
+                ) : null}
+                <span>确认只更新建议状态；重新评审后才会生成新的评分与评审记录。</span>
+              </div>
+            ) : null}
+            {reviewMutation.error ? (
+              <p className={styles.mutationError} role="alert">{reviewMutation.error}</p>
+            ) : null}
+
             <div className={styles.tableHead} aria-hidden="true">
               <span>类型</span><span>建议内容</span><span>当前得分</span><span>预期提升</span><span>关联标/修订</span><span>风险等级</span><span>操作</span>
             </div>
@@ -390,16 +471,51 @@ export function ReviewCenter({
                 <strong className={styles.lift}>{finding.improvableScore === undefined ? '—' : `+${finding.improvableScore.toFixed(1)} 分`}</strong>
                 <span className={styles.reference}>规则 {finding.ruleVersion}<small>置信度 {finding.confidence == null ? '未知' : `${Math.round(finding.confidence * 100)}%`}</small></span>
                 <span className={`${styles.riskLevel} ${meta.tone}`}>{riskLabel(finding)}</span>
-                <button
-                  aria-label={`编辑建议：${finding.title}`}
-                  className={styles.modifyButton}
-                  disabled={isEditing}
-                  type="button"
-                  onClick={() => beginSuggestionEdit(finding)}
-                >
-                  <PencilLine aria-hidden="true" size={13} />
-                  编辑建议
-                </button>
+                <div className={styles.findingActions}>
+                  {finding.status ? (
+                    <span className={`${styles.findingStatus} ${styles[finding.status]}`}>
+                      {findingStatusLabels[finding.status]}
+                    </span>
+                  ) : null}
+                  <button
+                    aria-label={`编辑建议：${finding.title}`}
+                    className={styles.modifyButton}
+                    disabled={isEditing || Boolean(reviewMutation.key)}
+                    type="button"
+                    onClick={() => beginSuggestionEdit(finding)}
+                  >
+                    <PencilLine aria-hidden="true" size={13} />
+                    编辑建议
+                  </button>
+                  {finding.status === 'pending_confirm' && onConfirmFinding ? (
+                    <>
+                      <button
+                        aria-label={`确认建议：${finding.title}`}
+                        className={styles.confirmButton}
+                        disabled={Boolean(reviewMutation.key)}
+                        type="button"
+                        onClick={() => void applyReviewMutation(
+                          `confirm:${finding.id}`,
+                          () => onConfirmFinding(finding.id, 'confirm'),
+                        )}
+                      >
+                        {reviewMutation.key === `confirm:${finding.id}` ? '确认中…' : '确认'}
+                      </button>
+                      <button
+                        aria-label={`不采纳建议：${finding.title}`}
+                        className={styles.rejectButton}
+                        disabled={Boolean(reviewMutation.key)}
+                        type="button"
+                        onClick={() => void applyReviewMutation(
+                          `reject:${finding.id}`,
+                          () => onConfirmFinding(finding.id, 'reject'),
+                        )}
+                      >
+                        {reviewMutation.key === `reject:${finding.id}` ? '处理中…' : '不采纳'}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </article>
             );
           })}
@@ -460,19 +576,19 @@ function ReviewImpact({
   onAddFiles,
 }: ReviewImpactProps) {
   const supplementInputRef = useRef<HTMLInputElement>(null);
-  const [staleSnapshotId, setStaleSnapshotId] = useState<string | null>(null);
+  const [supplementedRunId, setSupplementedRunId] = useState<string | null>(null);
   const [supplementState, setSupplementState] = useState<{ error: string | null; pending: boolean }>({
     error: null,
     pending: false,
   });
-  const needsNewSnapshot = staleSnapshotId === run.projectSnapshotId;
+  const hasNewSupplement = supplementedRunId === run.id;
 
   const addSupplementFiles = async (files: File[]) => {
     if (supplementState.pending) return;
     setSupplementState({ error: null, pending: true });
     try {
       await onAddFiles(files);
-      setStaleSnapshotId(run.projectSnapshotId);
+      setSupplementedRunId(run.id);
       setSupplementState({ error: null, pending: false });
     } catch (error) {
       setSupplementState({
@@ -542,7 +658,7 @@ function ReviewImpact({
         </div>
         <button
           className={styles.runButton}
-          disabled={!canSubmitRun || !runAllowed || run.status === 'queued' || run.status === 'running' || needsNewSnapshot || isSubmittingRun}
+          disabled={!canSubmitRun || !runAllowed || run.status === 'queued' || run.status === 'running' || isSubmittingRun}
           onClick={() => void onRun()}
           type="button"
         >
@@ -553,8 +669,8 @@ function ReviewImpact({
             ? '评审执行中'
             : run.status === 'queued'
               ? '评审任务排队中'
-            : needsNewSnapshot
-              ? '请先冻结新快照'
+            : hasNewSupplement
+              ? '重新运行评审并生成新快照'
               : '基于冻结快照运行评审'}
         </button>
         {runError ? <p className={styles.runError} role="alert">{runError}</p> : null}
@@ -587,9 +703,9 @@ function ReviewImpact({
       {supplementState.error ? (
         <p className={styles.runError} role="alert">{supplementState.error}</p>
       ) : null}
-      {needsNewSnapshot ? (
+      {hasNewSupplement ? (
         <p className={styles.runBlocked} role="status">
-          补充资料已加入当前项目；请冻结新快照后重新运行评审。
+          补充资料已加入当前项目；可确认建议后重新评审，系统会自动生成新快照。
         </p>
       ) : null}
     </section>

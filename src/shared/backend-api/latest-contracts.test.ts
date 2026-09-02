@@ -5,7 +5,7 @@ import { createBackendApi } from './index';
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
 
-describe('latest backend contract d3ee772 (API-compatible with b0eab472)', () => {
+describe('latest backend contract 439fcfc', () => {
   it('starts and steers the project-scoped agent main session', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ task_id: 31 }))
@@ -82,10 +82,25 @@ describe('latest backend contract d3ee772 (API-compatible with b0eab472)', () =>
   });
 
   it('sends document_role with upload and exposes image-description endpoints', async () => {
+    const verifiedDescription = {
+      doc_type: '资质证书',
+      numbers: ['C1601J0253904821'],
+      numbers_verified: ['C1601J02S3904821'],
+      numbers_pass1: ['C1601J0253904821'],
+      numbers_conflict: ['C1601J0253904821'],
+      verify_mode: 'vl_high_res',
+    };
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ files: [] }))
       .mockResolvedValueOnce(jsonResponse({ queued: 0, running: 0, done: 2, remaining: 0 }))
-      .mockResolvedValueOnce(jsonResponse({ file_id: 9, items: [] }));
+      .mockResolvedValueOnce(jsonResponse({
+        file_id: 9,
+        image_count: 1,
+        described_count: 1,
+        items: [{
+          ordinal: 0, page: 1, sha256: 'abc', described: true, description: verifiedDescription,
+        }],
+      }));
     const api = createBackendApi({ baseUrl: '/api/v1', fetchImpl });
 
     await api.files.upload({
@@ -93,7 +108,7 @@ describe('latest backend contract d3ee772 (API-compatible with b0eab472)', () =>
       files: [new File(['doc'], 'tender.docx')],
     });
     await api.files.imageDescribeProgress();
-    await api.files.imageDescriptions(9);
+    const descriptions = await api.files.imageDescriptions(9);
 
     const form = fetchImpl.mock.calls[0][1]?.body;
     expect(form).toBeInstanceOf(FormData);
@@ -101,6 +116,12 @@ describe('latest backend contract d3ee772 (API-compatible with b0eab472)', () =>
     expect(form.get('document_role')).toBe('current_tender');
     expect(fetchImpl.mock.calls[1][0]).toBe('/api/v1/files/image-describe-progress');
     expect(fetchImpl.mock.calls[2][0]).toBe('/api/v1/files/9/image-descriptions');
+    expect(descriptions.items[0].description).toMatchObject({
+      numbers_verified: ['C1601J02S3904821'],
+      numbers_pass1: ['C1601J0253904821'],
+      numbers_conflict: ['C1601J0253904821'],
+      verify_mode: 'vl_high_res',
+    });
   });
 
   it('loads every project-file page before material roles are adapted', async () => {
@@ -128,6 +149,40 @@ describe('latest backend contract d3ee772 (API-compatible with b0eab472)', () =>
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
       '/api/v1/files?target=project&project_id=7&page=1&size=2',
       '/api/v1/files?target=project&project_id=7&page=2&size=2',
+    ]);
+  });
+
+  it('uses backend q search and loads every project page beyond the first 100 rows', async () => {
+    const project = (projectId: number) => ({
+      project_id: projectId,
+      name: `项目 ${projectId}`,
+      tender_no: null,
+      buyer: '国家电网',
+      deadline: null,
+      status: 1,
+      note: null,
+      updated_at: '2026-09-02T00:00:00Z',
+      summary: null,
+    });
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({
+        items: Array.from({ length: 100 }, (_, index) => project(index + 1)),
+        total: 101,
+        page: 1,
+        size: 100,
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [project(101)],
+        total: 101,
+        page: 2,
+        size: 100,
+      }));
+    const api = createBackendApi({ baseUrl: '/api/v1', fetchImpl });
+
+    await expect(api.projects.listAll({ q: '国家电网' })).resolves.toHaveLength(101);
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/projects?q=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91&page=1&size=100',
+      '/api/v1/projects?q=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91&page=2&size=100',
     ]);
   });
 

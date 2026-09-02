@@ -41,6 +41,8 @@ describe('page API catalog', () => {
       'project-detail',
       'project-materials',
       'project-task-history',
+      'project-task-detail',
+      'project-task-stream',
       'project-requirements',
       'project-file-image-descriptions',
       'project-upload',
@@ -89,17 +91,29 @@ describe('page API catalog', () => {
     expect(catalog.some((item) => item.path.includes('document_role='))).toBe(false);
     expect(catalog.filter((item) => item.isTask).map((item) => item.id)).toEqual([
       'project-task-history',
+      'project-task-detail',
+      'project-task-stream',
       'agent-run-start',
       'agent-run-status',
       'agent-run-stream',
       'agent-run-questions',
       'agent-run-answer',
       'agent-run-chat',
+    ]);
+    for (const id of [
       'project-final-check',
       'project-final-check-detail',
       'project-export',
       'project-export-status',
-    ]);
+      'project-delivery-package',
+      'agent-artifact-download',
+      'project-archive',
+      'project-enterprise-ingest',
+      'requirement-detail',
+      'requirements-upsert',
+    ]) {
+      expect(catalog.find((item) => item.id === id)?.notIntegratedReason).toBeTruthy();
+    }
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -111,6 +125,8 @@ describe('page API catalog', () => {
     const answer = catalog.find((item) => item.id === 'agent-run-answer')!;
     const chat = catalog.find((item) => item.id === 'agent-run-chat')!;
     const artifact = catalog.find((item) => item.id === 'agent-artifact-download')!;
+    const taskDetail = catalog.find((item) => item.id === 'project-task-detail')!;
+    const taskStream = catalog.find((item) => item.id === 'project-task-stream')!;
 
     expect(status).toMatchObject({ method: 'GET', path: '/projects/7/agent-run/{taskId}' });
     expect(stream).toMatchObject({ method: 'GET', path: '/projects/7/agent-run/{taskId}/stream?since={seq}' });
@@ -119,7 +135,10 @@ describe('page API catalog', () => {
     expect(pageApiOperationMatches(questions, { method: 'GET', path: '/projects/7/agent-run/31/questions' })).toBe(true);
     expect(pageApiOperationMatches(answer, { method: 'POST', path: '/projects/7/agent-run/31/asks/13/answer' })).toBe(true);
     expect(pageApiOperationMatches(chat, { method: 'POST', path: '/projects/7/agent-run/31/chat' })).toBe(true);
+    expect(pageApiOperationMatches(taskDetail, { method: 'GET', path: '/tasks/41' })).toBe(true);
+    expect(pageApiOperationMatches(taskStream, { method: 'GET', path: '/tasks/41/stream' })).toBe(true);
     expect(pageApiOperationMatches(artifact, { method: 'GET', path: '/projects/7/agent-artifact/52/download' })).toBe(true);
+    expect(artifact.notIntegratedReason).toContain('单项成果清单');
     expect(catalog.find((item) => item.id === 'project-response-package')).toMatchObject({
       method: 'GET',
       path: '/projects/7/response-package',
@@ -202,6 +221,12 @@ describe('page API catalog', () => {
       'quote-ai-suggest',
       'quote-apply',
     ]));
+    expect(history.find((item) => item.id === 'quote-history-import')?.notIntegratedReason).toBeUndefined();
+    expect(history.find((item) => item.id === 'quote-history-sample-detail')?.notIntegratedReason)
+      .toContain('sample_id');
+    for (const id of ['quote-calculate', 'quote-recalculate', 'quote-ai-suggest']) {
+      expect(pricing.find((item) => item.id === id)?.notIntegratedReason).toBeUndefined();
+    }
     expect(pageApiOperationMatches(samples, {
       method: 'GET',
       path: '/quotes/history/%E7%89%A9%E6%96%99-A/samples',
@@ -278,6 +303,25 @@ describe('page API catalog', () => {
       path: '/projects/7/evaluate',
     });
     expect(catalog.some((item) => item.id === 'review-provider-selection')).toBe(false);
+    expect(catalog.map((item) => item.id)).toEqual(expect.arrayContaining([
+      'project-review-items',
+      'review-update-suggestion',
+      'review-confirm-item',
+      'review-confirm-items',
+      'review-re-evaluate',
+    ]));
+    expect(catalog.find((item) => item.id === 'review-confirm-item')).toMatchObject({
+      method: 'PUT',
+      path: '/projects/7/scores/{scoreId}/items/{findingId}/confirm',
+    });
+    expect(catalog.find((item) => item.id === 'review-confirm-items')).toMatchObject({
+      method: 'POST',
+      path: '/projects/7/scores/{scoreId}/items/confirm',
+    });
+    expect(catalog.find((item) => item.id === 'review-re-evaluate')).toMatchObject({
+      method: 'POST',
+      path: '/projects/7/re-evaluate',
+    });
   });
 
   it('marks login password recovery and enterprise revision content as unavailable', () => {

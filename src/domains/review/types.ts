@@ -13,6 +13,13 @@ export type ReviewFindingOutcome = 'fail' | 'risk' | 'pass' | 'unknown' | 'absta
 
 export type ReviewEvidenceVerification = 'verified' | 'hidden_unverified' | 'missing';
 
+export type ReviewFindingStatus =
+  | 'pending_confirm'
+  | 'confirmed'
+  | 'rejected'
+  | 're_reviewed'
+  | 'unknown';
+
 export type ReviewFinding = {
   id: string;
   category?: string;
@@ -24,6 +31,8 @@ export type ReviewFinding = {
   fullScore?: number;
   improvableScore?: number;
   riskLevel?: 'low' | 'medium' | 'high';
+  status?: ReviewFindingStatus;
+  actionType?: string;
   suggestion: string;
   evidence: {
     sourceLabel: string;

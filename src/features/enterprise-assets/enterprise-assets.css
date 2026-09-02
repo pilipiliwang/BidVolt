@@ -590,6 +590,7 @@
 .enterprise-ingestion__state { color: var(--enterprise-accent); }
 .enterprise-ingestion__state svg { animation: enterprise-spin 1.4s linear infinite; }
 .enterprise-ingestion__item:has(.lucide-check-circle-2) .enterprise-ingestion__state svg { animation: none; }
+.enterprise-ingestion__item:has(.lucide-circle-alert) .enterprise-ingestion__state svg { animation: none; }
 .enterprise-ingestion__content { min-width: 0; flex: 1; }
 
 .enterprise-ingestion__meta {

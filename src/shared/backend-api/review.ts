@@ -1,7 +1,8 @@
 import { idPath, type BackendApiClient } from './client';
 import type {
   BackendId, JsonObject, ReviewItem, ReviewProvider, ReviewRun, ReviewRunDetail,
-  ReviewRunRequest, ScoreSummary,
+  ReviewItemBatchConfirmRequest, ReviewItemBatchConfirmResponse, ReviewItemConfirmRequest,
+  ReviewItemMutationResult, ReviewReEvaluateResponse, ReviewRunRequest, ScoreSummary,
 } from './types';
 
 export const createReviewApi = (client: BackendApiClient) => ({
@@ -26,14 +27,25 @@ export const createReviewApi = (client: BackendApiClient) => ({
       `/projects/${idPath(projectId)}/scores/${idPath(scoreId)}/items/${idPath(itemId)}/suggestion`,
       { method: 'PUT', body: { suggestion } },
     ),
-  confirmItem: (projectId: BackendId, scoreId: BackendId, itemId: BackendId, body: {
-    action: string; expected_version?: number;
-  }) => client.request<Record<string, unknown>>(
+  confirmItem: (
+    projectId: BackendId,
+    scoreId: BackendId,
+    itemId: BackendId,
+    body: ReviewItemConfirmRequest,
+  ) => client.request<ReviewItemMutationResult>(
     `/projects/${idPath(projectId)}/scores/${idPath(scoreId)}/items/${idPath(itemId)}/confirm`,
     { method: 'PUT', body },
   ),
-  reEvaluate: (projectId: BackendId, itemIds: BackendId[]) =>
-    client.request<Record<string, unknown>>(`/projects/${idPath(projectId)}/re-evaluate`, {
+  confirmItems: (
+    projectId: BackendId,
+    scoreId: BackendId,
+    body: ReviewItemBatchConfirmRequest,
+  ) => client.request<ReviewItemBatchConfirmResponse>(
+    `/projects/${idPath(projectId)}/scores/${idPath(scoreId)}/items/confirm`,
+    { method: 'POST', body },
+  ),
+  reEvaluate: (projectId: BackendId, itemIds: number[]) =>
+    client.request<ReviewReEvaluateResponse>(`/projects/${idPath(projectId)}/re-evaluate`, {
       method: 'POST', body: { item_ids: itemIds },
     }),
 });

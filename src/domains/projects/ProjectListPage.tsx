@@ -16,6 +16,7 @@ type ProjectListPageProps = {
   isLive?: boolean;
   onArchiveProject?: (projectId: string) => void | Promise<void>;
   onCreateProject: (project: ProjectSummary) => void | Promise<void>;
+  onSearchProjects?: (query: string) => void | Promise<void>;
   projects: ProjectSummary[];
   scores?: Record<string, number | string>;
   total?: number;
@@ -77,11 +78,14 @@ export function ProjectListPage({
   error,
   onArchiveProject,
   onCreateProject,
+  onSearchProjects,
   projects,
   scores = {},
   total,
 }: ProjectListPageProps) {
   const [query, setQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
   const [archivingProjectIds, setArchivingProjectIds] = useState<string[]>([]);
   const [archiveErrors, setArchiveErrors] = useState<Record<string, string>>({});
   const [isCreateOpen, setCreateOpen] = useState(false);
@@ -93,6 +97,7 @@ export function ProjectListPage({
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
   const deadlineInputRef = useRef<HTMLInputElement>(null);
+  const searchTouchedRef = useRef(false);
   const deadlineInputId = useId();
   const deadlineHelpId = useId();
 
@@ -127,6 +132,30 @@ export function ProjectListPage({
       return !normalisedQuery || searchableText.includes(normalisedQuery);
     });
   }, [projectRows, query]);
+
+  useEffect(() => {
+    if (!onSearchProjects || !searchTouchedRef.current) return undefined;
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      setIsSearching(true);
+      setSearchError('');
+      Promise.resolve(onSearchProjects(query.trim()))
+        .catch((searchFailure: unknown) => {
+          if (!cancelled) {
+            setSearchError(searchFailure instanceof Error
+              ? searchFailure.message
+              : '项目搜索失败，请稍后重试。');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setIsSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [onSearchProjects, query]);
 
   const closeCreateDialog = () => {
     setCreateOpen(false);
@@ -275,15 +304,20 @@ export function ProjectListPage({
     <div className="ui0802-project-page">
       <h2 className="sr-only">把每次投标沉淀成清晰、可追溯的工作流</h2>
       <div className="ui0802-project-toolbar">
-        <label className="ui0802-project-search sr-only">
+        <label className="ui0802-project-search">
           <Search aria-hidden="true" size={17} />
-          <span>搜索项目</span>
+          <span className="sr-only">搜索项目</span>
           <input
             type="search"
             value={query}
             placeholder="搜索项目、编号或招标人"
-            onChange={(event) => setQuery(event.target.value)}
+            aria-busy={isSearching}
+            onChange={(event) => {
+              searchTouchedRef.current = true;
+              setQuery(event.target.value);
+            }}
           />
+          {isSearching ? <small role="status">正在查询后端全部项目…</small> : null}
         </label>
         <button
           ref={createButtonRef}
@@ -298,6 +332,7 @@ export function ProjectListPage({
           新增项目
         </button>
       </div>
+      {searchError ? <p className="ui0802-project-form-error" role="alert">{searchError}</p> : null}
 
       <section className="ui0802-summary-grid" aria-label="项目概况">
         {summaryItems.map(({ label, value, icon: Icon, tone }) => (

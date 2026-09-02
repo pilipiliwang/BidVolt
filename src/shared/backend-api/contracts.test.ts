@@ -84,6 +84,49 @@ describe('real backend endpoint contracts', () => {
     expect(JSON.parse(String(init?.body))).toEqual({ suggestion: '补充技术参数证据' });
   });
 
+  it('uses the review_item read, single confirm, batch confirm and re-evaluate contracts', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ item_id: 9, status: 'succeeded' }))
+      .mockResolvedValueOnce(jsonResponse({ results: [{ item_id: 10, status: 'succeeded' }] }))
+      .mockResolvedValueOnce(jsonResponse({
+        run_id: 8,
+        score_id: 12,
+        total_score: 82,
+        new_item_ids: [20, 21],
+        improved_count: 1,
+      }));
+    const api = createBackendApi({ baseUrl: '/api/v1', fetchImpl });
+
+    await api.review.listItems(3, 5);
+    await api.review.confirmItem(3, 5, 9, { action: 'reject', expected_version: 4 });
+    await api.review.confirmItems(3, 5, {
+      action: 'confirm',
+      expected_version: 4,
+      item_ids: [10, 11],
+    });
+    await api.review.reEvaluate(3, [10, 11]);
+
+    expect(fetchImpl.mock.calls[0][0]).toBe('/api/v1/projects/3/scores/5/items');
+    expect(fetchImpl.mock.calls[0][1]?.method).toBe('GET');
+    expect(fetchImpl.mock.calls[1][0]).toBe('/api/v1/projects/3/scores/5/items/9/confirm');
+    expect(fetchImpl.mock.calls[1][1]?.method).toBe('PUT');
+    expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toEqual({
+      action: 'reject',
+      expected_version: 4,
+    });
+    expect(fetchImpl.mock.calls[2][0]).toBe('/api/v1/projects/3/scores/5/items/confirm');
+    expect(fetchImpl.mock.calls[2][1]?.method).toBe('POST');
+    expect(JSON.parse(String(fetchImpl.mock.calls[2][1]?.body))).toEqual({
+      action: 'confirm',
+      expected_version: 4,
+      item_ids: [10, 11],
+    });
+    expect(fetchImpl.mock.calls[3][0]).toBe('/api/v1/projects/3/re-evaluate');
+    expect(fetchImpl.mock.calls[3][1]?.method).toBe('POST');
+    expect(JSON.parse(String(fetchImpl.mock.calls[3][1]?.body))).toEqual({ item_ids: [10, 11] });
+  });
+
   it('passes the selected provider to the backend review endpoint', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ run_id: 6 }));
     const api = createBackendApi({ baseUrl: '/api/v1', fetchImpl });

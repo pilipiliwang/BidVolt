@@ -16,6 +16,8 @@ import { useId, useMemo, useState, type ReactNode } from 'react';
 import { ProjectReviewSidebar } from '../../domains/projects/ProjectReviewSidebar';
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
+import type { FileImageDescriptions } from '../../shared/backend-api/types';
+import { ImageDescriptionSummary } from '../../shared/ui/ImageDescriptionSummary';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
 import { RequirementsPanel } from './components/RequirementsPanel';
 import { SnapshotsPanel } from './components/SnapshotsPanel';
@@ -61,11 +63,40 @@ function ProjectMaterialRows({
   emptyDescription,
   emptyTitle,
   materials,
+  onLoadImageDescriptions,
 }: {
   emptyDescription: string;
   emptyTitle: string;
   materials: ProjectMaterial[];
+  onLoadImageDescriptions?: (fileId: string) => Promise<FileImageDescriptions>;
 }) {
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
+  const [loadingFileId, setLoadingFileId] = useState<string | null>(null);
+  const [descriptionsByFileId, setDescriptionsByFileId] = useState<Record<string, FileImageDescriptions>>({});
+  const [errorsByFileId, setErrorsByFileId] = useState<Record<string, string>>({});
+
+  const toggleImageDescriptions = async (material: ProjectMaterial) => {
+    if (expandedFileId === material.id) {
+      setExpandedFileId(null);
+      return;
+    }
+    setExpandedFileId(material.id);
+    if (!onLoadImageDescriptions || descriptionsByFileId[material.id]) return;
+    setLoadingFileId(material.id);
+    setErrorsByFileId((current) => ({ ...current, [material.id]: '' }));
+    try {
+      const response = await onLoadImageDescriptions(material.id);
+      setDescriptionsByFileId((current) => ({ ...current, [material.id]: response }));
+    } catch (error) {
+      setErrorsByFileId((current) => ({
+        ...current,
+        [material.id]: error instanceof Error && error.message ? error.message : '图片识别结果加载失败',
+      }));
+    } finally {
+      setLoadingFileId((current) => current === material.id ? null : current);
+    }
+  };
+
   return (
     <div className="project-material-list">
       {materials.map((material) => {
@@ -84,6 +115,16 @@ function ProjectMaterialRows({
               <div className="project-material-row__meta">
                 <span>上传于 {material.uploadedAt}</span>
                 {material.blocksCount !== undefined && <span>{material.blocksCount} 个文本块</span>}
+                {onLoadImageDescriptions && material.imageCount !== undefined && material.imageCount > 0 ? (
+                  <button
+                    aria-expanded={expandedFileId === material.id}
+                    className="project-material-row__image-button"
+                    onClick={() => void toggleImageDescriptions(material)}
+                    type="button"
+                  >
+                    图片识别 {material.imageDescribedCount ?? 0}/{material.imageCount}
+                  </button>
+                ) : null}
                 {material.supersedesRevisionNo !== undefined && (
                   <span className="project-supersedes">
                     <RotateCcw aria-hidden="true" size={12} />
@@ -110,6 +151,23 @@ function ProjectMaterialRows({
               <ParseStatusIcon status={material.parseStatus} />
               {statusLabel[material.parseStatus]}
             </span>
+            {expandedFileId === material.id ? (
+              <div className="project-material-row__image-details">
+                {loadingFileId === material.id ? <p role="status">正在读取后端图片识别结果…</p> : null}
+                {errorsByFileId[material.id] ? <p role="alert">{errorsByFileId[material.id]}</p> : null}
+                {descriptionsByFileId[material.id]?.items.map((item) => item.description ? (
+                  <ImageDescriptionSummary
+                    description={item.description}
+                    key={`${item.ordinal}-${item.sha256}`}
+                    title={`图片 ${item.ordinal + 1}${item.page === null ? '' : ` · 第 ${item.page} 页`}`}
+                  />
+                ) : null)}
+                {descriptionsByFileId[material.id]
+                  && descriptionsByFileId[material.id].items.every((item) => !item.description) ? (
+                    <p>后端尚未返回可展示的图片描述。</p>
+                  ) : null}
+              </div>
+            ) : null}
           </article>
         );
       })}
@@ -200,6 +258,7 @@ export function ProjectMaterialsPage({
   onAssistantSend,
   onCompletedBidUpload,
   onImportTenderNoticeUrl,
+  onLoadImageDescriptions,
   projectId,
   projectName,
   reviewSidebar,
@@ -308,6 +367,7 @@ export function ProjectMaterialsPage({
                 emptyDescription="请使用页面底部项目助手的“添加文件”上传本项目补充资料。"
                 emptyTitle="暂无补充资料"
                 materials={supplementalMaterials}
+                onLoadImageDescriptions={onLoadImageDescriptions}
               />
             </CollapsibleMaterialGroup>
 
@@ -372,6 +432,7 @@ export function ProjectMaterialsPage({
                     emptyDescription="当前招标材料是启动解析、生成或校核任务的必传输入。"
                     emptyTitle="请先上传当前招标材料"
                     materials={currentProjectMaterials}
+                    onLoadImageDescriptions={onLoadImageDescriptions}
                   />
 
                   {currentProjectMaterials.length > 0 && !taskBlocksActions ? (
@@ -462,6 +523,7 @@ export function ProjectMaterialsPage({
                   emptyDescription="后端尚未返回可显示的已完成标书材料。"
                   emptyTitle="暂无已完成标书材料"
                   materials={completedBidMaterials}
+                  onLoadImageDescriptions={onLoadImageDescriptions}
                 />
               </CollapsibleMaterialGroup>
             ) : null}

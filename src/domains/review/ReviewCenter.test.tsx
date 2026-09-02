@@ -150,6 +150,47 @@ describe('ReviewCenter', () => {
     expect(onRun).toHaveBeenCalledWith('provider-code');
   });
 
+  it('exposes real single, batch and re-evaluate actions for backend review items', async () => {
+    const user = userEvent.setup();
+    const onConfirmFinding = vi.fn();
+    const onConfirmFindings = vi.fn();
+    const onReEvaluate = vi.fn();
+    const actionableRun: ReviewRunView = {
+      ...run,
+      findings: [
+        { ...run.findings[0], id: 'pending-1', title: '待确认建议一', status: 'pending_confirm' },
+        { ...run.findings[0], id: 'pending-2', title: '待确认建议二', status: 'pending_confirm' },
+        { ...run.findings[0], id: 'confirmed-1', title: '已确认建议', status: 'confirmed' },
+      ],
+    };
+    render(
+      <ReviewCenter
+        enterpriseMaterials={[]}
+        materials={[]}
+        onAddFiles={() => undefined}
+        onConfirmFinding={onConfirmFinding}
+        onConfirmFindings={onConfirmFindings}
+        onReEvaluate={onReEvaluate}
+        providers={providers}
+        run={actionableRun}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '确认建议：待确认建议一' }));
+    expect(onConfirmFinding).toHaveBeenCalledWith('pending-1', 'confirm');
+
+    await user.click(screen.getByRole('button', { name: '不采纳建议：待确认建议二' }));
+    expect(onConfirmFinding).toHaveBeenCalledWith('pending-2', 'reject');
+
+    await user.click(screen.getByRole('button', { name: '确认全部待处理建议（2）' }));
+    expect(onConfirmFindings).toHaveBeenCalledWith(['pending-1', 'pending-2'], 'confirm');
+
+    await user.click(screen.getByRole('button', { name: '重新评审已确认建议（1）' }));
+    expect(onReEvaluate).toHaveBeenCalledWith(['confirmed-1']);
+    expect(screen.getAllByText('待确认')).toHaveLength(2);
+    expect(screen.getByText('已确认')).toBeInTheDocument();
+  });
+
   it('filters loaded findings by required action, category and optimizable status', async () => {
     const user = userEvent.setup();
     const filterableRun: ReviewRunView = {
@@ -412,7 +453,7 @@ describe('ReviewCenter', () => {
     expect(screen.getByText('请确认资质证书在投标截止日仍然有效。')).toBeInTheDocument();
   });
 
-  it('uploads supplements into the current project and requires a new snapshot before review', async () => {
+  it('uploads supplements and keeps backend actions available because review creates its own snapshot', async () => {
     const user = userEvent.setup();
     const onAddFiles = vi.fn();
     render(
@@ -420,6 +461,7 @@ describe('ReviewCenter', () => {
         enterpriseMaterials={[]}
         materials={[]}
         onAddFiles={onAddFiles}
+        onRun={() => undefined}
         providers={providers}
         run={run}
       />,
@@ -435,9 +477,9 @@ describe('ReviewCenter', () => {
 
     expect(onAddFiles).toHaveBeenCalledWith([file]);
     expect(
-      screen.getByText('补充资料已加入当前项目；请冻结新快照后重新运行评审。'),
+      screen.getByText('补充资料已加入当前项目；可确认建议后重新评审，系统会自动生成新快照。'),
     ).toHaveAttribute('role', 'status');
-    expect(screen.getByRole('button', { name: '请先冻结新快照' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '重新运行评审并生成新快照' })).toBeEnabled();
   });
 
   it('does not mark the snapshot stale when supplement upload fails', async () => {
@@ -461,6 +503,6 @@ describe('ReviewCenter', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('补充资料上传失败');
     expect(screen.getByRole('button', { name: '基于冻结快照运行评审' })).toBeEnabled();
-    expect(screen.queryByText(/请冻结新快照后重新运行评审/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/系统会自动生成新快照/)).not.toBeInTheDocument();
   });
 });

@@ -12,12 +12,22 @@ export type TokenPair = {
 export type MeResponse = {
   user_id: number; email: string; enterprise_id: number; enterprise_name: string; permissions: string[];
 };
+export type ProjectSummaryResponse = {
+  material_count: number;
+  deliverable_count: number;
+  review_run_count: number;
+  latest_total_score: number | null;
+  missing_count: number | null;
+  risk_level: number | null;
+};
 export type ProjectResponse = {
-  project_id: number; name: string; tender_no: string | null; deadline: string | null;
-  status: number; note: string | null; updated_at: string;
+  project_id: number; name: string; tender_no: string | null; buyer: string | null;
+  deadline: string | null; status: number; note: string | null; updated_at: string;
+  summary: ProjectSummaryResponse | null;
 };
 export type ProjectWrite = {
-  name?: string; tender_no?: string | null; deadline?: string | null; note?: string | null;
+  name?: string; tender_no?: string | null; buyer?: string | null;
+  deadline?: string | null; note?: string | null;
 };
 export type BackendFile = {
   file_id: number; name: string; size: number; mime?: string | null; status?: number; sha256?: string;
@@ -48,9 +58,23 @@ export type ImageDescribeProgress = {
   queued: number; running: number; done: number; failed_terminal: number; remaining: number;
   described_images: number;
 };
+export type ImageDescriptionPayload = {
+  doc_type?: string; subject?: string | null; numbers?: string[]; dates?: string[];
+  amounts?: string[]; people?: string[]; stamps?: string[]; text_summary?: string;
+  is_scan?: boolean;
+  /** Second-pass high-resolution readings for identifier-dense documents. */
+  numbers_verified?: string[];
+  /** First-pass readings retained for side-by-side verification. */
+  numbers_pass1?: string[];
+  /** Readings that disagree between passes and must not be silently selected. */
+  numbers_conflict?: string[];
+  verify_mode?: 'vl_high_res' | 'pillow_tiles' | string;
+  raw?: boolean;
+  [key: string]: JsonValue | undefined;
+};
 export type FileImageDescription = {
   ordinal: number; page: number | null; sha256: string; described: boolean;
-  description: JsonObject | null;
+  description: ImageDescriptionPayload | null;
 };
 export type FileImageDescriptions = {
   file_id: number; image_count: number; described_count: number; items: FileImageDescription[];
@@ -80,7 +104,7 @@ export type EnterpriseFact = {
   fact_id: number; fact_key: string; fact_value: JsonValue; confidence: number | null; status: number;
 };
 export type EnterpriseAssetDetail = EnterpriseAsset & {
-  image_description?: JsonObject | null; facts: EnterpriseFact[];
+  image_description?: ImageDescriptionPayload | null; facts: EnterpriseFact[];
 };
 export type EnterpriseAssetRevision = {
   revision_id: number; revision_no: number; file_id: number | null; sha256: string | null;
@@ -190,6 +214,29 @@ export type ReviewRunDetail = {
   score: JsonObject | null; items: ReviewItem[];
 };
 export type ReviewRunRequest = { provider_id?: number };
+
+export type ReviewConfirmAction = 'confirm' | 'reject';
+export type ReviewItemMutationStatus = 'succeeded' | 'skipped' | 'conflict';
+export type ReviewItemMutationResult = {
+  item_id: number;
+  status: ReviewItemMutationStatus;
+  reason?: string;
+};
+export type ReviewItemConfirmRequest = {
+  action: ReviewConfirmAction;
+  expected_version?: BackendId;
+};
+export type ReviewItemBatchConfirmRequest = ReviewItemConfirmRequest & {
+  item_ids: number[];
+};
+export type ReviewItemBatchConfirmResponse = { results: ReviewItemMutationResult[] };
+export type ReviewReEvaluateResponse = {
+  run_id: number;
+  score_id: number;
+  total_score: number;
+  new_item_ids: number[];
+  improved_count: number;
+};
 
 export type ScoreSummary = {
   score_id: number;

@@ -440,7 +440,46 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  justify-content: flex-end;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.ui0802-project-search {
+  position: relative;
+  display: flex;
+  width: min(520px, 100%);
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid #d8e2df;
+  border-radius: 10px;
+  color: #60736d;
+  background: #fff;
+}
+
+.ui0802-project-search:focus-within {
+  border-color: #00975a;
+  box-shadow: 0 0 0 3px rgb(0 151 90 / 12%);
+}
+
+.ui0802-project-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #182334;
+  background: transparent;
+  font: inherit;
+}
+
+.ui0802-project-search small {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  color: #567169;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .ui0802-create-project {
@@ -479,10 +518,6 @@
 .ui0802-create-project:focus-visible {
   outline: 3px solid rgb(0 151 88 / 24%);
   outline-offset: 3px;
-}
-
-.ui0802-project-search.sr-only {
-  display: flex;
 }
 
 .ui0802-modal-layer {
@@ -1572,7 +1607,12 @@
   }
 
   .ui0802-project-toolbar {
+    flex-direction: column;
     justify-content: stretch;
+  }
+
+  .ui0802-project-search {
+    width: 100%;
   }
 
   .ui0802-create-project {

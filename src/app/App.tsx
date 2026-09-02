@@ -14,10 +14,20 @@ import {
   type OfficeMockSavePayload,
 } from '../domains/editor';
 import { HistoryPricesPage } from '../domains/history';
-import type { HistoricalQuoteRecord } from '../domains/history/types';
+import type {
+  HistoricalQuoteRecord,
+  HistoryMaterialDetail,
+  HistoryPriceSource,
+} from '../domains/history/types';
 import { LandingPage } from '../domains/marketing/LandingPage';
 import { PricingCenter } from '../domains/pricing/PricingCenter';
-import type { HistoryPriceSample, QuoteCalculationView } from '../domains/pricing/types';
+import type {
+  HistoryPriceSample,
+  QuoteAiSuggestionView,
+  QuoteCalculationInput,
+  QuoteCalculationView,
+  QuoteRecalculationView,
+} from '../domains/pricing/types';
 import { ProjectListPage } from '../domains/projects/ProjectListPage';
 import {
   ProjectOverviewPage,
@@ -76,7 +86,6 @@ import {
   type Deliverable,
   type DeliverableContent,
   type EditorSession,
-  type EnterpriseIngestion,
   type JsonObject,
   type ImageDescribeProgress,
   type MeResponse,
@@ -88,6 +97,7 @@ import { ApiTestPanel } from './ApiTestPanel';
 import { AppShell } from './AppShell';
 import { BackendApiStatusBar } from './BackendApiStatusBar';
 import { shouldShowApiTestPanel } from './api-test-panel-gate';
+import { adaptEnterpriseIngestion } from './enterprise-ingestion';
 import {
   BACKEND_SESSION_EXPIRED_EVENT,
   clearBackendSession,
@@ -303,6 +313,7 @@ export function App() {
   const activeEditorRef = useRef<ActiveEditor | null>(null);
   const editorSaveGateRef = useRef(createEditorSaveGate());
   const tenantGuardRef = useRef(createTenantGenerationGuard());
+  const projectListRequestRef = useRef(0);
   const projectLoadGenerationRef = useRef(0);
   const projectResourceGenerationRef = useRef<Record<string, number>>({});
   const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
@@ -318,6 +329,7 @@ export function App() {
   const clearTenantDomainState = useCallback(() => {
     const empty = createEmptyTenantDomainState();
     tenantGuardRef.current.invalidate();
+    projectListRequestRef.current += 1;
     setProjects(empty.projects);
     setProjectsTotal(empty.projectsTotal);
     setHistory(empty.history);
@@ -440,16 +452,20 @@ export function App() {
     return () => window.removeEventListener(BACKEND_SESSION_EXPIRED_EVENT, handleExpiredSession);
   }, [becomeAnonymous, localPreviewActive]);
 
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (query = '') => {
     const generation = tenantGuardRef.current.capture();
-    const response = await backendApi.projects.list({ page: 1, size: 100 });
+    const requestId = ++projectListRequestRef.current;
+    const items = await backendApi.projects.listAll(
+      query.trim() ? { q: query.trim() } : {},
+    );
+    if (requestId !== projectListRequestRef.current) return;
     tenantGuardRef.current.commit(generation, () => {
       setProjects((current) => mergeProjectPage(
-        adaptBackendProjects(response.items),
+        adaptBackendProjects(items),
         current,
         routeProjectIdRef.current,
       ));
-      setProjectsTotal(response.total);
+      setProjectsTotal(items.length);
     });
   }, []);
 
@@ -470,13 +486,13 @@ export function App() {
     tenantGuardRef.current.commit(generation, () => {
       setEnterpriseAssets(adaptBackendEnterpriseAssets(bundles, categories));
       setEnterpriseCategories(adaptBackendEnterpriseCategories(categories));
-      setEnterpriseIngestions(ingestionResponse.items.map(adaptIngestion));
+      setEnterpriseIngestions(ingestionResponse.items.map(adaptEnterpriseIngestion));
     });
   }, []);
 
   const loadHistory = useCallback(async () => {
     const generation = tenantGuardRef.current.capture();
-    const payload = await backendApi.quotes.history();
+    const payload = await backendApi.quotes.history({ limit: 200 });
     const parsed = readHistorySamples(payload);
     const samples = adaptBackendHistorySamples(parsed.samples, parsed.snapshotIds);
     const record = payload && typeof payload === 'object' && !Array.isArray(payload)
@@ -487,6 +503,66 @@ export function App() {
       setHistory({ records: toHistoryRecords(samples), samples, total });
     });
   }, []);
+
+  const loadHistorySources = useCallback(async (): Promise<HistoryPriceSource[]> => {
+    if (localPreviewActive) return [];
+    const sources = await backendApi.quotes.sourceMetadata();
+    return sources.map((source) => ({
+      id: source.provider_id,
+      name: source.source_name,
+      fetchedAt: source.fetched_at,
+      coverage: source.coverage,
+      updatePolicy: source.update_policy,
+      readonlyVerified: source.readonly_verified,
+    }));
+  }, [localPreviewActive]);
+
+  const loadHistoryMaterial = useCallback(async (materialRef: string): Promise<HistoryMaterialDetail> => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('读取真实行情样本与趋势');
+    const [samples, trend] = await Promise.all([
+      backendApi.quotes.samples(materialRef),
+      backendApi.quotes.trend(materialRef),
+    ]);
+    const numberOrNull = (value: number | string | null) => {
+      const parsed = value === null ? Number.NaN : Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    return {
+      records: toHistoryRecords(adaptBackendHistorySamples(samples)),
+      trend: {
+        materialRef: trend.material_ref,
+        sampleCount: trend.sample_count,
+        minimum: numberOrNull(trend.min_price),
+        maximum: numberOrNull(trend.max_price),
+        average: numberOrNull(trend.avg_price),
+        median: numberOrNull(trend.median_price),
+        latest: numberOrNull(trend.latest_price),
+        latestAt: trend.latest_date ?? '',
+        readonly: trend.readonly,
+      },
+    };
+  }, [localPreviewActive]);
+
+  const importHistorySamples = useCallback(async (file: File, target: 'public' | 'private') => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('导入历史报价样本');
+    const result = await backendApi.quotes.importHistory(file, target);
+    await loadHistory();
+    return {
+      imported: result.imported,
+      skipped: result.skipped,
+      parsedTotal: result.parsed_total,
+      skippedRows: result.skipped_rows,
+      scope: result.scope,
+    };
+  }, [loadHistory, localPreviewActive]);
+
+  const loadHistorySampleDetail = useCallback(async (sampleId: string): Promise<HistoricalQuoteRecord> => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('读取单条历史报价样本');
+    const sample = await backendApi.quotes.sampleDetail(sampleId);
+    const [record] = toHistoryRecords(adaptBackendHistorySamples([sample]));
+    if (!record) throw new Error('后端未返回可展示的样本详情。');
+    return record;
+  }, [localPreviewActive]);
 
   useEffect(() => {
     if (authState !== 'authenticated' || localPreviewActive) return;
@@ -577,9 +653,18 @@ export function App() {
         (async () => {
           const reviewRuns = await backendApi.review.listRuns(projectId);
           const latestRun = [...reviewRuns.items].sort((a, b) => Number(b.run_id) - Number(a.run_id))[0];
-          const runDetail = latestRun
+          const initialRunDetail = latestRun
             ? await backendApi.review.getRun(projectId, latestRun.run_id)
             : undefined;
+          const scoreId = asId(initialRunDetail?.score?.score_id);
+          const runDetail = initialRunDetail && scoreId
+            ? {
+                ...initialRunDetail,
+                // The review center is backed by the review_item endpoint. The run-detail copy is
+                // only context and may be stale after confirmation or re-evaluation.
+                items: await backendApi.review.listItems(projectId, scoreId),
+              }
+            : initialRunDetail;
           return { runDetail };
         })(),
         backendApi.review.latestScore(projectId).catch((error) => {
@@ -1264,8 +1349,8 @@ export function App() {
     const created = await backendApi.projects.create({
       name: project.title,
       tender_no: project.code,
+      buyer: project.buyer || null,
       deadline: toIsoOrNull(project.deadline),
-      note: project.buyer ? `招标人：${project.buyer}` : undefined,
     });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     tenantGuardRef.current.commit(generation, () => {
@@ -1684,6 +1769,67 @@ export function App() {
     await loadProject(projectId);
   };
 
+  const handleConfirmReviewFinding = async (
+    projectId: string,
+    findingId: string,
+    action: 'confirm' | 'reject',
+  ) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite(action === 'confirm' ? '确认评审建议' : '不采纳评审建议');
+    const generation = tenantGuardRef.current.capture();
+    const score = projectData[projectId]?.score;
+    if (!score?.score_id) throw new Error('当前评审没有可确认的评分版本。');
+    const result = await backendApi.review.confirmItem(projectId, score.score_id, findingId, {
+      action,
+      ...(score.snapshot_id === null ? {} : { expected_version: score.snapshot_id }),
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await loadProject(projectId);
+    if (result.status !== 'succeeded') {
+      throw new Error(result.reason || (result.status === 'conflict' ? '评审快照已变化，请刷新后重试。' : '当前评审项无法确认。'));
+    }
+  };
+
+  const handleConfirmReviewFindings = async (
+    projectId: string,
+    findingIds: string[],
+    action: 'confirm' | 'reject',
+  ) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('批量确认评审建议');
+    if (findingIds.length === 0) throw new Error('当前没有待确认的评审建议。');
+    const generation = tenantGuardRef.current.capture();
+    const score = projectData[projectId]?.score;
+    if (!score?.score_id) throw new Error('当前评审没有可确认的评分版本。');
+    const itemIds = findingIds.map(Number);
+    if (itemIds.some((itemId) => !Number.isInteger(itemId) || itemId <= 0)) {
+      throw new Error('评审建议编号无效，请刷新后重试。');
+    }
+    const response = await backendApi.review.confirmItems(projectId, score.score_id, {
+      action,
+      item_ids: itemIds,
+      ...(score.snapshot_id === null ? {} : { expected_version: score.snapshot_id }),
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await loadProject(projectId);
+    const failures = response.results.filter((item) => item.status !== 'succeeded');
+    if (failures.length > 0) {
+      const firstReason = failures.find((item) => item.reason)?.reason;
+      throw new Error(`有 ${failures.length} 项未完成确认${firstReason ? `：${firstReason}` : '，请刷新后重试。'}`);
+    }
+  };
+
+  const handleReEvaluateReviewFindings = async (projectId: string, findingIds: string[]) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('重新评审已确认建议');
+    if (findingIds.length === 0) throw new Error('请先确认至少一条评审建议。');
+    const itemIds = findingIds.map(Number);
+    if (itemIds.some((itemId) => !Number.isInteger(itemId) || itemId <= 0)) {
+      throw new Error('评审建议编号无效，请刷新后重试。');
+    }
+    const generation = tenantGuardRef.current.capture();
+    await backendApi.review.reEvaluate(projectId, itemIds);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await loadProject(projectId);
+  };
+
   const handleApplyQuote = async (projectId: string, strategyId: string) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('应用报价策略');
     if (strategyId !== 'win') {
@@ -1717,6 +1863,56 @@ export function App() {
       if (tenantGuardRef.current.isCurrent(generation)) setError(error, '报价策略应用失败');
       throw error;
     }
+  };
+
+  const handleCalculateQuote = async (projectId: string, input: QuoteCalculationInput) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('执行确定性报价测算');
+    const generation = tenantGuardRef.current.capture();
+    const created = await backendApi.quotes.calculate({
+      material_ref: input.materialRef,
+      cost: input.cost,
+      project_id: projectId,
+      ...(input.minProfitRate === undefined ? {} : { min_profit_rate: input.minProfitRate }),
+      ...(input.cap === undefined ? {} : { cap: input.cap }),
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    try {
+      // The page presents a strategy card. Generate its deterministic `win`
+      // strategy immediately after calculation so the card is backend-backed.
+      await backendApi.quotes.strategy(created.calc_id, 'win');
+    } finally {
+      if (tenantGuardRef.current.isCurrent(generation)) await loadProject(projectId);
+    }
+  };
+
+  const handleRecalculateQuote = async (projectId: string): Promise<QuoteRecalculationView> => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('按冻结样本复算报价');
+    const calcId = projectData[projectId]?.quote.id;
+    if (!calcId || !/^\d+$/.test(calcId)) throw new Error('当前项目没有可复算的后端测算编号。');
+    const result = await backendApi.quotes.recalculate(calcId);
+    return {
+      matchesOriginal: result.matches_original,
+      engineVersion: result.engine_version,
+    };
+  };
+
+  const handleAiQuoteSuggestion = async (
+    projectId: string,
+    basis: string,
+  ): Promise<QuoteAiSuggestionView> => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('获取 AI 报价参考区间');
+    const calcId = projectData[projectId]?.quote.id;
+    if (!calcId || !/^\d+$/.test(calcId)) throw new Error('当前项目没有可分析的后端测算编号。');
+    const result = await backendApi.quotes.aiSuggest(calcId, basis);
+    return {
+      unavailable: result.unavailable === true,
+      message: result.message,
+      priceRange: result.price_range,
+      reasons: result.reasons ?? [],
+      assumptions: result.assumptions ?? [],
+      confidence: result.confidence,
+      riskLevel: result.risk_level,
+    };
   };
 
   const loadEditor = useCallback(async (
@@ -2142,6 +2338,7 @@ export function App() {
           total={projectsTotal}
           onArchiveProject={handleArchiveProject}
           onCreateProject={handleCreateProject}
+          onSearchProjects={loadProjects}
         />
       ) : null}
       {route.name === 'enterprise-assets' ? (
@@ -2167,7 +2364,14 @@ export function App() {
         />
       ) : null}
       {route.name === 'history-prices' ? (
-        <HistoryPricesPage records={history.records} totalCount={history.total} />
+        <HistoryPricesPage
+          records={history.records}
+          totalCount={history.total}
+          onLoadSources={loadHistorySources}
+          onOpenMaterial={loadHistoryMaterial}
+          onImportHistory={localPreviewActive ? undefined : importHistorySamples}
+          onOpenSampleDetail={localPreviewActive ? undefined : loadHistorySampleDetail}
+        />
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
         <ProjectOverviewPage
@@ -2235,6 +2439,14 @@ export function App() {
           onConfirmRequirement={handleConfirmRequirement}
           onCorrectRequirement={handleCorrectRequirement}
           onImportTenderNoticeUrl={handleImportTenderNoticeUrl}
+          onLoadImageDescriptions={async (fileId) => {
+            const generation = tenantGuardRef.current.capture();
+            const response = await backendApi.files.imageDescriptions(fileId);
+            if (!tenantGuardRef.current.isCurrent(generation)) {
+              throw new Error('登录会话已切换，已忽略上一企业的图片识别结果。');
+            }
+            return response;
+          }}
           onOpenSnapshot={handleOpenSnapshot}
           onStartTask={handleStartTask}
           onUpload={(projectId, files) => handleCurrentTenderUpload(projectId, files).then(() => undefined).catch((error) => {
@@ -2268,6 +2480,9 @@ export function App() {
             throw error;
           })}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onConfirmFinding={(findingId, action) => handleConfirmReviewFinding(route.projectId, findingId, action)}
+          onConfirmFindings={(findingIds, action) => handleConfirmReviewFindings(route.projectId, findingIds, action)}
+          onReEvaluate={(findingIds) => handleReEvaluateReviewFindings(route.projectId, findingIds)}
           onRun={(providerId) => handleRunReview(route.projectId, providerId)}
           onSaveSuggestion={(_runId, findingId, suggestion) => handleSaveSuggestion(route.projectId, findingId, suggestion)}
           projectId={route.projectId}
@@ -2297,6 +2512,15 @@ export function App() {
             throw error;
           })}
           onApply={(strategyId) => handleApplyQuote(route.projectId, strategyId)}
+          onCalculate={localPreviewActive
+            ? undefined
+            : (input) => handleCalculateQuote(route.projectId, input)}
+          onRecalculate={localPreviewActive
+            ? undefined
+            : () => handleRecalculateQuote(route.projectId)}
+          onAiSuggest={localPreviewActive
+            ? undefined
+            : (basis) => handleAiQuoteSuggestion(route.projectId, basis)}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           samples={activeData?.quoteSamples ?? []}
         />
@@ -2391,22 +2615,6 @@ function pageMetadata(route: string) {
   return labels[route] ?? { eyebrow: 'AI电网投标助手', title: '页面' };
 }
 
-function adaptIngestion(item: EnterpriseIngestion): EnterpriseIngestionItem {
-  const status: EnterpriseIngestionItem['status'] = item.status === 3
-    ? 'completed'
-    : item.status >= 4
-      ? 'failed'
-      : item.status === 2
-        ? 'extracting'
-        : 'queued';
-  return {
-    id: String(item.ingest_id),
-    name: `资料归类任务 #${item.ingest_id}`,
-    status,
-    progress: status === 'completed' ? 100 : undefined,
-  };
-}
-
 function readableError(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
   return fallback;
@@ -2489,13 +2697,15 @@ function readHistorySamples(payload: unknown) {
 function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[] {
   return samples.map((sample) => ({
     id: sample.id,
-    projectName: '—',
-    tenderer: '—',
+    sampleId: sample.sampleId,
+    materialRef: sample.materialRef,
+    projectName: sample.packageName || sample.materialName,
+    tenderer: sample.publisher || sample.region || '—',
     year: Number(sample.occurredAt.slice(0, 4)) || 0,
-    packageName: '—',
-    materialName: sample.materialName,
-    materialCode: sample.materialCode || sample.materialRef || sample.id,
-    specification: sample.specification,
+    packageName: sample.packageName || '—',
+    materialName: sample.category || sample.materialName,
+    materialCode: sample.noticeId || sample.materialCode || sample.materialRef || sample.id,
+    specification: sample.priceMode || sample.specification,
     region: sample.region || '—',
     quantity: undefined,
     supplier: '—',
@@ -2509,6 +2719,16 @@ function toHistoryRecords(samples: HistoryPriceSample[]): HistoricalQuoteRecord[
     source: sample.sourceLabel,
     parameterDifference: '—',
     similarity: 'reference',
+    category: sample.category,
+    priceMode: sample.priceMode,
+    limitPrice: Number.isFinite(Number(sample.limitPrice)) ? Number(sample.limitPrice) : undefined,
+    winRatio: Number.isFinite(Number(sample.winRatio)) ? Number(sample.winRatio) : undefined,
+    noticeId: sample.noticeId,
+    scope: sample.scope,
+    limitEvidence: sample.limitEvidence,
+    winEvidence: sample.winEvidence,
+    limitEvidenceUrl: sample.limitEvidenceUrl,
+    winEvidenceUrl: sample.winEvidenceUrl,
   }));
 }
 

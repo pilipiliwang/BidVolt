@@ -1,5 +1,6 @@
 export type HistoryPriceSample = {
   id: string;
+  sampleId?: string;
   materialRef?: string;
   materialName: string;
   materialCode?: string;
@@ -13,6 +14,18 @@ export type HistoryPriceSample = {
   sourceHash?: string;
   usable: boolean;
   excludedReason?: string;
+  publisher?: string;
+  category?: string;
+  packageName?: string;
+  priceMode?: string;
+  limitPrice?: string;
+  winRatio?: string;
+  noticeId?: string;
+  scope?: 'public' | 'private';
+  limitEvidence?: string;
+  winEvidence?: string;
+  limitEvidenceUrl?: string;
+  winEvidenceUrl?: string;
 };
 
 export type QuoteStrategy = {
@@ -37,4 +50,26 @@ export type QuoteCalculationView = {
   querySnapshotId: string;
   message?: string;
   strategies: QuoteStrategy[];
+};
+
+export type QuoteCalculationInput = {
+  materialRef: string;
+  cost: number;
+  minProfitRate?: number;
+  cap?: number;
+};
+
+export type QuoteRecalculationView = {
+  matchesOriginal: boolean;
+  engineVersion: string;
+};
+
+export type QuoteAiSuggestionView = {
+  unavailable: boolean;
+  message?: string;
+  priceRange?: [string, string];
+  reasons: string[];
+  assumptions: string[];
+  confidence?: string;
+  riskLevel?: string;
 };

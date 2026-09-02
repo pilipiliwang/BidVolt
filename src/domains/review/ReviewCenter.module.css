@@ -20,12 +20,18 @@
 .filters button span { display: grid; min-width: 19px; height: 19px; place-items: center; border-radius: 99px; background: #eef2f5; font-size: var(--font-size-xs); }
 .filters .filterActive { border-color: #13a25b; color: #078d4e; background: #f5fcf8; font-weight: 700; }
 .filters .filterActive span { background: #dff5e8; }
+.reviewActions { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; padding: 8px 9px; border: 1px solid #dbe8e1; border-radius: 7px; background: #f8fcfa; }
+.reviewActions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 0 10px; border: 1px solid #0b9753; border-radius: 5px; color: #087a45; background: #fff; font-size: var(--font-size-xs); font-weight: 700; }
+.reviewActions button:first-child { color: #fff; background: #078c4d; }
+.reviewActions button:disabled { cursor: not-allowed; opacity: .5; }
+.reviewActions > span { margin-left: auto; color: #687b70; font-size: var(--font-size-xs); }
+.mutationError { margin: -3px 0 8px; color: #b42318; font-size: var(--font-size-xs); }
 
 .tableHead,
 .finding {
   display: grid;
-  grid-template-columns: 95px minmax(220px, 1.7fr) 66px 66px minmax(90px, .7fr) 46px 74px;
-  min-width: 720px;
+  grid-template-columns: 95px minmax(220px, 1.7fr) 66px 66px minmax(90px, .7fr) 46px minmax(142px, auto);
+  min-width: 800px;
   gap: 8px;
   align-items: center;
 }
@@ -54,8 +60,17 @@
 .reference { color: #34475f; font-size: var(--font-size-xs); line-height: 1.45; }
 .reference small { display: block; color: #8793a3; font-size: var(--font-size-xs); }
 .riskLevel { font-size: var(--font-size-xs); font-weight: 700; text-align: center; }
-.modifyButton { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 32px; padding: 0 8px; border: 1px solid #74d3a0; border-radius: 5px; color: #06904e; background: #fff; font-size: var(--font-size-xs); font-weight: 700; }
-.modifyButton:disabled { cursor: default; opacity: .55; }
+.findingActions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.findingActions button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 28px; padding: 0 6px; border-radius: 5px; background: #fff; font-size: var(--font-size-xs); font-weight: 700; }
+.findingActions button:disabled { cursor: default; opacity: .55; }
+.modifyButton { border: 1px solid #74d3a0; color: #06904e; }
+.confirmButton { border: 1px solid #079653; color: #fff; background: #079653 !important; }
+.rejectButton { border: 1px solid #d0d5dd; color: #475467; }
+.findingStatus { flex-basis: 100%; color: #667085; font-size: var(--font-size-xs); font-weight: 700; }
+.findingStatus.pending_confirm { color: #b54708; }
+.findingStatus.confirmed,
+.findingStatus.re_reviewed { color: #087a45; }
+.findingStatus.rejected { color: #667085; }
 
 .fail { color: #f04438; }
 .risk { color: #f79009; }
@@ -135,11 +150,13 @@
 
 @media (max-width: 1180px) {
   .tableHead,
-  .finding { grid-template-columns: 86px minmax(180px, 1fr) 58px 58px 76px 38px 66px; gap: 5px; }
+  .finding { grid-template-columns: 86px minmax(180px, 1fr) 58px 58px 76px 38px minmax(126px, auto); gap: 5px; }
 }
 
 @media (max-width: 760px) {
   .suggestionHeader { align-items: flex-start; flex-direction: column; }
+  .reviewActions { align-items: stretch; flex-direction: column; }
+  .reviewActions > span { margin-left: 0; }
   .tableHead { display: none; }
   .finding { min-width: 0; grid-template-columns: minmax(90px, .45fr) minmax(0, 1fr); }
   .finding > *:nth-child(n + 3) { grid-column: 2; }

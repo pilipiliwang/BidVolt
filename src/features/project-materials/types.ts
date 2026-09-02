@@ -1,5 +1,6 @@
 import type { PublicTaskEvent } from '../../shared/task-events';
 import type { ProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
+import type { FileImageDescriptions } from '../../shared/backend-api/types';
 
 export type ProjectMaterialKind =
   | 'tender_notice'
@@ -45,6 +46,8 @@ export interface ProjectMaterial {
   purpose?: ProjectMaterialPurpose;
   parseProgress?: number;
   blocksCount?: number;
+  imageCount?: number;
+  imageDescribedCount?: number;
   uploadedAt: string;
   supersedesRevisionNo?: number;
 }
@@ -95,6 +98,7 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
     projectId: string,
     url: string,
   ) => Promise<{ message?: string; status?: 'queued' | 'processing' | 'completed' } | void>;
+  onLoadImageDescriptions?: (fileId: string) => Promise<FileImageDescriptions>;
   requirements: ProjectRequirement[];
   reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];

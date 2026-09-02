@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   AlertCircle,
   BadgeCheck,
@@ -15,7 +15,13 @@ import {
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import { ProjectWorkbench, type WorkspaceMaterial } from '../projects/ProjectWorkbench';
 import styles from './PricingCenter.module.css';
-import type { HistoryPriceSample, QuoteCalculationView } from './types';
+import type {
+  HistoryPriceSample,
+  QuoteAiSuggestionView,
+  QuoteCalculationInput,
+  QuoteCalculationView,
+  QuoteRecalculationView,
+} from './types';
 
 type PricingCenterProps = {
   samples: HistoryPriceSample[];
@@ -27,6 +33,9 @@ type PricingCenterProps = {
   onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
+  onCalculate?: (input: QuoteCalculationInput) => Promise<void>;
+  onRecalculate?: () => Promise<QuoteRecalculationView>;
+  onAiSuggest?: (basis: string) => Promise<QuoteAiSuggestionView>;
   onApply?: (strategyId: string) => Promise<void> | void;
   onAssistantSend?: (value: string) => void | Promise<void>;
 };
@@ -105,6 +114,9 @@ export function PricingCenter({
   onAddEnterpriseFiles,
   onAddFiles,
   onAssistantAddFiles,
+  onCalculate,
+  onRecalculate,
+  onAiSuggest,
   onApply,
   onAssistantSend,
 }: PricingCenterProps) {
@@ -117,6 +129,16 @@ export function PricingCenter({
   const [isApplying, setIsApplying] = useState(false);
   const isApplyingRef = useRef(false);
   const [sampleQuery, setSampleQuery] = useState('');
+  const [materialRef, setMaterialRef] = useState('');
+  const [cost, setCost] = useState('');
+  const [minProfitRate, setMinProfitRate] = useState('5');
+  const [cap, setCap] = useState('');
+  const [calculationBusy, setCalculationBusy] = useState(false);
+  const [calculationMessage, setCalculationMessage] = useState('');
+  const [calculationError, setCalculationError] = useState('');
+  const [aiBasis, setAiBasis] = useState('');
+  const [aiSuggestion, setAiSuggestion] = useState<QuoteAiSuggestionView | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const applyButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const modalCloseButtonRef = useRef<HTMLButtonElement>(null);
@@ -142,6 +164,79 @@ export function PricingCenter({
     );
   }, [sampleQuery, samples]);
   const selectedStrategy = calculation.strategies.find((strategy) => strategy.id === selectedStrategyId);
+  const hasBackendCalculationId = /^\d+$/.test(calculation.id);
+
+  const submitCalculation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onCalculate || calculationBusy) return;
+    const costValue = Number(cost);
+    const minProfitRateValue = minProfitRate.trim() ? Number(minProfitRate) / 100 : undefined;
+    const capValue = cap.trim() ? Number(cap) : undefined;
+    if (!materialRef.trim() || !Number.isFinite(costValue) || costValue <= 0) {
+      setCalculationError('请填写物料标识和大于 0 的成本。');
+      return;
+    }
+    if (minProfitRateValue !== undefined && (!Number.isFinite(minProfitRateValue) || minProfitRateValue < 0)) {
+      setCalculationError('最低利润率必须是大于或等于 0 的百分数。');
+      return;
+    }
+    if (capValue !== undefined && (!Number.isFinite(capValue) || capValue <= 0)) {
+      setCalculationError('最高限价必须大于 0。');
+      return;
+    }
+    setCalculationBusy(true);
+    setCalculationError('');
+    setCalculationMessage('');
+    setAiSuggestion(null);
+    try {
+      await onCalculate({
+        materialRef: materialRef.trim(),
+        cost: costValue,
+        ...(minProfitRateValue === undefined ? {} : { minProfitRate: minProfitRateValue }),
+        ...(capValue === undefined ? {} : { cap: capValue }),
+      });
+      setCalculationMessage('确定性测算已完成，页面已读取最新后端结果。');
+    } catch (error) {
+      setCalculationError(error instanceof Error ? error.message : '确定性报价测算失败。');
+    } finally {
+      setCalculationBusy(false);
+    }
+  };
+
+  const recalculate = async () => {
+    if (!onRecalculate || calculationBusy) return;
+    setCalculationBusy(true);
+    setCalculationError('');
+    setCalculationMessage('');
+    try {
+      const result = await onRecalculate();
+      setCalculationMessage(result.matchesOriginal
+        ? `冻结样本复算一致 · ${result.engineVersion}`
+        : `冻结样本复算与原结果不一致 · ${result.engineVersion}`);
+    } catch (error) {
+      setCalculationError(error instanceof Error ? error.message : '冻结样本复算失败。');
+    } finally {
+      setCalculationBusy(false);
+    }
+  };
+
+  const requestAiSuggestion = async () => {
+    if (!onAiSuggest || aiBusy) return;
+    if (!aiBasis.trim()) {
+      setCalculationError('请输入 AI 参考建议的可追溯依据。');
+      return;
+    }
+    setAiBusy(true);
+    setCalculationError('');
+    setAiSuggestion(null);
+    try {
+      setAiSuggestion(await onAiSuggest(aiBasis.trim()));
+    } catch (error) {
+      setCalculationError(error instanceof Error ? error.message : 'AI 参考建议请求失败。');
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   useEffect(() => {
     setSelectedStrategyId(defaultStrategy);
@@ -290,6 +385,43 @@ export function PricingCenter({
             <span><strong>外部历史库只读</strong>仅查询，不新增、修改或删除</span>
           </div>
         </header>
+
+        {onCalculate ? (
+          <form className={styles.calculationPanel} onSubmit={(event) => void submitCalculation(event)}>
+            <div className={styles.calculationPanelHeading}>
+              <span><strong>确定性报价测算</strong><small>直接调用后端 QuoteEngine，不使用 Mock 或 AI 猜价</small></span>
+              {hasBackendCalculationId && onRecalculate ? (
+                <button disabled={calculationBusy} onClick={() => void recalculate()} type="button">
+                  {calculationBusy ? '处理中…' : '按冻结样本复算'}
+                </button>
+              ) : null}
+            </div>
+            <div className={styles.calculationFields}>
+              <label><span>物料标识</span><input required value={materialRef} onChange={(event) => setMaterialRef(event.currentTarget.value)} placeholder="品类、包名或物料编码" /></label>
+              <label><span>成本（元）</span><input min="0.01" required step="0.01" type="number" value={cost} onChange={(event) => setCost(event.currentTarget.value)} /></label>
+              <label><span>最低利润率（%）</span><input min="0" step="0.01" type="number" value={minProfitRate} onChange={(event) => setMinProfitRate(event.currentTarget.value)} /></label>
+              <label><span>最高限价（可选）</span><input min="0.01" step="0.01" type="number" value={cap} onChange={(event) => setCap(event.currentTarget.value)} /></label>
+              <button disabled={calculationBusy} type="submit">{calculationBusy ? '正在测算…' : '开始真实测算'}</button>
+            </div>
+            {calculationMessage ? <p className={styles.calculationSuccess} role="status">{calculationMessage}</p> : null}
+            {calculationError ? <p className={styles.calculationError} role="alert">{calculationError}</p> : null}
+          </form>
+        ) : null}
+
+        {hasBackendCalculationId && onAiSuggest ? (
+          <section className={styles.aiSuggestion} aria-label="AI 报价参考建议">
+            <div><strong>AI 参考区间</strong><small>仅作辅助分析；正式报价仍需确定性策略和人工确认</small></div>
+            <label><span className="bv-visually-hidden">可追溯依据</span><input value={aiBasis} onChange={(event) => setAiBasis(event.currentTarget.value)} placeholder="填写样本、公告或成本依据" /></label>
+            <button disabled={aiBusy} onClick={() => void requestAiSuggestion()} type="button">{aiBusy ? '分析中…' : '获取参考建议'}</button>
+            {aiSuggestion ? (
+              <p role="status">
+                {aiSuggestion.unavailable
+                  ? aiSuggestion.message ?? '后端未返回可用建议。'
+                  : `参考区间：${aiSuggestion.priceRange?.join(' ～ ') ?? '未提供'}；${aiSuggestion.reasons.join('；')}`}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {hasCalculatedResult && selectedStrategy ? (
           <div className={styles.materialSummary}>

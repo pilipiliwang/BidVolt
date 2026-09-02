@@ -82,6 +82,47 @@ const snapshots: ProjectSnapshot[] = [
 ];
 
 describe('ProjectMaterialsPage', () => {
+  it('loads real image descriptions on demand and exposes identifier conflicts', async () => {
+    const user = userEvent.setup();
+    const onLoadImageDescriptions = vi.fn().mockResolvedValue({
+      file_id: 9,
+      image_count: 1,
+      described_count: 1,
+      items: [{
+        ordinal: 0,
+        page: 2,
+        sha256: 'abc',
+        described: true,
+        description: {
+          doc_type: '资质证书',
+          numbers_pass1: ['C1601J0253904821'],
+          numbers_verified: ['C1601J02S3904821'],
+          numbers_conflict: ['C1601J0253904821'],
+          verify_mode: 'vl_high_res',
+        },
+      }],
+    });
+
+    render(
+      <ProjectMaterialsPage
+        projectId="9"
+        projectName="海上升压站设备采购项目"
+        materials={[{ ...materials[0], id: '9', imageCount: 1, imageDescribedCount: 1 }]}
+        requirements={[]}
+        snapshots={[]}
+        onLoadImageDescriptions={onLoadImageDescriptions}
+        onStartTask={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '图片识别 1/1' }));
+
+    expect(onLoadImageDescriptions).toHaveBeenCalledWith('9');
+    expect(await screen.findByText('二次读数')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('两次编号识别不一致');
+    expect(screen.getByText('C1601J02S3904821')).toBeInTheDocument();
+  });
+
   it('keeps uploads in the current project and shows parsing revisions', async () => {
     const user = userEvent.setup();
     const onCompletedBidUpload = vi.fn();

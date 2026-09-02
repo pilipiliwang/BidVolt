@@ -31,10 +31,12 @@ describe('backend DTO adapters', () => {
       project_id: 18,
       name: '海上平台电气设备采购项目',
       tender_no: null,
+      buyer: null,
       deadline: null,
       status: 2,
       note: null,
       updated_at: '2026-08-14T00:00:00Z',
+      summary: null,
     };
 
     expect(adaptBackendProject(project)).toEqual({
@@ -48,20 +50,32 @@ describe('backend DTO adapters', () => {
     });
   });
 
-  it('reads buyer only from an explicit project note prefix', () => {
+  it('reads buyer and aggregate data from the dedicated backend fields', () => {
     const project: ProjectResponse = {
       project_id: 19,
       name: '海上风电项目',
       tender_no: 'HY-2026-019',
+      buyer: '海洋能源建设有限公司',
       deadline: null,
       status: 1,
-      note: '招标人：海洋能源建设有限公司',
+      note: '重点项目，优先处理',
       updated_at: '2026-08-14T00:00:00Z',
+      summary: {
+        material_count: 12,
+        deliverable_count: 3,
+        review_run_count: 2,
+        latest_total_score: 91.5,
+        missing_count: 4,
+        risk_level: 4,
+      },
     };
 
-    expect(adaptBackendProject(project).buyer).toBe('海洋能源建设有限公司');
-    expect(adaptBackendProject({ ...project, note: '重点项目，优先处理' }).buyer)
-      .toBe('招标人待补充');
+    expect(adaptBackendProject(project)).toMatchObject({
+      buyer: '海洋能源建设有限公司',
+      materialCount: 12,
+      riskCount: 4,
+    });
+    expect(adaptBackendProject({ ...project, buyer: null }).buyer).toBe('招标人待补充');
   });
 
   it('preserves aggregate zero values only when a caller supplies them from an API', () => {
@@ -69,10 +83,12 @@ describe('backend DTO adapters', () => {
       project_id: 20,
       name: '零统计项目',
       tender_no: 'ZERO-20',
+      buyer: null,
       deadline: null,
       status: 1,
       note: null,
       updated_at: '2026-08-14T00:00:00Z',
+      summary: null,
     };
 
     expect(adaptBackendProject(project, {
@@ -537,6 +553,8 @@ describe('backend DTO adapters', () => {
       fullScore: 10,
       improvableScore: 10,
       riskLevel: 'high',
+      status: 'pending_confirm',
+      actionType: 'edit_deliverable',
       confidence: 0.91,
       ruleVersion: 'builtin-code-1.0',
     });
@@ -608,13 +626,31 @@ describe('backend DTO adapters', () => {
       package_name: 'YJV 电力电缆',
       price_mode: '金额',
       win_price: '118.5',
+      limit_price: '125',
       publish_date: '2026-08-20',
       notice_id: 'NOTICE-1',
+      limit_evidence: '招标公告最高限价 125 万元',
+      win_evidence: '中标公告金额 118.5 万元',
+      limit_evidence_url: 'https://example.com/limit',
+      win_evidence_url: 'https://example.com/win',
+      win_ratio: '0.948',
     }])).toEqual([expect.objectContaining({
       id: 'NOTICE-1',
       materialRef: '电缆',
       materialName: 'YJV 电力电缆',
       region: '某省电网公司',
+      publisher: '某省电网公司',
+      category: '电缆',
+      packageName: 'YJV 电力电缆',
+      priceMode: '金额',
+      limitPrice: '125',
+      winRatio: '0.948',
+      noticeId: 'NOTICE-1',
+      scope: 'public',
+      limitEvidence: '招标公告最高限价 125 万元',
+      winEvidence: '中标公告金额 118.5 万元',
+      limitEvidenceUrl: 'https://example.com/limit',
+      winEvidenceUrl: 'https://example.com/win',
       occurredAt: '2026-08-20',
       sourceLabel: '公共历史中标价行情库',
       usable: true,

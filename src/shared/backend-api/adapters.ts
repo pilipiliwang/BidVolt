@@ -76,30 +76,22 @@ export type ProjectAdapterStats = {
   progress?: number;
   riskCount?: number;
 };
-
-const buyerFromProjectNote = (note: string | null): string | undefined => {
-  const match = note?.match(/^\s*招标人[：:]\s*([^\r\n]+?)\s*(?:[\r\n]|$)/);
-  return match?.[1]?.trim() || undefined;
-};
-
-/**
- * Buyer is encoded in note with an explicit `招标人：` prefix until the backend exposes
- * a dedicated field. Unrecognised notes stay neutral instead of being presented as buyer data.
- */
 export function adaptBackendProject(
   project: ProjectResponse,
   stats: ProjectAdapterStats = {},
 ): ProjectSummary {
+  const materialCount = stats.materialCount ?? project.summary?.material_count;
+  const riskCount = stats.riskCount ?? project.summary?.missing_count ?? undefined;
   return {
     id: String(project.project_id),
     code: project.tender_no?.trim() || '招标编号未提供',
     title: project.name,
-    buyer: stats.buyer?.trim() || buyerFromProjectNote(project.note) || '招标人待补充',
+    buyer: stats.buyer?.trim() || project.buyer?.trim() || '招标人待补充',
     stage: projectStageByStatus[project.status] ?? '状态未知',
     deadline: project.deadline ?? '截止时间待补充',
     ...(stats.progress === undefined ? {} : { progress: stats.progress }),
-    ...(stats.materialCount === undefined ? {} : { materialCount: stats.materialCount }),
-    ...(stats.riskCount === undefined ? {} : { riskCount: stats.riskCount }),
+    ...(materialCount === undefined ? {} : { materialCount }),
+    ...(riskCount === undefined ? {} : { riskCount }),
     updatedAt: project.updated_at,
   };
 }
@@ -195,6 +187,8 @@ export function adaptBackendProjectMaterial(
     ...(purpose ? { purpose } : {}),
     ...parseState(material.status),
     blocksCount: material.block_count,
+    imageCount: material.image_count,
+    imageDescribedCount: material.image_described_count,
     uploadedAt: '上传时间未提供',
   };
 }
@@ -301,6 +295,7 @@ export function adaptBackendEnterpriseAsset(
             ? 'failed'
             : 'processing',
     updatedAt: latestCreatedAt ?? '更新时间未提供',
+    imageDescription: bundle.detail?.image_description ?? null,
     facts: facts.map((fact) => ({
       // Backend correction is addressed by fact_id; retain it as the UI mutation key.
       key: String(fact.fact_id),
@@ -651,6 +646,13 @@ const backendFinding = (
     fullScore: item.full ?? undefined,
     improvableScore: item.improvable ?? undefined,
     riskLevel: risk === undefined ? undefined : risk >= 2 ? 'high' : risk >= 1 ? 'medium' : 'low',
+    status: ({
+      1: 'pending_confirm',
+      2: 'confirmed',
+      3: 'rejected',
+      4: 're_reviewed',
+    } as const)[item.status] ?? 'unknown',
+    actionType: item.action_type ?? undefined,
     suggestion: item.effective_suggestion ?? item.suggestion ?? '请人工复核该评审项',
     evidence: evidence
       ? {
@@ -728,9 +730,15 @@ export type BackendHistorySample = {
   win_date?: string | null;
   publish_date?: string | null;
   provider_id?: string;
-  source_hash?: string;
+  source_hash?: string | null;
   source?: 'public' | 'private';
   notice_id?: string | null;
+  limit_price?: number | string | null;
+  limit_evidence?: string | null;
+  win_evidence?: string | null;
+  limit_evidence_url?: string | null;
+  win_evidence_url?: string | null;
+  win_ratio?: number | string | null;
 };
 
 export function adaptBackendHistorySamples(
@@ -753,6 +761,7 @@ export function adaptBackendHistorySamples(
         ?? sample.notice_id
         ?? `${materialRef ?? 'sample'}-${sample.publish_date ?? sample.win_date ?? index}`,
       ),
+      sampleId: sample.sample_id === undefined ? undefined : String(sample.sample_id),
       materialRef,
       materialName,
       materialCode: sample.material_code ?? materialRef,
@@ -766,7 +775,23 @@ export function adaptBackendHistorySamples(
         ?? (sample.source === 'public' ? '公共历史中标价行情库' : undefined)
         ?? (sample.source === 'private' ? '企业私有历史中标价库' : undefined)
         ?? '外部历史报价库',
-      sourceHash: sample.source_hash,
+      sourceHash: sample.source_hash ?? undefined,
+      publisher: sample.publisher?.trim() || undefined,
+      category: sample.category?.trim() || undefined,
+      packageName: sample.package_name?.trim() || undefined,
+      priceMode: sample.price_mode?.trim() || undefined,
+      limitPrice: sample.limit_price === null || sample.limit_price === undefined
+        ? undefined
+        : String(sample.limit_price),
+      winRatio: sample.win_ratio === null || sample.win_ratio === undefined
+        ? undefined
+        : String(sample.win_ratio),
+      noticeId: sample.notice_id?.trim() || undefined,
+      scope: sample.source,
+      limitEvidence: sample.limit_evidence?.trim() || undefined,
+      winEvidence: sample.win_evidence?.trim() || undefined,
+      limitEvidenceUrl: sample.limit_evidence_url?.trim() || undefined,
+      winEvidenceUrl: sample.win_evidence_url?.trim() || undefined,
       usable: backendLibrarySample || sample.tax_included !== undefined,
       excludedReason: backendLibrarySample || sample.tax_included !== undefined
         ? undefined

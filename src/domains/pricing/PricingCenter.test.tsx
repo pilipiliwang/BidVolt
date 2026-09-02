@@ -208,4 +208,57 @@ describe('PricingCenter', () => {
     expect(screen.queryByText('推荐')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '应用到报价单并生成新版本' })).toBeInTheDocument();
   });
+
+  it('submits deterministic calculation inputs and exposes recalc plus AI reference callbacks', async () => {
+    const user = userEvent.setup();
+    const onCalculate = vi.fn().mockResolvedValue(undefined);
+    const onRecalculate = vi.fn().mockResolvedValue({
+      matchesOriginal: true,
+      engineVersion: 'quote-engine-2.4.0',
+    });
+    const onAiSuggest = vi.fn().mockResolvedValue({
+      unavailable: false,
+      priceRange: ['28690.00', '31710.00'],
+      reasons: ['基于冻结样本和成本测算'],
+      assumptions: [],
+      confidence: 'low',
+      riskLevel: 'medium',
+    });
+
+    render(
+      <PricingCenter
+        calculation={{ ...calculated, id: '31' }}
+        materials={[]}
+        onAiSuggest={onAiSuggest}
+        onCalculate={onCalculate}
+        onRecalculate={onRecalculate}
+        samples={samples}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('物料标识'), '03010101');
+    await user.type(screen.getByLabelText('成本（元）'), '20000');
+    await user.clear(screen.getByLabelText('最低利润率（%）'));
+    await user.type(screen.getByLabelText('最低利润率（%）'), '8.5');
+    await user.type(screen.getByLabelText('最高限价（可选）'), '32000');
+    await user.click(screen.getByRole('button', { name: '开始真实测算' }));
+
+    expect(onCalculate).toHaveBeenCalledWith({
+      materialRef: '03010101',
+      cost: 20000,
+      minProfitRate: 0.085,
+      cap: 32000,
+    });
+    expect(await screen.findByText(/确定性测算已完成/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '按冻结样本复算' }));
+    expect(onRecalculate).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/冻结样本复算一致/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('可追溯依据'), '冻结样本与招标公告限价');
+    await user.click(screen.getByRole('button', { name: '获取参考建议' }));
+    expect(onAiSuggest).toHaveBeenCalledWith('冻结样本与招标公告限价');
+    expect(await screen.findByText(/参考区间：28690.00 ～ 31710.00/)).toBeInTheDocument();
+    expect(screen.getByText(/仅作辅助分析/)).toBeInTheDocument();
+  });
 });

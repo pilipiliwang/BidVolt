@@ -1,7 +1,12 @@
 import { ArrowLeft, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
-import type { HistoricalQuoteRecord, HistoryPricesPageProps } from './types';
+import type {
+  HistoricalQuoteRecord,
+  HistoryMaterialDetail,
+  HistoryPricesPageProps,
+  HistoryPriceSource,
+} from './types';
 import './history-prices.css';
 
 type Filters = {
@@ -36,6 +41,20 @@ function price(value: number) {
 
 function optionalPrice(value: number | null | undefined) {
   return value === null || value === undefined ? '—' : price(value);
+}
+
+function optionalRatio(value: number | undefined) {
+  return value === undefined || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(2)}%`;
+}
+
+function safeEvidenceUrl(value: string | undefined) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function matchesText(value: string, query: string) {
@@ -100,22 +119,57 @@ function calculatePriceChange(records: HistoricalQuoteRecord[]) {
 export function HistoryPricesPage({
   records,
   totalCount,
+  onLoadSources,
+  onOpenMaterial,
+  onImportHistory,
+  onOpenSampleDetail,
 }: HistoryPricesPageProps) {
   const resolvedRecords = records ?? EMPTY_HISTORY_RECORDS;
   const resolvedTotalCount = totalCount ?? resolvedRecords.length;
   const [draftFilters, setDraftFilters] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
   const [detailMaterial, setDetailMaterial] = useState<HistoricalQuoteRecord | null>(null);
+  const [materialDetail, setMaterialDetail] = useState<HistoryMaterialDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [sources, setSources] = useState<HistoryPriceSource[]>([]);
+  const [sourcesError, setSourcesError] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importTarget, setImportTarget] = useState<'public' | 'private'>('private');
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
+  const [importError, setImportError] = useState('');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    if (!onLoadSources) return undefined;
+    let active = true;
+    setSourcesError('');
+    void onLoadSources().then((value) => {
+      if (active) setSources(value);
+    }).catch((error: unknown) => {
+      if (active) setSourcesError(error instanceof Error ? error.message : '行情来源加载失败');
+    });
+    return () => { active = false; };
+  }, [onLoadSources]);
 
   const visibleRecords = useMemo(
     () =>
       resolvedRecords.filter((record) => {
         const materialQuery = filters.materialName.trim();
         return (
-          (!materialQuery || matchesText(record.materialName, materialQuery)) &&
-          (!filters.materialCode || matchesText(record.materialCode, filters.materialCode)) &&
-          (!filters.specification || matchesText(record.specification, filters.specification)) &&
+          (!materialQuery || matchesText(
+            `${record.materialName} ${record.category ?? ''} ${record.packageName}`,
+            materialQuery,
+          )) &&
+          (!filters.materialCode || matchesText(
+            `${record.materialCode} ${record.noticeId ?? ''}`,
+            filters.materialCode,
+          )) &&
+          (!filters.specification || matchesText(
+            `${record.specification} ${record.priceMode ?? ''}`,
+            filters.specification,
+          )) &&
           (!filters.tenderer || matchesText(record.tenderer, filters.tenderer)) &&
           (!filters.region || matchesText(record.region, filters.region)) &&
           matchesYear(record.year, filters.years)
@@ -134,11 +188,59 @@ export function HistoryPricesPage({
     return (
       <HistoryPriceDetail
         focus={detailMaterial}
-        records={resolvedRecords.filter((record) => record.materialCode === detailMaterial.materialCode)}
-        onBack={() => setDetailMaterial(null)}
+        records={materialDetail?.records ?? []}
+        trend={materialDetail?.trend}
+        loading={detailLoading}
+        error={detailError}
+        onOpenSampleDetail={onOpenSampleDetail}
+        onBack={() => {
+          setDetailMaterial(null);
+          setMaterialDetail(null);
+          setDetailError('');
+        }}
       />
     );
   }
+
+  const openMaterial = async (record: HistoricalQuoteRecord) => {
+    const materialRef = record.materialRef?.trim();
+    if (!onOpenMaterial) {
+      const fallbackRecords = resolvedRecords.filter((candidate) => candidate.materialCode === record.materialCode);
+      const fallbackStats = calculateStats(fallbackRecords);
+      setMaterialDetail({
+        records: fallbackRecords,
+        trend: {
+          materialRef: materialRef ?? record.materialCode,
+          sampleCount: fallbackRecords.length,
+          minimum: fallbackStats.min,
+          maximum: fallbackStats.max,
+          average: fallbackStats.average,
+          median: fallbackStats.median,
+          latest: fallbackStats.latest,
+          latestAt: '',
+          readonly: true,
+        },
+      });
+      setDetailMaterial(record);
+      return;
+    }
+    if (!materialRef) {
+      setDetailError('当前行情记录没有后端可查询的物料标识，无法读取样本与趋势。');
+      setDetailMaterial(record);
+      return;
+    }
+    setDetailMaterial(record);
+    setMaterialDetail(null);
+    setDetailError('');
+    setDetailLoading(true);
+    try {
+      setMaterialDetail(await onOpenMaterial(materialRef));
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : '物料样本与趋势加载失败');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const stats = calculateStats(visibleRecords);
   const priceChange = calculatePriceChange(visibleRecords);
@@ -153,14 +255,33 @@ export function HistoryPricesPage({
     setPage(1);
   };
 
+  const submitImport = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onImportHistory || !importFile || importing) return;
+    setImporting(true);
+    setImportMessage('');
+    setImportError('');
+    try {
+      const result = await onImportHistory(importFile, importTarget);
+      setImportMessage(
+        `已导入 ${result.imported} 条，跳过 ${result.skipped} 条重复记录、${result.skippedRows} 条无效行。`,
+      );
+      setImportFile(null);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : '历史报价导入失败。');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filterFields: Array<{
     key: keyof Filters;
     label: string;
     placeholder: string;
   }> = [
-    { key: 'materialName', label: '物料名称', placeholder: '输入物料名称' },
-    { key: 'materialCode', label: '物料编码', placeholder: '输入编码' },
-    { key: 'specification', label: '规格型号', placeholder: '输入规格型号' },
+    { key: 'materialName', label: '品类 / 标包', placeholder: '输入品类或标包名称' },
+    { key: 'materialCode', label: '公告编号', placeholder: '输入公告编号' },
+    { key: 'specification', label: '报价方式', placeholder: '输入报价方式' },
     { key: 'tenderer', label: '招标人', placeholder: '全部招标人' },
     { key: 'region', label: '地区', placeholder: '全部地区' },
     { key: 'years', label: '年份', placeholder: '例如 2021—2024' },
@@ -177,6 +298,44 @@ export function HistoryPricesPage({
         <h2>历史报价｜数据查询总览</h2>
         <p>检索电网行业历史中标价格，为当前报价提供可解释的数据依据</p>
       </header>
+
+      {onLoadSources ? (
+        <section className="history-sources" aria-label="历史报价数据来源">
+          <strong>真实行情来源</strong>
+          {sources.map((source) => (
+            <span key={source.id} title={`${source.coverage}；${source.updatePolicy}`}>
+              {source.name}
+              <small>{source.readonlyVerified ? '只读已验证' : '只读状态未验证'} · {source.coverage}</small>
+            </span>
+          ))}
+          {sources.length === 0 && !sourcesError ? <em>正在读取来源元数据…</em> : null}
+          {sourcesError ? <em role="alert">来源元数据加载失败：{sourcesError}</em> : null}
+        </section>
+      ) : null}
+
+      {onImportHistory ? (
+        <form className="history-import" aria-label="导入历史报价样本" onSubmit={(event) => void submitImport(event)}>
+          <span><strong>导入真实行情样本</strong><small>仅支持后端约定的 .xlsx 文件</small></span>
+          <label>
+            <span className="bv-visually-hidden">导入范围</span>
+            <select value={importTarget} onChange={(event) => setImportTarget(event.currentTarget.value as 'public' | 'private')}>
+              <option value="private">本企业私有库</option>
+              <option value="public">平台公共库</option>
+            </select>
+          </label>
+          <label className="history-import__file">
+            <span>{importFile?.name ?? '选择 XLSX 文件'}</span>
+            <input
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              type="file"
+              onChange={(event) => setImportFile(event.currentTarget.files?.[0] ?? null)}
+            />
+          </label>
+          <button disabled={!importFile || importing} type="submit">{importing ? '正在导入…' : '导入行情'}</button>
+          {importMessage ? <p role="status">{importMessage}</p> : null}
+          {importError ? <p className="history-import__error" role="alert">{importError}</p> : null}
+        </form>
+      ) : null}
 
       <form className="history-filter" aria-label="历史报价查询条件" onSubmit={submitSearch}>
         {filterFields.map((field) => (
@@ -226,39 +385,37 @@ export function HistoryPricesPage({
           <table className="history-table">
             <thead>
               <tr>
-                <th>项目名称</th>
-                <th>招标人</th>
-                <th>年份</th>
-                <th>分标/分包</th>
-                <th>物料编码</th>
-                <th>规格型号</th>
-                <th>数量</th>
-                <th>中标供应商</th>
-                <th>中标单价</th>
-                <th>税率</th>
-                <th>中标日期</th>
+                <th>标包 / 项目</th>
+                <th>发布单位</th>
+                <th>品类</th>
+                <th>公告编号</th>
+                <th>报价方式</th>
+                <th>最高限价</th>
+                <th>中标价</th>
+                <th>中标 / 限价</th>
+                <th>发布日期</th>
                 <th>数据来源</th>
+                <th>价格证据</th>
               </tr>
             </thead>
             <tbody>
               {pageRecords.map((record) => (
                 <tr key={record.id}>
                   <td>
-                    <button type="button" onClick={() => setDetailMaterial(record)}>
+                    <button type="button" onClick={() => void openMaterial(record)}>
                       {record.projectName}
                     </button>
                   </td>
                   <td>{record.tenderer}</td>
-                  <td>{record.year}</td>
-                  <td>{record.packageName}</td>
-                  <td>{record.materialCode}</td>
-                  <td>{record.specification}</td>
-                  <td>{record.quantity === undefined ? '—' : `${record.quantity} 台`}</td>
-                  <td>{record.supplier}</td>
+                  <td>{record.category ?? record.materialName}</td>
+                  <td>{record.noticeId ?? record.materialCode}</td>
+                  <td>{record.priceMode ?? record.specification}</td>
+                  <td className="history-price-cell">{optionalPrice(record.limitPrice)}</td>
                   <td className="history-price-cell">{optionalPrice(record.unitPrice)}</td>
-                  <td>{record.taxRate}</td>
+                  <td>{optionalRatio(record.winRatio)}</td>
                   <td>{record.awardedAt}</td>
                   <td>{record.source}</td>
+                  <td><HistoryEvidence record={record} /></td>
                 </tr>
               ))}
             </tbody>
@@ -300,6 +457,33 @@ export function HistoryPricesPage({
   );
 }
 
+function HistoryEvidence({ record }: { record: HistoricalQuoteRecord }) {
+  const limitUrl = safeEvidenceUrl(record.limitEvidenceUrl);
+  const winUrl = safeEvidenceUrl(record.winEvidenceUrl);
+  const entries = [
+    { key: 'limit', label: '限价证据', text: record.limitEvidence, url: limitUrl },
+    { key: 'win', label: '中标证据', text: record.winEvidence, url: winUrl },
+  ].filter((entry) => entry.text || entry.url);
+  if (entries.length === 0) return <span>—</span>;
+  return (
+    <span className="history-evidence-links">
+      {entries.map((entry) => entry.url ? (
+        <a
+          key={entry.key}
+          href={entry.url}
+          target="_blank"
+          rel="noreferrer"
+          title={entry.text || entry.label}
+        >
+          {entry.label}
+        </a>
+      ) : (
+        <span key={entry.key} title={entry.text}>{entry.label}原文</span>
+      ))}
+    </span>
+  );
+}
+
 function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
     <article className="history-stat">
@@ -312,19 +496,49 @@ function Stat({ label, value, accent = false }: { label: string; value: string; 
 function HistoryPriceDetail({
   focus,
   records,
+  trend,
+  loading,
+  error,
+  onOpenSampleDetail,
   onBack,
 }: {
   focus: HistoricalQuoteRecord;
   records: HistoricalQuoteRecord[];
+  trend?: HistoryMaterialDetail['trend'];
+  loading: boolean;
+  error: string;
+  onOpenSampleDetail?: (sampleId: string) => Promise<HistoricalQuoteRecord>;
   onBack: () => void;
 }) {
-  const stats = calculateStats(records);
+  const [sampleDetail, setSampleDetail] = useState<HistoricalQuoteRecord | null>(null);
+  const [sampleLoadingId, setSampleLoadingId] = useState('');
+  const [sampleError, setSampleError] = useState('');
+  const localStats = calculateStats(records);
+  const stats = trend ? {
+    average: trend.average,
+    latest: trend.latest,
+    max: trend.maximum,
+    median: trend.median,
+    min: trend.minimum,
+  } : localStats;
   const orderedRecords = [...records].sort((a, b) => a.awardedAt.localeCompare(b.awardedAt));
   const firstRecord = orderedRecords[0];
   const lastRecord = orderedRecords.at(-1);
   const highSimilarityCount = records.filter((record) => record.similarity === 'high').length;
   const regions = [...new Set(records.map((record) => record.region).filter(Boolean))];
   const sources = [...new Set(records.map((record) => record.source).filter(Boolean))];
+  const openSample = async (record: HistoricalQuoteRecord) => {
+    if (!onOpenSampleDetail || !record.sampleId || sampleLoadingId) return;
+    setSampleLoadingId(record.sampleId);
+    setSampleError('');
+    try {
+      setSampleDetail(await onOpenSampleDetail(record.sampleId));
+    } catch (error) {
+      setSampleError(error instanceof Error ? error.message : '样本详情加载失败。');
+    } finally {
+      setSampleLoadingId('');
+    }
+  };
   return (
     <section className="history-page history-detail-page">
       <button className="history-detail-back" type="button" onClick={onBack}>
@@ -351,14 +565,40 @@ function HistoryPriceDetail({
           </dl>
           <div className="history-sample-summary">
             <span>历史样本数量</span>
-            <strong>{records.length} <small>条</small></strong>
+            <strong>{trend?.sampleCount ?? records.length} <small>条</small></strong>
             <em>高度相似样本 {highSimilarityCount} 条</em>
           </div>
         </aside>
 
         <div className="history-detail-main">
-          <PriceTrendChart records={records} materialName={focus.materialName} />
-          <ComparableTable records={records.slice(0, 5)} />
+          {loading ? <div className="history-detail-state" role="status">正在从后端读取物料样本与趋势…</div> : null}
+          {error ? <div className="history-detail-state history-detail-state--error" role="alert">{error}</div> : null}
+          {!loading && !error ? (
+            records.length > 0 ? (
+              <>
+                <PriceTrendChart records={records} materialName={focus.materialName} />
+                {sampleDetail ? (
+                  <section className="history-sample-detail" aria-label="单条历史报价样本详情">
+                    <header><strong>样本详情 #{sampleDetail.sampleId}</strong><button type="button" onClick={() => setSampleDetail(null)}>关闭</button></header>
+                    <dl>
+                      <div><dt>材料 / 标包</dt><dd>{sampleDetail.materialName}</dd></div>
+                      <div><dt>规格 / 品类</dt><dd>{sampleDetail.specification}</dd></div>
+                      <div><dt>地区 / 发布单位</dt><dd>{sampleDetail.region}</dd></div>
+                      <div><dt>中标价</dt><dd>{optionalPrice(sampleDetail.unitPrice)}</dd></div>
+                      <div><dt>日期</dt><dd>{sampleDetail.awardedAt}</dd></div>
+                      <div><dt>数据源</dt><dd>{sampleDetail.source}</dd></div>
+                    </dl>
+                  </section>
+                ) : null}
+                {sampleError ? <div className="history-detail-state history-detail-state--error" role="alert">{sampleError}</div> : null}
+                <ComparableTable
+                  records={records.slice(0, 5)}
+                  loadingSampleId={sampleLoadingId}
+                  onOpenSample={onOpenSampleDetail ? openSample : undefined}
+                />
+              </>
+            ) : <div className="history-detail-state" role="status">后端未返回该物料的可比样本。</div>
+          ) : null}
         </div>
 
         <aside className="history-detail-aside">
@@ -461,18 +701,39 @@ function PriceTrendChart({ records, materialName }: { records: HistoricalQuoteRe
   );
 }
 
-function ComparableTable({ records }: { records: HistoricalQuoteRecord[] }) {
+function ComparableTable({
+  records,
+  loadingSampleId,
+  onOpenSample,
+}: {
+  records: HistoricalQuoteRecord[];
+  loadingSampleId?: string;
+  onOpenSample?: (record: HistoricalQuoteRecord) => void;
+}) {
   const similarityLabel = { high: '高度相似', partial: '部分相似', reference: '仅供参考' } as const;
   return (
     <div className="history-comparable-wrap">
       <table className="history-comparable-table">
-        <thead><tr><th>项目名称</th><th>招标人</th><th>地区</th><th>数量</th><th>中标单价</th><th>中标日期</th><th>参数差异</th><th>相似度</th></tr></thead>
+        <thead><tr><th>项目名称</th><th>招标人</th><th>地区</th><th>数量</th><th>中标单价</th><th>中标日期</th><th>参数差异</th><th>相似度</th>{onOpenSample ? <th>样本详情</th> : null}</tr></thead>
         <tbody>
           {records.map((record) => (
             <tr key={record.id}>
               <td>{record.projectName}</td><td>{record.tenderer}</td><td>{record.region}</td><td>{record.quantity === undefined ? '—' : `${record.quantity} 台`}</td>
               <td className="history-price-cell">{optionalPrice(record.unitPrice)}</td><td>{record.awardedAt}</td><td>{record.parameterDifference}</td>
               <td><span className={`history-similarity history-similarity--${record.similarity}`}>{similarityLabel[record.similarity]}</span></td>
+              {onOpenSample ? (
+                <td>
+                  <button
+                    className="history-sample-detail-button"
+                    disabled={!record.sampleId || Boolean(loadingSampleId)}
+                    title={record.sampleId ? '调用后端单样本详情接口' : '后端样本列表未返回 sample_id'}
+                    type="button"
+                    onClick={() => onOpenSample(record)}
+                  >
+                    {loadingSampleId === record.sampleId ? '读取中…' : record.sampleId ? '查看' : 'ID 未提供'}
+                  </button>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

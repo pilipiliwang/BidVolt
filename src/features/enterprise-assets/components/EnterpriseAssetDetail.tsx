@@ -1,6 +1,7 @@
 import { Check, Clock3, FileText, History, PencilLine, Save, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
+import { ImageDescriptionSummary } from '../../../shared/ui/ImageDescriptionSummary';
 import type { EnterpriseAsset, EnterpriseFact } from '../types';
 
 const statusLabel = {
@@ -158,6 +159,19 @@ export function EnterpriseAssetDetail({
           有效期至 {asset.expiresAt}，生成标书时会同步校验证照有效性
         </div>
       )}
+
+      {asset.imageDescription ? (
+        <section className="enterprise-panel enterprise-panel--image-description" aria-labelledby="enterprise-image-description-title">
+          <div className="enterprise-panel__heading">
+            <FileText aria-hidden="true" size={18} />
+            <div>
+              <h3 id="enterprise-image-description-title">图片识别与编号复核</h3>
+              <p>识别结果来自后端；若两次编号读数冲突，请以原件人工核对。</p>
+            </div>
+          </div>
+          <ImageDescriptionSummary description={asset.imageDescription} />
+        </section>
+      ) : null}
 
       <div className="enterprise-detail__grid">
         <section className="enterprise-panel" aria-labelledby="enterprise-facts-title">

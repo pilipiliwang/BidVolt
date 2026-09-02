@@ -67,8 +67,8 @@ const statusContent = {
     Icon: CheckCircle2,
   },
   degraded: {
-    label: '部分接口异常或缺失',
-    message: '已捕获真实 API 调用，但部分业务接口调用失败或后端尚未提供。',
+    label: '真实 API 已连接，仍有待接项',
+    message: '已捕获真实 API 调用；请在明细中区分调用失败、前端未接入与后端未提供。',
     Icon: AlertTriangle,
   },
   disconnected: {
