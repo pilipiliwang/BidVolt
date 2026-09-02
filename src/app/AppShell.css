@@ -5,6 +5,7 @@
 
 .account-menu--sidebar {
   display: grid;
+  width: 220px;
   place-items: center;
 }
 
@@ -23,8 +24,8 @@
 
 .account-menu--sidebar .account-menu__popover {
   bottom: calc(100% + 12px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  width: 100%;
 }
 
 .account-menu--topbar .account-menu__popover {
@@ -100,9 +101,13 @@
   outline-offset: 1px;
 }
 
-.ui0802-sidebar-user[aria-expanded='true'],
 .profile-button[aria-expanded='true'] {
   background: rgb(10 145 87 / 10%);
+}
+
+.ui0802-sidebar-user[aria-expanded='true'] > svg,
+.profile-button[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
 }
 
 .page-diagnostics {

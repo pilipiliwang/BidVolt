@@ -195,7 +195,7 @@ export function EnterpriseAssetDetail({
         </button>
       </nav>
 
-      <div className="enterprise-detail__content">
+      <div className={`enterprise-detail__content${activeTab === 'preview' ? ' enterprise-detail__content--preview' : ''}`}>
         {activeTab === 'preview' ? (
           <EnterpriseAssetPreview
             fileId={previewFileId}

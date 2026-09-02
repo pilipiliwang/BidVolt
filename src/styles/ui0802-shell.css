@@ -183,50 +183,75 @@
 
 .ui0802-sidebar-footer {
   display: grid;
+  width: 100%;
   justify-items: center;
-  gap: 15px;
   margin-top: auto;
-}
-
-.ui0802-shell .sidebar-footnote {
-  grid-template-columns: 6px 1fr;
-  gap: 8px;
-  width: 210px;
-  padding: 9px 11px;
-  border-color: rgb(208 255 226 / 10%);
-  background: rgb(0 80 53 / 18%);
-  backdrop-filter: blur(4px);
-}
-
-.ui0802-shell .sidebar-footnote > span {
-  width: 5px;
-  height: 5px;
-  background: #9cf2b5;
-  box-shadow: 0 0 0 3px rgb(156 242 181 / 12%);
-}
-
-.ui0802-shell .sidebar-footnote strong {
-  color: rgb(255 255 255 / 76%);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-}
-
-.ui0802-shell .sidebar-footnote small {
-  color: rgb(221 255 235 / 52%);
-  font-size: var(--font-size-xs);
 }
 
 .ui0802-sidebar-user {
   display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
+  width: 220px;
+  min-height: 54px;
+  grid-template-columns: 38px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid rgb(214 255 229 / 18%);
+  border-radius: 12px;
   color: #fff;
-  background: transparent;
+  background: rgb(0 76 50 / 32%);
   opacity: 1 !important;
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.ui0802-sidebar-user:hover,
+.ui0802-sidebar-user[aria-expanded='true'] {
+  border-color: rgb(214 255 229 / 32%);
+  background: rgb(255 255 255 / 12%);
+}
+
+.ui0802-sidebar-user > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  color: #006b45;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ui0802-sidebar-user > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.ui0802-sidebar-user strong,
+.ui0802-sidebar-user small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui0802-sidebar-user strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ui0802-sidebar-user small {
+  color: rgb(231 255 240 / 67%);
+  font-size: var(--font-size-xs);
+}
+
+.ui0802-sidebar-user > svg {
+  color: rgb(231 255 240 / 70%);
+  transition: transform 150ms ease;
 }
 
 .ui0802-shell .app-shell__body {

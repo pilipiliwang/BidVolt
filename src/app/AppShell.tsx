@@ -10,7 +10,6 @@ import {
   FolderKanban,
   LogOut,
   Menu,
-  UserRound,
   X,
 } from 'lucide-react';
 
@@ -237,18 +236,12 @@ function AccountMenu({
         aria-label={`${placementLabel}账户菜单，${user.displayName}`}
         onClick={() => setOpen((current) => !current)}
       >
-        {placement === 'sidebar' ? (
-          <UserRound aria-hidden="true" size={27} strokeWidth={1.8} />
-        ) : (
-          <>
-            <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
-            <div>
-              <strong>{user.displayName}</strong>
-              <small>{user.role}</small>
-            </div>
-            <ChevronDown aria-hidden="true" size={15} />
-          </>
-        )}
+        <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
+        <div>
+          <strong>{user.displayName}</strong>
+          <small>{user.role}</small>
+        </div>
+        <ChevronDown aria-hidden="true" size={15} />
       </button>
 
       {isOpen ? (
@@ -261,7 +254,6 @@ function AccountMenu({
           <div className="account-menu__identity" role="none">
             <span aria-hidden="true">{user.displayName.slice(0, 1)}</span>
             <p>
-              <small>当前登录账户</small>
               <strong>{user.displayName}</strong>
               <em>{user.role}</em>
             </p>
@@ -393,13 +385,6 @@ export function AppShell({
         <PrimaryNavigation currentProjectId={currentProjectId} currentRoute={currentRoute} />
         <SidebarPowerScenery />
         <div className="ui0802-sidebar-footer">
-          <div className="sidebar-footnote" title={`当前企业：${enterpriseName}`}>
-            <span aria-hidden="true" />
-            <p>
-              <strong>数据边界已启用</strong>
-              <small>企业资料与项目材料独立</small>
-            </p>
-          </div>
           <AccountMenu onLogout={onLogout} placement="sidebar" user={user} />
         </div>
       </aside>

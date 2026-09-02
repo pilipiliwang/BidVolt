@@ -306,45 +306,6 @@ a {
   font-style: normal;
 }
 
-.sidebar-footnote {
-  display: grid;
-  grid-template-columns: 8px 1fr;
-  gap: 10px;
-  align-items: start;
-  padding: 14px;
-  margin-top: auto;
-  border: 1px solid rgb(101 215 207 / 12%);
-  border-radius: 12px;
-  background: rgb(10 166 165 / 7%);
-}
-
-.sidebar-footnote > span {
-  width: 7px;
-  height: 7px;
-  margin-top: 4px;
-  border-radius: 50%;
-  background: #57d5cb;
-  box-shadow: 0 0 0 4px rgb(87 213 203 / 10%);
-}
-
-.sidebar-footnote p {
-  display: grid;
-  gap: 4px;
-  padding: 0;
-  margin: 0;
-}
-
-.sidebar-footnote strong {
-  color: #d8ecec;
-  font-size: var(--font-size-sm);
-}
-
-.sidebar-footnote small {
-  color: #78949c;
-  font-size: var(--font-size-xs);
-  line-height: 1.5;
-}
-
 .app-shell__body {
   min-width: 0;
 }

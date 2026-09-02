@@ -130,7 +130,7 @@ describe('AppShell mobile navigation', () => {
 
     const menu = screen.getByRole('menu', { name: '测试用户的账户菜单' });
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    expect(within(menu).getByText('当前登录账户')).toBeInTheDocument();
+    expect(within(menu).queryByText('当前登录账户')).not.toBeInTheDocument();
     expect(within(menu).getByText('测试用户')).toBeInTheDocument();
     expect(within(menu).getByText('投标经理')).toBeInTheDocument();
 
@@ -178,7 +178,11 @@ describe('AppShell mobile navigation', () => {
 
       expect(screen.queryByRole('button', { name: /查看任务进度/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '顶部账户菜单，测试用户' })).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '侧栏账户菜单，测试用户' })).toBeInTheDocument();
+      const accountTrigger = screen.getByRole('button', { name: '侧栏账户菜单，测试用户' });
+      expect(accountTrigger).toHaveTextContent('测试用户');
+      expect(accountTrigger).toHaveTextContent('投标经理');
+      expect(screen.queryByText('数据边界已启用')).not.toBeInTheDocument();
+      expect(screen.queryByText('企业资料与项目材料独立')).not.toBeInTheDocument();
     },
   );
 });

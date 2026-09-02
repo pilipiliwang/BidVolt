@@ -889,6 +889,12 @@
   scrollbar-gutter: stable;
 }
 
+.enterprise-detail__content--preview {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .enterprise-detail__tabs button {
   display: inline-flex;
   min-height: 40px;
@@ -921,12 +927,23 @@
 }
 
 .enterprise-preview {
-  min-height: 430px;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   margin-top: 18px;
   overflow: hidden;
   border: 1px solid var(--enterprise-line);
   border-radius: 10px;
   background: #f4f7f6;
+}
+
+.enterprise-preview__viewport {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .enterprise-preview__toolbar {
@@ -966,7 +983,7 @@
 
 .enterprise-preview-state {
   display: grid;
-  min-height: 380px;
+  min-height: 100%;
   place-content: center;
   justify-items: center;
   gap: 8px;
@@ -984,7 +1001,7 @@
 
 .enterprise-preview__image {
   display: grid;
-  min-height: 430px;
+  min-height: 100%;
   padding: 18px;
   place-items: center;
 }
@@ -1002,7 +1019,8 @@
 .enterprise-preview__pdf {
   display: block;
   width: 100%;
-  min-height: 560px;
+  height: 100%;
+  min-height: 100%;
   border: 0;
   background: #fff;
 }
@@ -1010,9 +1028,7 @@
 .enterprise-preview__text {
   display: grid;
   gap: 10px;
-  max-height: 680px;
   padding: 18px;
-  overflow-y: auto;
 }
 
 .enterprise-preview__text article {

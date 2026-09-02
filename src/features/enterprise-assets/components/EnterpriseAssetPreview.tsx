@@ -90,61 +90,63 @@ export function EnterpriseAssetPreview({
           </button>
         ) : null}
       </div>
-      {isLoading ? (
-        <div className="enterprise-preview-state" role="status">
-          <LoaderCircle aria-hidden="true" size={26} />
-          <strong>正在加载原件预览…</strong>
-        </div>
-      ) : null}
-      {error ? (
-        <div className="enterprise-preview-state enterprise-preview-state--error" role="alert">
-          <strong>预览加载失败</strong>
-          <span>{error}</span>
-          <button type="button" onClick={() => setRetryNonce((value) => value + 1)}>
-            <RotateCw aria-hidden="true" size={15} />
-            重新加载
-          </button>
-        </div>
-      ) : null}
-      {!isLoading && !error && preview?.kind === 'image' && previewUrl ? (
-        <div className="enterprise-preview__image">
-          <img src={previewUrl} alt={`${fileName}原件`} />
-        </div>
-      ) : null}
-      {!isLoading && !error && preview?.kind === 'pdf' && previewUrl ? (
-        <iframe className="enterprise-preview__pdf" src={previewUrl} title={`${fileName} PDF 预览`} />
-      ) : null}
-      {!isLoading && !error && preview?.kind === 'text' ? (
-        preview.blocks.length > 0 ? (
-          <div className="enterprise-preview__text" aria-label="解析文本预览">
-            {preview.blocks.map((block) => (
-              <article key={block.id}>
-                {block.pageNo !== undefined ? <span>第 {block.pageNo} 页</span> : null}
-                <p>{block.text}</p>
-              </article>
-            ))}
+      <div className="enterprise-preview__viewport" role="region" aria-label="原件内容">
+        {isLoading ? (
+          <div className="enterprise-preview-state" role="status">
+            <LoaderCircle aria-hidden="true" size={26} />
+            <strong>正在加载原件预览…</strong>
           </div>
-        ) : (
+        ) : null}
+        {error ? (
+          <div className="enterprise-preview-state enterprise-preview-state--error" role="alert">
+            <strong>预览加载失败</strong>
+            <span>{error}</span>
+            <button type="button" onClick={() => setRetryNonce((value) => value + 1)}>
+              <RotateCw aria-hidden="true" size={15} />
+              重新加载
+            </button>
+          </div>
+        ) : null}
+        {!isLoading && !error && preview?.kind === 'image' && previewUrl ? (
+          <div className="enterprise-preview__image">
+            <img src={previewUrl} alt={`${fileName}原件`} />
+          </div>
+        ) : null}
+        {!isLoading && !error && preview?.kind === 'pdf' && previewUrl ? (
+          <iframe className="enterprise-preview__pdf" src={previewUrl} title={`${fileName} PDF 预览`} />
+        ) : null}
+        {!isLoading && !error && preview?.kind === 'text' ? (
+          preview.blocks.length > 0 ? (
+            <div className="enterprise-preview__text" aria-label="解析文本预览">
+              {preview.blocks.map((block) => (
+                <article key={block.id}>
+                  {block.pageNo !== undefined ? <span>第 {block.pageNo} 页</span> : null}
+                  <p>{block.text}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="enterprise-preview-state">
+              <FileSearch aria-hidden="true" size={28} />
+              <strong>暂未解析到可展示文本</strong>
+              <span>可以下载原文件继续查看。</span>
+            </div>
+          )
+        ) : null}
+        {!isLoading && !error && preview?.kind === 'unsupported' ? (
           <div className="enterprise-preview-state">
             <FileSearch aria-hidden="true" size={28} />
-            <strong>暂未解析到可展示文本</strong>
-            <span>可以下载原文件继续查看。</span>
+            <strong>当前格式暂不支持在线预览</strong>
+            <span>{preview.message}</span>
           </div>
-        )
-      ) : null}
-      {!isLoading && !error && preview?.kind === 'unsupported' ? (
-        <div className="enterprise-preview-state">
-          <FileSearch aria-hidden="true" size={28} />
-          <strong>当前格式暂不支持在线预览</strong>
-          <span>{preview.message}</span>
-        </div>
-      ) : null}
-      {!isLoading && !error && !preview && !onLoadPreview ? (
-        <div className="enterprise-preview-state">
-          <FileSearch aria-hidden="true" size={28} />
-          <strong>当前环境未配置预览能力</strong>
-        </div>
-      ) : null}
+        ) : null}
+        {!isLoading && !error && !preview && !onLoadPreview ? (
+          <div className="enterprise-preview-state">
+            <FileSearch aria-hidden="true" size={28} />
+            <strong>当前环境未配置预览能力</strong>
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }

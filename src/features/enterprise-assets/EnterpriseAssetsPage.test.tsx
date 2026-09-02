@@ -144,6 +144,35 @@ describe('EnterpriseAssetsPage', () => {
     expect(screen.queryByText(/待用户核对/)).not.toBeInTheDocument();
   });
 
+  it('keeps the preview toolbar outside the only scrollable original viewport', async () => {
+    const user = userEvent.setup();
+    render(
+      <EnterpriseAssetsPage
+        enterpriseName="华东电气设备有限公司"
+        assets={[{ ...assets[0], sourceFileId: 'file-88' }]}
+        categories={categories}
+        onLoadAssetPreview={vi.fn().mockResolvedValue({
+          kind: 'text' as const,
+          blocks: [{ id: 'block-1', text: '原件正文' }],
+        })}
+        onDownloadAssetFile={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '查看华东电气营业执照.pdf详情' }));
+
+    const detailDialog = screen.getByRole('dialog', { name: '华东电气营业执照.pdf详情' });
+    const detailContent = detailDialog.querySelector('.enterprise-detail__content');
+    const viewport = within(detailDialog).getByRole('region', { name: '原件内容' });
+    expect(detailContent).toHaveClass('enterprise-detail__content--preview');
+    expect(viewport).not.toContainElement(within(detailDialog).getByRole('button', { name: '下载原文件' }));
+
+    await user.click(within(detailDialog).getByRole('button', { name: '识别结果' }));
+    expect(detailContent).not.toHaveClass('enterprise-detail__content--preview');
+    await user.click(within(detailDialog).getByRole('button', { name: '原件预览' }));
+    expect(detailContent).toHaveClass('enterprise-detail__content--preview');
+  });
+
   it('separates archive source files from business and backend category folders', async () => {
     const user = userEvent.setup();
     const archive: EnterpriseAsset = {

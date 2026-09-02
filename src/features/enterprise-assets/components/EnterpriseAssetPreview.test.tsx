@@ -29,6 +29,10 @@ describe('EnterpriseAssetPreview', () => {
     expect(screen.getByText('第 1 页')).toBeInTheDocument();
     expect(onLoadPreview).toHaveBeenCalledWith('88', '营业执照.docx');
 
+    const previewViewport = screen.getByRole('region', { name: '原件内容' });
+    expect(previewViewport).toContainElement(screen.getByLabelText('解析文本预览'));
+    expect(previewViewport).not.toContainElement(screen.getByRole('button', { name: '下载原文件' }));
+
     await user.click(screen.getByRole('button', { name: '下载原文件' }));
     expect(onDownloadFile).toHaveBeenCalledWith('88', '营业执照.docx');
   });
