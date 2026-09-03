@@ -83,7 +83,11 @@ export function resolveProjectWorkflowPhase({
   if (agentCompletion === 'active') return 'executing';
   if (agentCompletion === 'incomplete' || agentCompletion === 'failed'
     || agentCompletion === 'cancelled') return 'failed';
-  if (task?.status === 'failed' || task?.status === 'sync_error') return 'failed';
+  if (task?.status === 'failed') return 'failed';
+  // The generation task itself succeeded. A sync error only means its persisted
+  // deliverable version is not available yet, so keep stage 3 completed and
+  // report the problem on the deliverable stage instead of calling generation failed.
+  if (task?.status === 'sync_error') return 'finalizing';
   if (task?.status && activeTaskStatuses.has(task.status)) return 'executing';
   if (agentCompletion === 'complete' || agentCompletion === 'unknown_terminal'
     || task?.status === 'succeeded') return hasDeliverables ? 'completed' : 'finalizing';

@@ -182,6 +182,28 @@ describe('project workflow', () => {
     })).toBe('finalizing');
   });
 
+  it('keeps bid preparation completed when only deliverable synchronization failed', () => {
+    const facts = {
+      agentCompletion: 'complete' as const,
+      currentTenderMaterialCount: 11,
+      deliverablesState: 'error' as const,
+      enterpriseMaterialCount: 1440,
+      hasDeliverables: false,
+      task: {
+        message: '生成任务已结束，但成果版本尚未返回',
+        percent: 100,
+        status: 'sync_error' as const,
+        title: '成果同步',
+      },
+    };
+
+    expect(resolveProjectWorkflowPhase(facts)).toBe('finalizing');
+    expect(buildProjectFlowStages(facts)).toMatchObject({
+      'bid-preparation': { status: 'completed', statusLabel: '已完成' },
+      deliverables: { status: 'error', statusLabel: '同步失败' },
+    });
+  });
+
   it('does not let historical deliverables hide the current generation state', () => {
     const activeFacts = {
       agentCompletion: 'active',

@@ -353,6 +353,16 @@ score 至少包含 total、business、technical、pricing、rejection_risks、mi
 
 响应可以是文件流、重定向或短时下载地址，但前端需要获得正确文件名、MIME 类型和过期时间。
 
+### FE-DELIVERABLE-005 生成任务完成后的成果版本同步
+
+- 状态：现有接口返回成功，但缺少可用成果版本（P0）
+- 前端需要：Agent 生成任务成功后，成果列表必须返回正数 `current_version_no`，对应版本列表必须包含本次任务生成的版本。
+- 版本至少需要：`version_no`、`source_task_id`、`created_at`、可用的预览/下载内容；`source_task_id` 必须能关联本次生成任务。
+- 在成果版本可查询前，任务不能只返回“完成”而留下 `current_version_no=0` 和空版本列表；重复查询应最终取得同一份已落库成果。
+
+联调复现（2026-09-03）：项目 207 的 Agent 任务 3499 已返回完成并生成 artifact 942，但三个成果的
+`current_version_no` 均为 0，`GET /deliverables/{deliverable_id}/versions` 均返回空数组，前端无法进入成果预览。
+
 ## 8. 当前项目材料、Requirement 与快照
 
 ### FE-MATERIAL-001 项目材料列表
