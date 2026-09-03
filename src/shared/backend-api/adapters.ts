@@ -167,10 +167,22 @@ const materialKindFromFile = (file: BackendFile): ProjectMaterialKind => {
   return category ? materialKindByBackendCategory[category] ?? 'other' : 'other';
 };
 
-const parseState = (status?: number): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
+const fileParseState = (status?: number): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
   if (status === 1) return { parseStatus: 'queued' };
   if (status === 2) return { parseStatus: 'parsing' };
   if (status === 3) return { parseProgress: 100, parseStatus: 'parsed' };
+  if (status === 4) return { parseStatus: 'failed' };
+  return { parseStatus: 'unknown' };
+};
+
+// ProjectMaterial uses a different status enum from FileObject:
+// 1 = pending parse, 2 = parsed, 3 = needs manual confirmation, 4 = failed.
+const projectMaterialParseState = (
+  status?: number,
+): Pick<ProjectMaterialView, 'parseProgress' | 'parseStatus'> => {
+  if (status === 1) return { parseStatus: 'queued' };
+  if (status === 2) return { parseProgress: 100, parseStatus: 'parsed' };
+  if (status === 3) return { parseProgress: 100, parseStatus: 'needs_confirmation' };
   if (status === 4) return { parseStatus: 'failed' };
   return { parseStatus: 'unknown' };
 };
@@ -203,7 +215,7 @@ export function adaptBackendFile(file: BackendFile): ProjectMaterialView {
     name: file.name,
     kind: materialKindFromFile(file),
     ...(purpose ? { purpose } : {}),
-    ...parseState(file.status),
+    ...fileParseState(file.status),
     // FileObject list currently omits timestamps and material revision metadata.
     uploadedAt: '上传时间未提供',
   };
@@ -223,7 +235,7 @@ export function adaptBackendProjectMaterial(
     name: material.archive_path?.trim() || material.file_name?.trim() || `文件 #${material.file_id}`,
     kind: file ? materialKindFromFile(file) : 'other',
     ...(purpose ? { purpose } : {}),
-    ...parseState(material.status),
+    ...projectMaterialParseState(material.status),
     blocksCount: material.block_count,
     imageCount: material.image_count,
     imageDescribedCount: material.image_described_count,

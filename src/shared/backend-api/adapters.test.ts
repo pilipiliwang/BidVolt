@@ -142,7 +142,7 @@ describe('backend DTO adapters', () => {
       file_id: 10,
       file_name: '技术规范.docx',
       ext: '.docx',
-      status: 3,
+      status: 2,
       parse_status: null,
       block_count: 88,
       block_stats: { paragraph: 80, table: 8 },
@@ -171,6 +171,34 @@ describe('backend DTO adapters', () => {
       parseStatus: 'parsed',
       parseProgress: 100,
       blocksCount: 88,
+    });
+  });
+
+  it('uses the project-material status enum instead of the file parse enum', () => {
+    const base = {
+      material_id: 3,
+      file_id: 10,
+      file_name: '技术规范.docx',
+      ext: '.docx',
+      parse_status: null,
+      block_count: 1,
+      block_stats: {},
+      media_count: 0,
+      image_count: 0,
+      image_described_count: 0,
+      source_archive_id: null,
+      source_archive_name: null,
+      archive_path: null,
+      expanded_count: 0,
+    };
+
+    expect(adaptBackendProjectMaterial({ ...base, status: 2 })).toMatchObject({
+      parseStatus: 'parsed',
+      parseProgress: 100,
+    });
+    expect(adaptBackendProjectMaterial({ ...base, status: 3 })).toMatchObject({
+      parseStatus: 'needs_confirmation',
+      parseProgress: 100,
     });
   });
 
