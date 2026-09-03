@@ -65,7 +65,10 @@ describe('project workflow', () => {
 
   it('shows the empty-project entry without inventing completed work', () => {
     render(
-      <ProjectWorkflowFrame facts={{ currentTenderMaterialCount: 0, enterpriseMaterialCount: 0, hasDeliverables: false }}>
+      <ProjectWorkflowFrame
+        facts={{ currentTenderMaterialCount: 0, enterpriseMaterialCount: 0, hasDeliverables: false }}
+        projectTitle="华北电网设备采购"
+      >
         <ProjectEntryChoice enterpriseReady={false} onGenerate={vi.fn()} />
       </ProjectWorkflowFrame>,
     );
@@ -74,6 +77,8 @@ describe('project workflow', () => {
     expect(workflow).toHaveTextContent('企业资料库为空，可先补充资料');
     expect(workflow).toHaveTextContent('上传招标材料或导入公告网址');
     expect(workflow).not.toHaveTextContent('成果版本已返回');
+    expect(screen.getByRole('link', { name: '返回' })).toHaveAttribute('href', '/projects');
+    expect(screen.getByText('华北电网设备采购')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '选择本次投标任务' })).toBeInTheDocument();
   });
 

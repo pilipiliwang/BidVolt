@@ -45,7 +45,22 @@ export function ProjectSourceRail({
   onAddEnterpriseFiles,
 }: ProjectSourceRailProps) {
   const folderContentId = useId();
-  const folders = buildEnterpriseAssetFolders(enterpriseCategories, enterpriseMaterials);
+  const folders = buildEnterpriseAssetFolders(enterpriseCategories, enterpriseMaterials, {
+    allLabel: '全部资料',
+    separateSourceArchives: true,
+  });
+  const folderGroups = [
+    {
+      id: 'system',
+      label: '系统视图',
+      folders: folders.filter((folder) => folder.kind === 'all' || folder.kind === 'source'),
+    },
+    {
+      id: 'business',
+      label: '业务分类',
+      folders: folders.filter((folder) => folder.kind !== 'all' && folder.kind !== 'source'),
+    },
+  ];
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const resolvedOpenFolderId = openFolderId === null
     ? null
@@ -82,38 +97,47 @@ export function ProjectSourceRail({
       </header>
 
       <nav aria-label="企业资料分类文件夹" className="bv-source-rail__folders">
-        {folders.map((folder, index) => {
-          const isExpanded = resolvedOpenFolderId === folder.id;
-          const contentId = `${folderContentId}-folder-${index}`;
-          return (
-            <div className="bv-source-folder" data-folder-kind={folder.kind} key={folder.id}>
-              <button
-                aria-label={`${folder.label}，${folder.items.length}项`}
-                aria-controls={contentId}
-                aria-expanded={isExpanded}
-                className="bv-source-folder__toggle"
-                onClick={() => setOpenFolderId(isExpanded ? null : folder.id)}
-                type="button"
-              >
-                <ChevronRight aria-hidden="true" className="bv-source-folder__chevron" size={15} />
-                <Folder aria-hidden="true" size={18} />
-                <span>{folder.label}</span>
-                <small aria-hidden="true">{folder.items.length}</small>
-              </button>
-              {isExpanded ? (
-                folder.items.length > 0 ? (
-                  <MaterialList id={contentId} label={`${folder.label}文件`} materials={folder.items} />
-                ) : (
-                  <p className="bv-source-rail__empty" id={contentId} role="status">
-                    {folder.kind === 'all'
-                      ? '企业资料库暂无可展示资料'
-                      : '该文件夹暂无企业资料'}
-                  </p>
-                )
-              ) : null}
-            </div>
-          );
-        })}
+        {folderGroups.map((group) => (
+          <div
+            className={`bv-source-rail__folder-group bv-source-rail__folder-group--${group.id}`}
+            key={group.id}
+          >
+            <span className="bv-source-rail__folder-group-label">{group.label}</span>
+            {group.folders.map((folder, index) => {
+              const isExpanded = resolvedOpenFolderId === folder.id;
+              const contentId = `${folderContentId}-${group.id}-folder-${index}`;
+              const FolderIcon = folder.kind === 'source' ? FileArchive : Folder;
+              return (
+                <div className="bv-source-folder" data-folder-kind={folder.kind} key={folder.id}>
+                  <button
+                    aria-label={`${folder.label}，${folder.items.length}项`}
+                    aria-controls={contentId}
+                    aria-expanded={isExpanded}
+                    className="bv-source-folder__toggle"
+                    onClick={() => setOpenFolderId(isExpanded ? null : folder.id)}
+                    type="button"
+                  >
+                    <ChevronRight aria-hidden="true" className="bv-source-folder__chevron" size={15} />
+                    <FolderIcon aria-hidden="true" size={18} />
+                    <span>{folder.label}</span>
+                    <small aria-hidden="true">{folder.items.length}</small>
+                  </button>
+                  {isExpanded ? (
+                    folder.items.length > 0 ? (
+                      <MaterialList id={contentId} label={`${folder.label}文件`} materials={folder.items} />
+                    ) : (
+                      <p className="bv-source-rail__empty" id={contentId} role="status">
+                        {folder.kind === 'all'
+                          ? '企业资料库暂无可展示资料'
+                          : '该文件夹暂无企业资料'}
+                      </p>
+                    )
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {onAddEnterpriseFiles ? (

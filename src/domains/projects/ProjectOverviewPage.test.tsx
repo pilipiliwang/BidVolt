@@ -85,6 +85,28 @@ describe('ProjectOverviewPage', () => {
     expect(within(emptyState!).queryByRole('button', { name: '查看任务进度' })).not.toBeInTheDocument();
   });
 
+  it('keeps the pre-generation workflow free of the old deliverable header and version control', () => {
+    render(
+      <ProjectOverviewPage
+        enterpriseMaterials={[]}
+        materials={[]}
+        onOpenTasks={vi.fn()}
+        project={project}
+        projectId="BV-2026-018"
+        workflowFacts={{
+          currentTenderMaterialCount: 0,
+          enterpriseMaterialCount: 0,
+          hasDeliverables: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '选择本次投标任务' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: '标书成果预览' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '成果版本' })).not.toBeInTheDocument();
+  });
+
   it('shows queued generation progress without exposing API diagnostics in the business area', async () => {
     const user = userEvent.setup();
     const onOpenTasks = vi.fn();
@@ -274,6 +296,12 @@ describe('ProjectOverviewPage', () => {
         project={project}
         projectId="BV-2026-018"
         versionOptions={versionOptions}
+        workflowFacts={{
+          agentCompletion: 'complete',
+          currentTenderMaterialCount: 2,
+          enterpriseMaterialCount: 7,
+          hasDeliverables: true,
+        }}
       />,
     );
 
@@ -369,6 +397,10 @@ describe('ProjectOverviewPage', () => {
     expect(screen.queryByRole('heading', { level: 2, name: '商务标文件' }))
       .not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '预览商务标文件' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: '标书成果预览' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '成果版本' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: '项目工作区页面' })).not.toBeInTheDocument();
   });
 
   it('does not show a project-material shortcut when the deliverables request fails', () => {

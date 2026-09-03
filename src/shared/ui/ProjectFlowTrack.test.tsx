@@ -18,11 +18,13 @@ describe('ProjectFlowTrack', () => {
     const flow = screen.getByRole('navigation', { name: '项目流程' });
     const items = within(flow).getAllByRole('listitem');
     expect(items).toHaveLength(4);
-    expect(items[0]).toHaveTextContent('第 1 步 · 已完成');
+    expect(items[0]).toHaveTextContent('已完成');
     expect(items[0]).toHaveTextContent('上传企业资料');
     expect(items[0]).toHaveTextContent('资料已入库');
     expect(items[1]).toHaveAttribute('aria-current', 'step');
+    expect(items[1].querySelector('.project-flow-track__marker')).toHaveTextContent('2');
     expect(items[1]).toHaveTextContent('上传材料');
+    expect(items[2].querySelector('.project-flow-track__marker')).toHaveTextContent('3');
     expect(items[2]).toHaveTextContent('标书制作 / 审核');
     expect(items[2]).toHaveTextContent('未开始');
     expect(items[3]).toHaveTextContent('成果生成');

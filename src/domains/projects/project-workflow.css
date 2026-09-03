@@ -6,9 +6,66 @@
   background: #f8fafc;
 }
 
+.project-workflow-header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(250px, 0.34fr) minmax(0, 1.66fr);
+  align-items: center;
+  gap: 24px;
+  padding: 15px 20px;
+  border: 1px solid #dbe7e0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgb(27 66 47 / 5%);
+}
+
+.project-workflow-header__context {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto 1px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.project-workflow-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #193c31;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.project-workflow-header__back:hover { color: #008b55; }
+
+.project-workflow-header__context > i {
+  width: 1px;
+  height: 34px;
+  background: #e0e7e3;
+}
+
+.project-workflow-header__context p {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  color: #60716a;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.project-workflow-header__context strong {
+  overflow: hidden;
+  color: #17251e;
+  font-size: 17px;
+  text-overflow: ellipsis;
+}
+
 .project-workflow-frame > .bv-project-workspace {
-  height: calc(100dvh - 218px);
-  min-height: calc(100vh - 230px);
+  height: calc(100dvh - 144px);
+  min-height: calc(100vh - 156px);
   padding: 0;
 }
 
@@ -214,6 +271,8 @@
 
 @media (max-width: 900px) {
   .project-workflow-frame { padding: 10px; }
+  .project-workflow-header { grid-template-columns: 1fr; gap: 13px; padding: 13px 14px; }
+  .project-workflow-header__context { grid-template-columns: auto 1px minmax(0, 1fr); }
   .project-workflow-frame > .bv-project-workspace { height: auto; min-height: auto; }
   .project-optimization-flow { grid-template-columns: 1fr; }
   .project-optimization-flow > div { flex-wrap: wrap; }
@@ -224,6 +283,9 @@
   .project-entry-choice,
   .project-task-execution,
   .project-workflow-resource { min-height: 430px; padding: 24px 16px; }
+  .project-workflow-header__context { gap: 10px; }
+  .project-workflow-header__context p > span { display: none; }
+  .project-workflow-header__context strong { font-size: 15px; }
   .project-entry-choice__actions button { padding-inline: 14px; }
   .project-entry-choice__actions button strong { font-size: 16px; }
   .project-optimization-flow i { display: none; }

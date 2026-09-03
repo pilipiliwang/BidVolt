@@ -3,7 +3,10 @@
 
 .ui0802-shell {
   --sidebar-width: 264px;
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   overflow-x: clip;
   color: #111827;
   background: #fff;
@@ -12,10 +15,14 @@
 .ui0802-shell .desktop-sidebar {
   position: sticky;
   isolation: isolate;
+  display: flex;
   width: var(--sidebar-width);
-  min-height: 680px;
+  height: 100dvh;
+  min-height: 0;
+  max-height: 100dvh;
+  flex-direction: column;
   padding: 38px 14px 24px;
-  overflow: hidden;
+  overflow: clip;
   color: #fff;
   background:
     radial-gradient(circle at 16% 7%, rgb(0 132 83 / 46%), transparent 21rem),
@@ -81,7 +88,11 @@
 }
 
 .ui0802-shell .primary-nav {
+  min-height: 0;
+  flex: 0 1 auto;
   margin-top: 36px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ui0802-shell .primary-nav__label {
@@ -182,9 +193,13 @@
 }
 
 .ui0802-sidebar-footer {
+  position: relative;
+  z-index: 2;
   display: grid;
   width: 100%;
+  flex: 0 0 auto;
   justify-items: center;
+  padding-top: 14px;
   margin-top: auto;
 }
 
@@ -257,6 +272,8 @@
 .ui0802-shell .app-shell__body {
   position: relative;
   isolation: isolate;
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
   background:
     radial-gradient(ellipse at 92% 10%, rgb(98 217 164 / 9%), transparent 26rem),
@@ -283,6 +300,8 @@
 
 .ui0802-shell .topbar {
   position: relative;
+  width: 100%;
+  min-width: 0;
   min-height: 116px;
   padding: 0 40px;
   border-bottom: 0;
@@ -319,6 +338,7 @@
 
 .ui0802-shell .page-content {
   width: 100%;
+  min-width: 0;
   max-width: none;
   padding: 30px 40px 16px;
   margin: 0;
@@ -352,7 +372,7 @@
 .ui0802-shell .ui0802-project-topbar {
   display: grid;
   min-height: 94px;
-  grid-template-columns: 255px 285px minmax(470px, 645px) 1fr;
+  grid-template-columns: minmax(225px, 255px) minmax(210px, 285px) minmax(0, 1fr);
   gap: 26px;
   align-items: center;
   padding: 12px 30px;

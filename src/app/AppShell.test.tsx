@@ -168,12 +168,15 @@ describe('AppShell mobile navigation', () => {
 
   it('keeps the account entry in the lower-left sidebar only and restores focus on Escape', async () => {
     const user = userEvent.setup();
-    renderShell();
+    const { container } = renderShell();
     const trigger = screen.getByRole('button', {
       name: '侧栏账户菜单，测试用户',
     });
 
     expect(screen.queryByRole('button', { name: '顶部账户菜单，测试用户' })).not.toBeInTheDocument();
+    expect(trigger.closest('.ui0802-sidebar-footer')).toBe(
+      container.querySelector('.ui0802-sidebar-footer'),
+    );
 
     await user.click(trigger);
     expect(screen.getByRole('menu', { name: '测试用户的账户菜单' })).toBeInTheDocument();
@@ -182,6 +185,62 @@ describe('AppShell mobile navigation', () => {
 
     expect(screen.queryByRole('menu', { name: '测试用户的账户菜单' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it.each(['project-overview', 'project-materials'] as const)(
+    'leaves the merged project workflow header to the %s page',
+    (currentRoute) => {
+      const { container } = render(
+        <AppShell
+          currentProjectId="22"
+          currentRoute={currentRoute}
+          eyebrow="项目工作流"
+          enterpriseName="测试企业"
+          onLogout={vi.fn()}
+          onOpenTasks={vi.fn()}
+          projectSummary={{
+            buyer: '测试采购方',
+            code: 'TEST-22',
+            deadline: '2026-09-30 10:00:00',
+            id: '22',
+            stage: '材料解析',
+            title: '测试投标项目',
+            updatedAt: '2026-09-03 10:00:00',
+          }}
+          taskCount={0}
+          title="项目工作台"
+          user={{ displayName: '测试用户', role: '投标经理' }}
+        >
+          <section>合并后的项目流程顶部</section>
+        </AppShell>,
+      );
+
+      expect(container.querySelector('.ui0802-shell--project')).toBeInTheDocument();
+      expect(container.querySelector('.ui0802-project-topbar')).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: '返回投标工作台' })).not.toBeInTheDocument();
+      expect(screen.getByText('合并后的项目流程顶部')).toBeInTheDocument();
+    },
+  );
+
+  it('keeps the legacy project topbar on project pages that do not own a workflow header', () => {
+    const { container } = render(
+      <AppShell
+        currentProjectId="22"
+        currentRoute="review-center"
+        eyebrow="评审中心"
+        enterpriseName="测试企业"
+        onLogout={vi.fn()}
+        onOpenTasks={vi.fn()}
+        taskCount={0}
+        title="评审中心"
+        user={{ displayName: '测试用户', role: '投标经理' }}
+      >
+        <section>评审内容</section>
+      </AppShell>,
+    );
+
+    expect(container.querySelector('.ui0802-project-topbar')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '返回投标工作台' })).toBeInTheDocument();
   });
 
   it.each(['enterprise-assets', 'bid-market-library'] as const)(

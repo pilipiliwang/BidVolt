@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  ChevronLeft,
   Clock3,
   FileCheck2,
   FilePlus2,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { AppLink } from '../../app/router';
 import {
   ProjectFlowTrack,
   type ProjectFlowStageState,
@@ -190,14 +192,29 @@ export function ProjectWorkflowFrame({
   children,
   className = '',
   facts,
+  projectTitle,
 }: {
   children: ReactNode;
   className?: string;
   facts: ProjectWorkflowFacts;
+  projectTitle?: string;
 }) {
   return (
     <div className={`project-workflow-frame ${className}`.trim()}>
-      <ProjectFlowTrack stages={buildProjectFlowStages(facts)} />
+      <header className="project-workflow-header">
+        <div className="project-workflow-header__context">
+          <AppLink className="project-workflow-header__back" to="/projects">
+            <ChevronLeft aria-hidden="true" size={22} />
+            <span>返回</span>
+          </AppLink>
+          <i aria-hidden="true" />
+          <p>
+            <span>项目名称：</span>
+            <strong title={projectTitle}>{projectTitle ?? '当前项目'}</strong>
+          </p>
+        </div>
+        <ProjectFlowTrack stages={buildProjectFlowStages(facts)} />
+      </header>
       {children}
     </div>
   );

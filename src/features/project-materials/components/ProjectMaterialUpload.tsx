@@ -122,7 +122,7 @@ function UploadCard({
     <article className="project-upload-card">
       <header>
         <div>
-          <h2>{title} <em>{required ? '必传' : '可选'}</em></h2>
+          <h2>{title} <em>{required ? '必填' : '可选'}</em></h2>
           <p>{description}</p>
         </div>
         <span className={required ? 'project-upload-card__scope' : 'project-upload-card__scope project-upload-card__scope--optional'}>
@@ -260,9 +260,11 @@ export function validateTenderNoticeUrl(value: string): { error?: string; url?: 
 function TenderNoticeUrlImporter({
   projectId,
   onImport,
+  standalone = false,
 }: {
   projectId: string;
   onImport?: EnhancedProjectMaterialUploadProps['onImportTenderNoticeUrl'];
+  standalone?: boolean;
 }) {
   const inputId = useId();
   const [value, setValue] = useState('');
@@ -304,11 +306,14 @@ function TenderNoticeUrlImporter({
   const isLoading = state.type === 'loading';
 
   return (
-    <div className="project-tender-url-import">
+    <section
+      aria-label={standalone ? '粘贴招标公告地址' : undefined}
+      className={`project-tender-url-import${standalone ? ' project-tender-url-import--card' : ''}`}
+    >
       <div className="project-tender-url-import__heading">
         <span aria-hidden="true"><Link2 size={18} /></span>
         <div>
-          <strong>粘贴招标公告网址</strong>
+          {standalone ? <h2>粘贴招标公告地址 <em>可选</em></h2> : <strong>粘贴招标公告网址</strong>}
           <small>适用于可公开访问的招标公告网页，系统将在服务端下载附件并开始解析。</small>
         </div>
       </div>
@@ -352,8 +357,10 @@ function TenderNoticeUrlImporter({
           {state.message}
         </p>
       )}
-      <div className="project-tender-url-import__divider"><span>或手动上传招标公告文件</span></div>
-    </div>
+      {standalone ? null : (
+        <div className="project-tender-url-import__divider"><span>或手动上传招标公告文件</span></div>
+      )}
+    </section>
   );
 }
 
@@ -406,20 +413,39 @@ export function ProjectMaterialUpload({
       </div>
 
       <div className="project-upload-card-list">
-        <UploadCard
-          required
-          title="当前招标材料"
-          description="上传本项目全部招标文件，AI 将自动识别并分类。"
-          inputLabel="选择或拖拽招标材料"
-          accept={BACKEND_UPLOAD_ACCEPT}
-          selectedNames={tenderFileNames}
-          onFiles={dispatchProjectFiles}
-        >
-          <TenderNoticeUrlImporter
-            projectId={projectId}
-            onImport={onImportTenderNoticeUrl}
-          />
-        </UploadCard>
+        {mode === 'generation' ? (
+          <div className="project-upload-card-list__primary">
+            <UploadCard
+              required
+              title="上传招标材料"
+              description="上传本项目全部招标文件，AI 将自动识别并分类。"
+              inputLabel="选择或拖拽招标材料"
+              accept={BACKEND_UPLOAD_ACCEPT}
+              selectedNames={tenderFileNames}
+              onFiles={dispatchProjectFiles}
+            />
+            <TenderNoticeUrlImporter
+              standalone
+              projectId={projectId}
+              onImport={onImportTenderNoticeUrl}
+            />
+          </div>
+        ) : (
+          <UploadCard
+            required
+            title="当前招标材料"
+            description="上传本项目全部招标文件，AI 将自动识别并分类。"
+            inputLabel="选择或拖拽招标材料"
+            accept={BACKEND_UPLOAD_ACCEPT}
+            selectedNames={tenderFileNames}
+            onFiles={dispatchProjectFiles}
+          >
+            <TenderNoticeUrlImporter
+              projectId={projectId}
+              onImport={onImportTenderNoticeUrl}
+            />
+          </UploadCard>
+        )}
         {mode === 'generation' ? (
           <UploadCard
             title="补充资料"

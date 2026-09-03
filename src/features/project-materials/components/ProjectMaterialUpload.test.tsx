@@ -10,6 +10,51 @@ const baseProps = {
 };
 
 describe('ProjectMaterialUpload tender notice URL import', () => {
+  it('在 generation 模式将文件和网址入口并列，并让补充资料独占下一行', () => {
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onSupplementalUpload={vi.fn()}
+        onUpload={vi.fn()}
+      />,
+    );
+
+    const fileCard = screen.getByRole('heading', { name: /上传招标材料/ }).closest('article');
+    const urlCard = screen.getByRole('region', { name: '粘贴招标公告地址' });
+    const primaryRow = fileCard?.parentElement;
+    expect(primaryRow).toHaveClass('project-upload-card-list__primary');
+    expect(urlCard?.parentElement).toBe(primaryRow);
+    expect(screen.getByRole('heading', { name: /补充资料/ }).closest('article')?.parentElement)
+      .toHaveClass('project-upload-card-list');
+  });
+
+  it('generation 模式仍把两个入口分别交给原有真实回调', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn();
+    const onImportTenderNoticeUrl = vi.fn().mockResolvedValue({ status: 'queued' });
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+        onSupplementalUpload={vi.fn()}
+        onUpload={onUpload}
+      />,
+    );
+
+    const file = new File(['notice'], '招标文件.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('选择或拖拽招标材料'), file);
+    await user.type(screen.getByLabelText('招标公告网址'), 'https://notice.example.gov.cn/42');
+    await user.click(screen.getByRole('button', { name: '导入并解析' }));
+
+    expect(onUpload).toHaveBeenCalledWith('BV-2026-018', [file]);
+    expect(onImportTenderNoticeUrl).toHaveBeenCalledWith(
+      'BV-2026-018',
+      'https://notice.example.gov.cn/42',
+    );
+  });
+
   it('保留手动上传招标公告文件功能', async () => {
     const user = userEvent.setup();
     const onUpload = vi.fn();

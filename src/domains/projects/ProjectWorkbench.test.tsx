@@ -73,6 +73,12 @@ describe('ProjectWorkbench', () => {
     );
   });
 
+  it('keeps both side rails bounded while the center workspace grows on wide screens', () => {
+    expect(projectWorkbenchCss).toMatch(
+      /grid-template-columns:\s*clamp\(250px, 16vw, 290px\) minmax\(560px, 1fr\) clamp\(300px, 19vw, 350px\)/,
+    );
+  });
+
   it('routes enterprise-rail and bottom-assistant uploads to their dedicated handlers', async () => {
     const user = userEvent.setup();
     const onAddEnterpriseFiles = vi.fn();
@@ -124,7 +130,13 @@ describe('ProjectSourceRail', () => {
     expect(within(rail).getByRole('heading', { level: 2, name: /企业资料/ })).toBeInTheDocument();
     expect(within(rail).queryByRole('tablist')).not.toBeInTheDocument();
     expect(within(rail).queryByRole('tab')).not.toBeInTheDocument();
+    expect(within(rail).getByText('系统视图')).toBeInTheDocument();
+    expect(within(rail).getByText('业务分类')).toBeInTheDocument();
     expect(within(rail).getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(within(rail).getByRole('button', { name: '源文件，0项' })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
@@ -151,6 +163,44 @@ describe('ProjectSourceRail', () => {
     expect(within(rail).queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
     expect(within(rail).queryByLabelText('补充上传当前项目资料')).not.toBeInTheDocument();
     expect(within(rail).getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
+  });
+
+  it('separates source archives from backend business folders like the enterprise library', async () => {
+    const user = userEvent.setup();
+    const sourceArchive: WorkspaceMaterial = {
+      categoryId: 'license',
+      id: 'enterprise-source-archive',
+      name: '企业资料原件.zip',
+      status: '已上传',
+      tone: 'orange',
+    };
+    render(
+      <ProjectSourceRail
+        enterpriseCategories={enterpriseCategories}
+        enterpriseMaterials={[...enterpriseMaterials, sourceArchive]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '全部资料，4项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: '源文件，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByLabelText('企业资料原件.zip')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '源文件，1项' }));
+    expect(screen.getByLabelText('企业资料原件.zip')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '企业证照，1项' }));
+    expect(screen.queryByLabelText('企业资料原件.zip')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
   });
 
   it('expands one real folder at a time and reports an empty backend folder honestly', async () => {

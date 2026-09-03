@@ -184,7 +184,19 @@ export function ProjectOverviewPage({
         />
       )}
     >
-      <section className="bv-deliverables" aria-labelledby="deliverables-title">
+      {workflowFacts && !showWorkflowResults ? (
+        workflowTask ? (
+          <ProjectTaskExecutionPanel onOpenTasks={onOpenTasks} task={workflowTask} />
+        ) : workflowResourceState ? (
+          <ProjectWorkflowResourcePanel state={workflowResourceState} />
+        ) : (
+          <ProjectEntryChoice
+            enterpriseReady={workflowFacts.enterpriseMaterialCount > 0}
+            onGenerate={onStartWorkflow ?? (() => undefined)}
+          />
+        )
+      ) : (
+        <section className="bv-deliverables" aria-labelledby="deliverables-title">
         <h2 className="bv-visually-hidden">{project.title}</h2>
         <header className="bv-deliverables__header">
           <div>
@@ -271,15 +283,6 @@ export function ProjectOverviewPage({
           ))}
           </div>
           </>
-        ) : workflowFacts && workflowTask ? (
-          <ProjectTaskExecutionPanel onOpenTasks={onOpenTasks} task={workflowTask} />
-        ) : workflowFacts && workflowResourceState ? (
-          <ProjectWorkflowResourcePanel state={workflowResourceState} />
-        ) : workflowFacts ? (
-          <ProjectEntryChoice
-            enterpriseReady={workflowFacts.enterpriseMaterialCount > 0}
-            onGenerate={onStartWorkflow ?? (() => undefined)}
-          />
         ) : (
           <DeliverablesEmptyState
             onOpenTasks={onOpenTasks}
@@ -287,12 +290,15 @@ export function ProjectOverviewPage({
             taskSummary={taskSummary}
           />
         )}
-      </section>
+        </section>
+      )}
     </ProjectWorkbench>
   );
 
   return workflowFacts ? (
-    <ProjectWorkflowFrame facts={workflowFacts}>{workbench}</ProjectWorkflowFrame>
+    <ProjectWorkflowFrame facts={workflowFacts} projectTitle={project.title}>
+      {workbench}
+    </ProjectWorkflowFrame>
   ) : workbench;
 }
 

@@ -310,6 +310,9 @@ export function AppShell({
     ].includes(
       currentRoute,
     );
+  const hasProjectWorkflowHeader =
+    isProjectMode &&
+    (currentRoute === 'project-overview' || currentRoute === 'project-materials');
   const projectSummary = projectSummaryOverride;
   const isEnterpriseAssetsMode = currentRoute === 'enterprise-assets';
   const isKnowledgeLibraryMode = isEnterpriseAssetsMode || currentRoute === 'bid-market-library';
@@ -404,73 +407,75 @@ export function AppShell({
         aria-hidden={isMobileNavOpen || undefined}
         inert={isMobileNavOpen || undefined}
       >
-        <header className={`topbar${isProjectMode ? ' ui0802-project-topbar' : ''}`}>
-          {isProjectMode ? (
-            <>
-              <div className="ui0802-project-topbar__brand">
-                <Brand />
-              </div>
-              <AppLink className="ui0802-back-to-workbench" to="/projects">
-                <ChevronLeft aria-hidden="true" size={23} />
-                <span>返回投标工作台</span>
-              </AppLink>
-              <div className="ui0802-project-context" aria-label="当前项目信息">
-                <p>
-                  <span>项目名称：</span>
-                  <strong>{projectSummary?.title ?? currentProjectId}</strong>
-                </p>
-                <i aria-hidden="true" />
-                <p>
-                  <span>截止日期：</span>
-                  <time>{projectSummary?.deadline.split(' ')[0] ?? '待确认'}</time>
-                  <CalendarDays aria-hidden="true" size={21} />
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mobile-topbar">
+        {!hasProjectWorkflowHeader ? (
+          <header className={`topbar${isProjectMode ? ' ui0802-project-topbar' : ''}`}>
+            {isProjectMode ? (
+              <>
+                <div className="ui0802-project-topbar__brand">
+                  <Brand />
+                </div>
+                <AppLink className="ui0802-back-to-workbench" to="/projects">
+                  <ChevronLeft aria-hidden="true" size={23} />
+                  <span>返回投标工作台</span>
+                </AppLink>
+                <div className="ui0802-project-context" aria-label="当前项目信息">
+                  <p>
+                    <span>项目名称：</span>
+                    <strong>{projectSummary?.title ?? currentProjectId}</strong>
+                  </p>
+                  <i aria-hidden="true" />
+                  <p>
+                    <span>截止日期：</span>
+                    <time>{projectSummary?.deadline.split(' ')[0] ?? '待确认'}</time>
+                    <CalendarDays aria-hidden="true" size={21} />
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mobile-topbar">
+                  <button
+                    ref={mobileNavTriggerRef}
+                    className="icon-button"
+                    type="button"
+                    aria-label="打开导航"
+                    aria-controls={mobileNavId}
+                    aria-expanded={isMobileNavOpen}
+                    onClick={openMobileNavigation}
+                  >
+                    <Menu aria-hidden="true" size={21} />
+                  </button>
+                  <Brand />
+                </div>
+
+                <div className="topbar__heading">
+                  <span>{eyebrow}</span>
+                  <h1>{currentRoute === 'projects' ? '投标工作台' : title}</h1>
+                </div>
+              </>
+            )}
+
+            {!isKnowledgeLibraryMode ? (
+              <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
                 <button
-                  ref={mobileNavTriggerRef}
-                  className="icon-button"
+                  className="task-status-button"
                   type="button"
-                  aria-label="打开导航"
-                  aria-controls={mobileNavId}
-                  aria-expanded={isMobileNavOpen}
-                  onClick={openMobileNavigation}
+                  disabled={taskCount === 0}
+                  onClick={() => taskCount > 0 && onOpenTasks()}
+                  aria-label={
+                    taskCount > 0
+                      ? `查看任务进度，当前有 ${taskCount} 个任务运行中`
+                      : '当前页面没有项目任务'
+                  }
                 >
-                  <Menu aria-hidden="true" size={21} />
+                  <Activity aria-hidden="true" size={17} />
+                  <span>任务进度</span>
+                  <em>{taskCount}</em>
                 </button>
-                <Brand />
               </div>
-
-              <div className="topbar__heading">
-                <span>{eyebrow}</span>
-                <h1>{currentRoute === 'projects' ? '投标工作台' : title}</h1>
-              </div>
-            </>
-          )}
-
-          {!isKnowledgeLibraryMode ? (
-            <div className={`topbar__actions${currentRoute === 'projects' || isProjectMode ? ' topbar__actions--quiet' : ''}`}>
-              <button
-                className="task-status-button"
-                type="button"
-                disabled={taskCount === 0}
-                onClick={() => taskCount > 0 && onOpenTasks()}
-                aria-label={
-                  taskCount > 0
-                    ? `查看任务进度，当前有 ${taskCount} 个任务运行中`
-                    : '当前页面没有项目任务'
-                }
-              >
-                <Activity aria-hidden="true" size={17} />
-                <span>任务进度</span>
-                <em>{taskCount}</em>
-              </button>
-            </div>
-          ) : null}
-        </header>
+            ) : null}
+          </header>
+        ) : null}
 
         <main className="page-content" id="main-content" tabIndex={-1}>
           {children}

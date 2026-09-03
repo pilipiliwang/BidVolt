@@ -651,7 +651,9 @@ export function ProjectMaterialsPage({
   );
 
   return workflowEnabled ? (
-    <ProjectWorkflowFrame facts={workflowFacts}>{workbench}</ProjectWorkflowFrame>
+    <ProjectWorkflowFrame facts={workflowFacts} projectTitle={projectName}>
+      {workbench}
+    </ProjectWorkflowFrame>
   ) : workbench;
 }
 
