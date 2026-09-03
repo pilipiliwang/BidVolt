@@ -188,6 +188,7 @@ export function ProjectOverviewPage({
           viewModel={outcomeReview}
         />
       ) : undefined}
+      showChat={!workflowFacts || showWorkflowResults || Boolean(workflowTask)}
     >
       {workflowFacts && !showWorkflowResults ? (
         workflowTask ? (

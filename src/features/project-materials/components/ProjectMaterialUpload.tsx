@@ -44,6 +44,44 @@ type LocalUploadItem = {
   status: 'error' | 'success' | 'uploading';
 };
 
+function MaterialDeleteDialog({
+  fileName,
+  isDeleting,
+  onCancel,
+  onConfirm,
+}: {
+  fileName: string;
+  isDeleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="project-material-confirm" role="presentation">
+      <button
+        aria-label="取消删除"
+        className="project-material-confirm__backdrop"
+        disabled={isDeleting}
+        onClick={onCancel}
+        type="button"
+      />
+      <section aria-labelledby="project-material-confirm-title" aria-modal="true" className="project-material-confirm__dialog" role="dialog">
+        <span className="project-material-confirm__icon" aria-hidden="true"><Trash2 size={22} /></span>
+        <div>
+          <h2 id="project-material-confirm-title">删除项目材料</h2>
+          <p>确定删除“{fileName}”吗？删除后需重新上传。</p>
+        </div>
+        <footer>
+          <button disabled={isDeleting} onClick={onCancel} type="button">取消</button>
+          <button className="is-danger" disabled={isDeleting} onClick={onConfirm} type="button">
+            {isDeleting ? <LoaderCircle aria-hidden="true" size={15} /> : null}
+            {isDeleting ? '删除中…' : '确认删除'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
   existingBidFileNames?: string[];
   mode?: 'generation' | 'legacy';
@@ -108,6 +146,7 @@ function UploadCard({
   const [localUploadItems, setLocalUploadItems] = useState<LocalUploadItem[]>([]);
   const [uploadError, setUploadError] = useState('');
   const [removingFileIds, setRemovingFileIds] = useState<Set<string>>(new Set());
+  const [pendingRemoval, setPendingRemoval] = useState<PersistedUploadItem | null>(null);
   const isUploading = localUploadItems.some((item) => item.status === 'uploading');
 
   const submitFiles = async (files: FileList | null) => {
@@ -177,7 +216,6 @@ function UploadCard({
 
   const removeFile = async (file: PersistedUploadItem) => {
     if (!file.id || !onRemoveFile || removingFileIds.has(file.id)) return;
-    if (!window.confirm(`确认删除“${file.name}”吗？`)) return;
     setRemovingFileIds((current) => new Set(current).add(file.id));
     setUploadError('');
     try {
@@ -185,6 +223,7 @@ function UploadCard({
     } catch (error) {
       setUploadError(error instanceof Error && error.message ? error.message : '材料删除失败，请重试。');
     } finally {
+      setPendingRemoval(null);
       setRemovingFileIds((current) => {
         const next = new Set(current);
         next.delete(file.id);
@@ -194,6 +233,7 @@ function UploadCard({
   };
 
   return (
+    <>
     <article className="project-upload-card">
       <header>
         <div>
@@ -278,7 +318,7 @@ function UploadCard({
                   aria-label={`删除${file.name}`}
                   className="project-upload-card__remove"
                   disabled={removingFileIds.has(file.id)}
-                  onClick={() => void removeFile(file)}
+                  onClick={() => setPendingRemoval(file)}
                   type="button"
                 >
                   {removingFileIds.has(file.id)
@@ -291,6 +331,15 @@ function UploadCard({
         </ul>
       )}
     </article>
+    {pendingRemoval ? (
+      <MaterialDeleteDialog
+        fileName={pendingRemoval.name}
+        isDeleting={removingFileIds.has(pendingRemoval.id)}
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={() => void removeFile(pendingRemoval)}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -387,6 +436,7 @@ function TenderNoticeUrlImporter({
   >({ message: '', type: 'idle' });
   const [removeError, setRemoveError] = useState('');
   const [removingFileIds, setRemovingFileIds] = useState<Set<string>>(new Set());
+  const [pendingRemoval, setPendingRemoval] = useState<PersistedUploadItem | null>(null);
   const normalizedValue = normalizeTenderNoticeUrlInput(value);
   const liveValidation = validateTenderNoticeUrl(value);
   const hasValue = normalizedValue.length > 0;
@@ -428,7 +478,6 @@ function TenderNoticeUrlImporter({
 
   const removeImportedFile = async (file: PersistedUploadItem) => {
     if (!onRemoveFile || removingFileIds.has(file.id)) return;
-    if (!window.confirm(`确认删除“${file.name}”吗？`)) return;
     setRemovingFileIds((current) => new Set(current).add(file.id));
     setRemoveError('');
     try {
@@ -436,6 +485,7 @@ function TenderNoticeUrlImporter({
     } catch (error) {
       setRemoveError(error instanceof Error && error.message ? error.message : '材料删除失败，请重试。');
     } finally {
+      setPendingRemoval(null);
       setRemovingFileIds((current) => {
         const next = new Set(current);
         next.delete(file.id);
@@ -445,6 +495,7 @@ function TenderNoticeUrlImporter({
   };
 
   return (
+    <>
     <section
       aria-label={standalone ? '粘贴招标公告地址' : undefined}
       className={`project-tender-url-import${standalone ? ' project-tender-url-import--card' : ''}`}
@@ -539,7 +590,7 @@ function TenderNoticeUrlImporter({
                   aria-label={`删除${file.name}`}
                   className="project-upload-card__remove"
                   disabled={removingFileIds.has(file.id)}
-                  onClick={() => void removeImportedFile(file)}
+                  onClick={() => setPendingRemoval(file)}
                   type="button"
                 >
                   {removingFileIds.has(file.id) ? <LoaderCircle aria-hidden="true" size={14} /> : <Trash2 aria-hidden="true" size={14} />}
@@ -551,6 +602,15 @@ function TenderNoticeUrlImporter({
       ) : null}
       {removeError ? <p className="project-tender-url-import__message project-tender-url-import__message--error" role="alert">{removeError}</p> : null}
     </section>
+    {pendingRemoval ? (
+      <MaterialDeleteDialog
+        fileName={pendingRemoval.name}
+        isDeleting={removingFileIds.has(pendingRemoval.id)}
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={() => void removeImportedFile(pendingRemoval)}
+      />
+    ) : null}
+    </>
   );
 }
 

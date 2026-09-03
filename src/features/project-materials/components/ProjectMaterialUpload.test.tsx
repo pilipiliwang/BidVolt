@@ -46,7 +46,6 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
   it('将网址导入文件放在网址区域并允许调用真实删除回调', async () => {
     const user = userEvent.setup();
     const onRemoveMaterial = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(
       <ProjectMaterialUpload
         {...baseProps}
@@ -65,6 +64,9 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
       .not.toBeInTheDocument();
 
     await user.click(within(urlCard).getByRole('button', { name: '删除portal.html' }));
+    const dialog = screen.getByRole('dialog', { name: '删除项目材料' });
+    expect(within(dialog).getByText(/portal\.html/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
     expect(onRemoveMaterial).toHaveBeenCalledWith('BV-2026-018', '91');
   });
 

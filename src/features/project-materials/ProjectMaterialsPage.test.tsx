@@ -132,7 +132,8 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByRole('progressbar', { name: '招标材料解析进度' }))
       .not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '返回任务选择' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '返回任务选择' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('项目助手输入')).not.toBeInTheDocument();
     expect(screen.queryByText('本次任务文件')).not.toBeInTheDocument();
   });
 

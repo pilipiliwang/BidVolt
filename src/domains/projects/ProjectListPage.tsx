@@ -3,6 +3,7 @@ import { Archive, CalendarDays, CircleAlert, Hourglass, Plus, Search, X } from '
 
 import { AppLink } from '../../app/router';
 import type { ProjectSummary } from './project-view-model';
+import { hasRememberedGenerateWorkflow } from './project-workflow-mode';
 import './ProjectListPage.css';
 
 type ProjectTableRow = ProjectSummary & {
@@ -118,7 +119,7 @@ export function ProjectListPage({
           ? '上传企业资料'
           : project.stage === '待提交'
             ? '成果生成'
-            : project.stage === '内部评审'
+            : project.stage === '方案编制' || project.stage === '内部评审'
               ? '标书制作/审核'
               : '上传材料',
         score: scores[project.id] === undefined ? '-' : String(scores[project.id]),
@@ -399,7 +400,9 @@ export function ProjectListPage({
                     <td>
                       <div className="ui0802-row-actions">
                         <AppLink
-                          to={`/projects/${encodeURIComponent(project.id)}/overview`}
+                          to={project.stage === '方案编制' || hasRememberedGenerateWorkflow(project.id)
+                            ? `/projects/${encodeURIComponent(project.id)}/materials?workflow=generate`
+                            : `/projects/${encodeURIComponent(project.id)}/overview`}
                           aria-label={`进入${project.title}工作台`}
                         >
                           进入

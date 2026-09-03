@@ -30,6 +30,7 @@ import {
   type ProjectTaskStatus,
 } from '../domains/projects/ProjectOverviewPage';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
+import { rememberGenerateWorkflow } from '../domains/projects/project-workflow-mode';
 import { buildProjectOutcomeReviewViewModel } from '../domains/projects/ProjectOutcomeReviewPanel';
 import { buildProjectReviewSidebarViewModel } from '../domains/projects/ProjectReviewSidebar';
 import type {
@@ -1789,7 +1790,6 @@ export function App() {
     options: {
       documentRole?: 'current_tender' | 'supplemental' | 'completed_bid';
       outcomeLabel?: string;
-      successMessage?: (uploadedCount: number) => string;
     } = {},
   ) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('上传项目材料');
@@ -1826,13 +1826,6 @@ export function App() {
         );
       }
     }
-    tenantGuardRef.current.commit(generation, () => {
-      setStatusMessage({
-        tone: 'info',
-        text: `${options.successMessage?.(uploaded.length)
-          ?? `已上传 ${uploaded.length} 份当前项目材料，未写入企业资料库`}${uploadExpansionMessage(outcome)}。`,
-      });
-    });
     return uploaded;
   };
 
@@ -1840,7 +1833,6 @@ export function App() {
     await handleProjectUpload(projectId, files, {
       documentRole: 'supplemental',
       outcomeLabel: '补充资料',
-      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份补充资料，后端已持久化文件用途`,
     });
   };
 
@@ -1848,7 +1840,6 @@ export function App() {
     await handleProjectUpload(projectId, files, {
       documentRole: 'completed_bid',
       outcomeLabel: '已完成标书',
-      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份已完成标书，后端已持久化文件用途`,
     });
   };
 
@@ -1856,7 +1847,6 @@ export function App() {
     await handleProjectUpload(projectId, files, {
       documentRole: 'current_tender',
       outcomeLabel: '当前招标材料',
-      successMessage: (uploadedCount) => `已上传 ${uploadedCount} 份当前招标材料，服务端正在解析并分类`,
     });
   };
 
@@ -1875,9 +1865,6 @@ export function App() {
     if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('会话已切换，已忽略旧企业的导入结果。');
     if (job.status === 2) {
       await refreshProjectMaterials(projectId);
-      tenantGuardRef.current.commit(generation, () => {
-        setStatusMessage({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
-      });
       return { status: 'completed' as const, message: '导入完成，招标公告已加入当前项目材料。' };
     }
     if (job.status === 3) {
@@ -1898,7 +1885,6 @@ export function App() {
           [projectId]: { ...existing, tenderNotices },
         };
       });
-      setStatusMessage({ tone: 'info', text: '招标公告网址已提交，服务端正在安全下载并解析。' });
     });
     return { status: 'queued' as const, message: '网址已提交，正在下载并解析招标公告。' };
   };
@@ -2917,7 +2903,10 @@ export function App() {
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id, item.versionId).catch((error) => setError(error, '成果下载失败'))}
           onOpenImprovementSuggestions={() => navigate(`/projects/${encodeURIComponent(route.projectId)}/review`)}
-          onStartWorkflow={() => navigate(`/projects/${encodeURIComponent(route.projectId)}/materials?workflow=generate`)}
+          onStartWorkflow={() => {
+            rememberGenerateWorkflow(route.projectId);
+            navigate(`/projects/${encodeURIComponent(route.projectId)}/materials?workflow=generate`);
+          }}
           onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
           onSelectVersion={(option) => navigate(deliverableEditorPath(
             route.projectId,
@@ -2948,10 +2937,7 @@ export function App() {
             throw error;
           })}
           onRefreshEnterpriseMaterials={loadEnterprise}
-          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
-            setError(error, '补充资料上传失败');
-            throw error;
-          })}
+          onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files)}
           onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
           onCompletedBidUpload={(projectId, files) => handleCompletedBidUpload(projectId, files).catch((error) => {
             setError(error, '已完成标书上传失败');
@@ -2974,10 +2960,7 @@ export function App() {
             throw new Error(error instanceof Error && error.message ? error.message : '项目材料删除失败');
           })}
           onStartTask={handleStartTask}
-          onUpload={(projectId, files) => handleCurrentTenderUpload(projectId, files).then(() => undefined).catch((error) => {
-            setError(error, '当前招标材料上传失败');
-            throw error;
-          })}
+          onUpload={(projectId, files) => handleCurrentTenderUpload(projectId, files).then(() => undefined)}
           projectId={route.projectId}
           projectName={activeProject.title}
           requirements={activeData?.requirements ?? []}

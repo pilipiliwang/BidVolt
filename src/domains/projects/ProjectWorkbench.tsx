@@ -450,6 +450,7 @@ type ProjectWorkbenchProps = {
   onOpenEnterpriseUpload?: () => void;
   onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   rightRail?: ReactNode;
+  showChat?: boolean;
   workspaceNavigation?: ReactNode;
 };
 
@@ -472,10 +473,11 @@ export function ProjectWorkbench({
   onOpenEnterpriseUpload,
   onRefreshEnterpriseMaterials,
   rightRail,
+  showChat = true,
   workspaceNavigation,
 }: ProjectWorkbenchProps) {
   return (
-    <div className={`bv-project-workspace bv-project-workspace--${heightMode}${rightRail ? '' : ' bv-project-workspace--without-right'}`}>
+    <div className={`bv-project-workspace bv-project-workspace--${heightMode}${rightRail ? '' : ' bv-project-workspace--without-right'}${showChat ? '' : ' bv-project-workspace--without-chat'}`}>
       <ProjectSourceRail
         key={enterpriseLibraryKey}
         enterpriseCategories={enterpriseCategories}
@@ -493,14 +495,16 @@ export function ProjectWorkbench({
         ) : children}
       </main>
       {rightRail ? <aside className="bv-project-workspace__right">{rightRail}</aside> : null}
-      <ProjectChatBar
-        focusRequest={assistantFocusRequest}
-        hint={footerHint}
-        onAddFiles={onAssistantAddFiles ?? onAddFiles}
-        onSend={onAssistantSend}
-        onValueChange={onAssistantDraftChange}
-        value={assistantDraft}
-      />
+      {showChat ? (
+        <ProjectChatBar
+          focusRequest={assistantFocusRequest}
+          hint={footerHint}
+          onAddFiles={onAssistantAddFiles ?? onAddFiles}
+          onSend={onAssistantSend}
+          onValueChange={onAssistantDraftChange}
+          value={assistantDraft}
+        />
+      ) : null}
     </div>
   );
 }

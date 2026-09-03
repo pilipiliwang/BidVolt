@@ -73,6 +73,24 @@ describe('ProjectListPage', () => {
     expect(screen.queryByText('2099-08-21 10:00')).not.toBeInTheDocument();
   });
 
+  it('maps backend proposal-compilation projects to bid production and resumes that workflow directly', () => {
+    const project = { ...projectSummaries[0]!, stage: '方案编制' as const };
+    render(<ProjectListPage projects={[project]} onCreateProject={vi.fn()} />);
+
+    expect(screen.getByText('标书制作/审核')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '进入海上平台电气设备采购项目工作台' }))
+      .toHaveAttribute('href', '/projects/BV-2026-018/materials?workflow=generate');
+  });
+
+  it('resumes a previously selected generation mode before the backend stage changes', () => {
+    window.localStorage.setItem('bidvolt:project-workflow-mode:BV-2026-018', 'generate');
+    render(<ProjectListPage projects={[projectSummaries[0]!]} onCreateProject={vi.fn()} />);
+
+    expect(screen.getByRole('link', { name: '进入海上平台电气设备采购项目工作台' }))
+      .toHaveAttribute('href', '/projects/BV-2026-018/materials?workflow=generate');
+    window.localStorage.removeItem('bidvolt:project-workflow-mode:BV-2026-018');
+  });
+
   it('prioritizes the enterprise-material step when the enterprise library is empty', () => {
     render(
       <ProjectListPage

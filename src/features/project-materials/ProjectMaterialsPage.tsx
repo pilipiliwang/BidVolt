@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   FileCheck2,
@@ -17,6 +16,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { ProjectReviewSidebar } from '../../domains/projects/ProjectReviewSidebar';
 import { ProjectWorkbench } from '../../domains/projects/ProjectWorkbench';
 import { ProjectWorkspaceTabs } from '../../domains/projects/ProjectWorkspaceTabs';
+import { rememberGenerateWorkflow } from '../../domains/projects/project-workflow-mode';
 import {
   ProjectEntryChoice,
   ProjectTaskExecutionPanel,
@@ -455,6 +455,8 @@ export function ProjectMaterialsPage({
       rightRail={!workflowEnabled || workflowPhase === 'completed'
         ? <ProjectReviewSidebar viewModel={reviewSidebar} />
         : undefined}
+      showChat={!workflowEnabled || workflowPhase === 'completed' || workflowPhase === 'executing'
+        || workflowPhase === 'finalizing' || workflowPhase === 'failed'}
     >
       {workflowEnabled && workflowPhase !== 'completed' ? (
         workflowPhase === 'executing' || workflowPhase === 'finalizing'
@@ -474,23 +476,17 @@ export function ProjectMaterialsPage({
           ) : workflowMode === 'choose' && workflowPhase === 'choose' ? (
             <ProjectEntryChoice
               enterpriseReady={enterpriseMaterials.length > 0}
-              onGenerate={() => setWorkflowMode('generate')}
+              onGenerate={() => {
+                rememberGenerateWorkflow(projectId);
+                const url = new URL(window.location.href);
+                url.searchParams.set('workflow', 'generate');
+                window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+                setWorkflowMode('generate');
+              }}
             />
           ) : (
             <section className="project-generation-setup" aria-labelledby="project-generation-setup-title">
               <header className="project-generation-setup__header">
-                <button
-                  className="project-generation-setup__back"
-                  disabled={taskState.status === 'loading'}
-                  onClick={() => {
-                    setRetryFailedTask(false);
-                    setWorkflowMode('choose');
-                  }}
-                  type="button"
-                >
-                  <ArrowLeft aria-hidden="true" size={17} />
-                  返回任务选择
-                </button>
                 <div>
                   <h1 id="project-generation-setup-title">准备项目材料</h1>
                   <p>上传招标材料并按需补充项目资料，解析完成后即可确认生成。</p>

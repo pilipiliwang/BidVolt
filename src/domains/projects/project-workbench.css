@@ -20,6 +20,8 @@
   grid-template-columns: clamp(250px, 16vw, 290px) minmax(560px, 1fr);
 }
 
+.bv-project-workspace--without-chat { grid-template-rows: minmax(0, 1fr); }
+
 .bv-project-workspace button,
 .bv-project-workspace input,
 .bv-project-workspace select,
@@ -548,6 +550,7 @@
 
 @media (max-width: 1100px) {
   .bv-project-workspace { grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: auto auto 90px; }
+  .bv-project-workspace.bv-project-workspace--without-chat { grid-template-rows: minmax(0, 1fr); }
   .bv-project-workspace__right { grid-column: 2; grid-row: 2; }
   .bv-project-chat { grid-column: 2; grid-row: 3; }
   .bv-source-rail { grid-row: 1 / 4; }
