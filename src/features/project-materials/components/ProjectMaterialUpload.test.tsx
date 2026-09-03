@@ -20,7 +20,7 @@ function deferred<T>() {
 }
 
 describe('ProjectMaterialUpload tender notice URL import', () => {
-  it('在 generation 模式将文件和网址入口并列，并让补充资料独占下一行', () => {
+  it('在 generation 模式合并招标文件和网址入口，并在右侧展示材料列表', () => {
     render(
       <ProjectMaterialUpload
         {...baseProps}
@@ -32,18 +32,17 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
 
     const fileCard = screen.getByRole('heading', { name: /上传招标材料/ }).closest('article');
     const urlCard = screen.getByRole('region', { name: '粘贴招标公告地址' });
-    const primaryRow = fileCard?.parentElement;
-    expect(primaryRow).toHaveClass('project-upload-card-list__primary');
-    expect(urlCard?.parentElement).toBe(primaryRow);
-    expect(screen.getByRole('heading', { name: /补充资料/ }).closest('article')?.parentElement)
-      .toHaveClass('project-upload-card-list');
+    const layout = fileCard?.closest('.project-generation-upload-layout');
+    expect(fileCard).toContainElement(urlCard);
+    expect(within(layout as HTMLElement).getByLabelText('材料列表')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /上传补充材料/ })).toBeInTheDocument();
     expect(screen.getByText('必填')).toHaveClass('is-required');
     expect(screen.getAllByText('可选').every((label) => label.classList.contains('is-optional')))
       .toBe(true);
     expect(urlCard.querySelector('.project-tender-url-import__heading > span')).toBeNull();
   });
 
-  it('将网址导入文件放在网址区域并允许调用真实删除回调', async () => {
+  it('将网址导入文件放在右侧材料列表并允许调用真实删除回调', async () => {
     const user = userEvent.setup();
     const onRemoveMaterial = vi.fn().mockResolvedValue(undefined);
     render(
@@ -58,12 +57,14 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     );
 
     const urlCard = screen.getByRole('region', { name: '粘贴招标公告地址' });
-    expect(within(urlCard).getByRole('list', { name: '公告地址导入文件' }))
-      .toHaveTextContent('portal.html');
+    expect(within(urlCard).queryByRole('list', { name: '公告地址导入文件' }))
+      .not.toBeInTheDocument();
+    const tenderList = screen.getByRole('list', { name: '招标材料列表' });
+    expect(within(tenderList).getByText('portal.html')).toBeInTheDocument();
     expect(within(urlCard).queryByText('请输入以 http:// 或 https:// 开头的公开招标公告链接。'))
       .not.toBeInTheDocument();
 
-    await user.click(within(urlCard).getByRole('button', { name: '删除portal.html' }));
+    await user.click(within(tenderList).getByRole('button', { name: '删除portal.html' }));
     const dialog = screen.getByRole('dialog', { name: '删除项目材料' });
     expect(within(dialog).getByText(/portal\.html/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
@@ -113,7 +114,7 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     const tenderFile = new File(['notice'], '招标文件.pdf', { type: 'application/pdf' });
     await user.upload(screen.getByLabelText('选择或拖拽招标材料'), tenderFile);
 
-    const tenderList = screen.getByRole('list', { name: '上传招标材料已选择文件' });
+    const tenderList = screen.getByRole('list', { name: '招标材料列表' });
     expect(within(tenderList).getByText('招标文件.pdf')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '招标文件.pdf上传中' }))
       .toHaveClass('project-upload-card__selected-status--uploading');
@@ -127,7 +128,7 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     });
     await user.upload(screen.getByLabelText('选择或拖拽补充资料'), supplementalFile);
 
-    const supplementalList = screen.getByRole('list', { name: '补充资料已选择文件' });
+    const supplementalList = screen.getByRole('list', { name: '补充材料列表' });
     expect(within(supplementalList).getByText('补充说明.docx')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '补充说明.docx上传中' }))
       .toHaveClass('project-upload-card__selected-status--uploading');

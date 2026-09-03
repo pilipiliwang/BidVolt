@@ -103,9 +103,9 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '准备项目材料' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '上传材料', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /上传招标材料.*必填/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /补充资料.*可选/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /上传补充材料.*可选/ })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '选择本次投标任务' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
   });

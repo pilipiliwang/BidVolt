@@ -488,7 +488,7 @@ export function ProjectMaterialsPage({
             <section className="project-generation-setup" aria-labelledby="project-generation-setup-title">
               <header className="project-generation-setup__header">
                 <div>
-                  <h1 id="project-generation-setup-title">准备项目材料</h1>
+                  <h1 id="project-generation-setup-title">上传材料</h1>
                   <p>上传招标材料并按需补充项目资料，解析完成后即可确认生成。</p>
                 </div>
               </header>

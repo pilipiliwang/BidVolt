@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   useId,
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -32,8 +33,10 @@ type UploadCardProps = {
   required?: boolean;
   selectedNames?: string[];
   showImmediateStatus?: boolean;
+  showSelectedFiles?: boolean;
   showScope?: boolean;
   title: string;
+  onUploadItemsChange?: (items: LocalUploadItem[]) => void;
 };
 
 type PersistedUploadItem = { id: string; name: string };
@@ -138,8 +141,10 @@ function UploadCard({
   required = false,
   selectedNames = [],
   showImmediateStatus = true,
+  showSelectedFiles = true,
   showScope = true,
   title,
+  onUploadItemsChange,
 }: UploadCardProps) {
   const inputId = useId();
   const uploadSequenceRef = useRef(0);
@@ -148,6 +153,10 @@ function UploadCard({
   const [removingFileIds, setRemovingFileIds] = useState<Set<string>>(new Set());
   const [pendingRemoval, setPendingRemoval] = useState<PersistedUploadItem | null>(null);
   const isUploading = localUploadItems.some((item) => item.status === 'uploading');
+
+  useEffect(() => {
+    onUploadItemsChange?.(localUploadItems);
+  }, [localUploadItems, onUploadItemsChange]);
 
   const submitFiles = async (files: FileList | null) => {
     if (!files?.length || isUploading) return;
@@ -279,7 +288,7 @@ function UploadCard({
 
       {uploadError ? <p className="project-upload-card__error" role="alert">{uploadError}</p> : null}
 
-      {hasSelectedFiles && (
+      {showSelectedFiles && hasSelectedFiles && (
         <ul className="project-upload-card__selected" aria-label={`${title}已选择文件`}>
           {visibleLocalUploadItems.map((item) => (
             <li key={item.id}>
@@ -421,12 +430,14 @@ function TenderNoticeUrlImporter({
   onRemoveFile,
   projectId,
   onImport,
+  showImportedFiles = true,
   standalone = false,
 }: {
   importedFiles?: PersistedUploadItem[];
   onRemoveFile?: (fileId: string, fileName: string) => Promise<void> | void;
   projectId: string;
   onImport?: EnhancedProjectMaterialUploadProps['onImportTenderNoticeUrl'];
+  showImportedFiles?: boolean;
   standalone?: boolean;
 }) {
   const inputId = useId();
@@ -497,7 +508,7 @@ function TenderNoticeUrlImporter({
   return (
     <>
     <section
-      aria-label={standalone ? '粘贴招标公告地址' : undefined}
+      aria-label="粘贴招标公告地址"
       className={`project-tender-url-import${standalone ? ' project-tender-url-import--card' : ''}`}
     >
       <div className="project-tender-url-import__heading">
@@ -576,7 +587,7 @@ function TenderNoticeUrlImporter({
       {standalone ? null : (
         <div className="project-tender-url-import__divider"><span>或手动上传招标公告文件</span></div>
       )}
-      {importedFiles.length > 0 ? (
+      {showImportedFiles && importedFiles.length > 0 ? (
         <ul className="project-upload-card__selected project-tender-url-import__files" aria-label="公告地址导入文件">
           {importedFiles.map((file) => (
             <li key={file.id}>
@@ -614,6 +625,117 @@ function TenderNoticeUrlImporter({
   );
 }
 
+function GenerationMaterialList({
+  onRemoveFile,
+  supplementalFiles,
+  supplementalUploadItems,
+  tenderFiles,
+  tenderUploadItems,
+}: {
+  onRemoveFile?: (fileId: string, fileName: string) => Promise<void> | void;
+  supplementalFiles: PersistedUploadItem[];
+  supplementalUploadItems: LocalUploadItem[];
+  tenderFiles: PersistedUploadItem[];
+  tenderUploadItems: LocalUploadItem[];
+}) {
+  const [pendingRemoval, setPendingRemoval] = useState<PersistedUploadItem | null>(null);
+  const [removingFileIds, setRemovingFileIds] = useState<Set<string>>(new Set());
+  const [removeError, setRemoveError] = useState('');
+
+  const removeFile = async (file: PersistedUploadItem) => {
+    if (!onRemoveFile || removingFileIds.has(file.id)) return;
+    setRemovingFileIds((current) => new Set(current).add(file.id));
+    setRemoveError('');
+    try {
+      await onRemoveFile(file.id, file.name);
+    } catch (error) {
+      setRemoveError(error instanceof Error && error.message ? error.message : '材料删除失败，请重试。');
+    } finally {
+      setPendingRemoval(null);
+      setRemovingFileIds((current) => {
+        const next = new Set(current);
+        next.delete(file.id);
+        return next;
+      });
+    }
+  };
+
+  const renderGroup = (
+    label: string,
+    persistedItems: PersistedUploadItem[],
+    localItems: LocalUploadItem[],
+  ) => {
+    const persistedNames = new Set(persistedItems.map((item) => item.name));
+    const visibleLocalItems = localItems.filter((item) => (
+      item.status !== 'success' || !persistedNames.has(item.name)
+    ));
+    const itemCount = persistedItems.length + visibleLocalItems.length;
+
+    return (
+      <section className="project-generation-material-list__group">
+        <h3>{label} <span>({itemCount})</span></h3>
+        {itemCount > 0 ? (
+          <ul aria-label={`${label}列表`}>
+            {visibleLocalItems.map((item) => (
+              <li key={item.id}>
+                <FileText aria-hidden="true" size={17} />
+                <span>{item.name}</span>
+                <span
+                  aria-label={`${item.name}${item.status === 'uploading' ? '上传中' : item.status === 'success' ? '上传成功' : '上传失败'}`}
+                  className={`project-upload-card__selected-status project-upload-card__selected-status--${item.status}`}
+                  role="img"
+                >
+                  {item.status === 'uploading'
+                    ? <LoaderCircle aria-hidden="true" size={16} />
+                    : item.status === 'success'
+                      ? <CheckCircle2 aria-hidden="true" size={16} />
+                      : <AlertCircle aria-hidden="true" size={16} />}
+                </span>
+              </li>
+            ))}
+            {persistedItems.map((file) => (
+              <li key={file.id}>
+                <FileText aria-hidden="true" size={17} />
+                <span>{file.name}</span>
+                <CheckCircle2 aria-label="已上传" className="project-generation-material-list__success" size={16} />
+                {onRemoveFile ? (
+                  <button
+                    aria-label={`删除${file.name}`}
+                    disabled={removingFileIds.has(file.id)}
+                    onClick={() => setPendingRemoval(file)}
+                    type="button"
+                  >
+                    {removingFileIds.has(file.id) ? <LoaderCircle size={15} /> : <Trash2 size={15} />}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : <p>暂无材料</p>}
+      </section>
+    );
+  };
+
+  return (
+    <aside className="project-generation-material-list" aria-label="材料列表">
+      <header><h2>材料列表</h2></header>
+      <div className="project-generation-material-list__body">
+        {renderGroup('招标材料', tenderFiles, tenderUploadItems)}
+        {renderGroup('补充材料', supplementalFiles, supplementalUploadItems)}
+      </div>
+      {removeError ? <p className="project-generation-material-list__error" role="alert">{removeError}</p> : null}
+      {pendingRemoval ? (
+        <MaterialDeleteDialog
+          fileName={pendingRemoval.name}
+          isDeleting={removingFileIds.has(pendingRemoval.id)}
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => void removeFile(pendingRemoval)}
+        />
+      ) : null}
+    </aside>
+  );
+}
+
 function toFiles(files: FileList | null): File[] {
   return Array.from(files ?? []);
 }
@@ -634,6 +756,8 @@ export function ProjectMaterialUpload({
   tenderFiles = [],
   urlImportedFiles = [],
 }: EnhancedProjectMaterialUploadProps) {
+  const [tenderUploadItems, setTenderUploadItems] = useState<LocalUploadItem[]>([]);
+  const [supplementalUploadItems, setSupplementalUploadItems] = useState<LocalUploadItem[]>([]);
   const dispatchProjectFiles = async (files: FileList | null) => {
     const selectedFiles = toFiles(files);
     if (selectedFiles.length === 0) return;
@@ -655,89 +779,92 @@ export function ProjectMaterialUpload({
     await onSupplementalUpload(selectedFiles);
   };
 
-  return (
-    <section
-      className={`project-material-upload project-material-upload--${mode}`}
-      aria-labelledby="project-material-upload-title"
-    >
-      {mode === 'generation' ? (
-        <div className="project-material-upload__generation-heading">
-          <h2 id="project-material-upload-title">上传材料</h2>
-          <p>上传招标文件或导入公告网址，系统将自动解析材料内容。</p>
-        </div>
-      ) : (
-        <div className="project-material-upload__heading">
-          <span className="project-material-upload__icon" aria-hidden="true"><FileLock2 size={18} /></span>
-          <div>
-            <p className="project-material-eyebrow">资料上传</p>
-            <h2 id="project-material-upload-title">本次任务文件</h2>
-            <p>所有上传仅保存到“{projectName}”（{projectId}），不会写入企业资料库。</p>
-          </div>
-        </div>
-      )}
+  if (mode === 'generation') {
+    const removeMaterial = onRemoveMaterial
+      ? (fileId: string) => onRemoveMaterial(projectId, fileId)
+      : undefined;
 
-      <div className="project-upload-card-list">
-        {mode === 'generation' ? (
-          <div className="project-upload-card-list__primary">
+    return (
+      <section className="project-material-upload project-material-upload--generation" aria-labelledby="project-material-upload-title">
+        <h2 className="project-material-visually-hidden" id="project-material-upload-title">上传材料</h2>
+        <div className="project-generation-upload-layout">
+          <div className="project-upload-card-list">
             <UploadCard
               required
               title="上传招标材料"
-              description="上传本项目全部招标文件，AI 将自动识别并分类。"
+              description="粘贴招标公告地址，或直接上传本项目招标文件。"
               inputLabel="选择或拖拽招标材料"
               accept={BACKEND_UPLOAD_ACCEPT}
               selectedNames={tenderFileNames}
               persistedFiles={tenderFiles}
-              onRemoveFile={onRemoveMaterial ? (fileId) => onRemoveMaterial(projectId, fileId) : undefined}
+              onUploadItemsChange={setTenderUploadItems}
+              showSelectedFiles={false}
               showScope={false}
               onFiles={dispatchProjectFiles}
-            />
-            <TenderNoticeUrlImporter
-              importedFiles={urlImportedFiles}
-              onRemoveFile={onRemoveMaterial ? (fileId) => onRemoveMaterial(projectId, fileId) : undefined}
-              standalone
-              projectId={projectId}
-              onImport={onImportTenderNoticeUrl}
+            >
+              <TenderNoticeUrlImporter
+                importedFiles={urlImportedFiles}
+                projectId={projectId}
+                onImport={onImportTenderNoticeUrl}
+                showImportedFiles={false}
+              />
+            </UploadCard>
+            <UploadCard
+              title="上传补充材料"
+              description="可补充本项目专用的说明、模板或参考文件。"
+              inputLabel="选择或拖拽补充资料"
+              accept={BACKEND_UPLOAD_ACCEPT}
+              selectedNames={supplementalFileNames}
+              persistedFiles={supplementalFiles}
+              onUploadItemsChange={setSupplementalUploadItems}
+              showSelectedFiles={false}
+              showScope={false}
+              onFiles={dispatchSupplementalFiles}
             />
           </div>
-        ) : (
-          <UploadCard
-            required
-            title="当前招标材料"
-            description="上传本项目全部招标文件，AI 将自动识别并分类。"
-            inputLabel="选择或拖拽招标材料"
-            accept={BACKEND_UPLOAD_ACCEPT}
-            selectedNames={tenderFileNames}
-            onFiles={dispatchProjectFiles}
-          >
-            <TenderNoticeUrlImporter
-              projectId={projectId}
-              onImport={onImportTenderNoticeUrl}
-            />
-          </UploadCard>
-        )}
-        {mode === 'generation' ? (
-          <UploadCard
-            title="补充资料"
-            description="可补充本项目专用的说明、模板或参考文件。"
-            inputLabel="选择或拖拽补充资料"
-            accept={BACKEND_UPLOAD_ACCEPT}
-            selectedNames={supplementalFileNames}
-            persistedFiles={supplementalFiles}
-            onRemoveFile={onRemoveMaterial ? (fileId) => onRemoveMaterial(projectId, fileId) : undefined}
-            showScope={false}
-            onFiles={dispatchSupplementalFiles}
+          <GenerationMaterialList
+            onRemoveFile={removeMaterial}
+            supplementalFiles={supplementalFiles}
+            supplementalUploadItems={supplementalUploadItems}
+            tenderFiles={[...tenderFiles, ...urlImportedFiles]}
+            tenderUploadItems={tenderUploadItems}
           />
-        ) : (
-          <UploadCard
-            title="已制作完成的标书"
-            description="如已有商务标、技术标或报价单，可上传后直接进入校核。"
-            inputLabel="选择或拖拽已制作完成的标书"
-            accept={BACKEND_UPLOAD_ACCEPT}
-            selectedNames={existingBidFileNames}
-            showImmediateStatus={false}
-            onFiles={dispatchExistingBidFiles}
-          />
-        )}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="project-material-upload project-material-upload--legacy" aria-labelledby="project-material-upload-title">
+      <div className="project-material-upload__heading">
+        <span className="project-material-upload__icon" aria-hidden="true"><FileLock2 size={18} /></span>
+        <div>
+          <p className="project-material-eyebrow">资料上传</p>
+          <h2 id="project-material-upload-title">本次任务文件</h2>
+          <p>所有上传仅保存到“{projectName}”（{projectId}），不会写入企业资料库。</p>
+        </div>
+      </div>
+      <div className="project-upload-card-list">
+        <UploadCard
+          required
+          title="当前招标材料"
+          description="上传本项目全部招标文件，AI 将自动识别并分类。"
+          inputLabel="选择或拖拽招标材料"
+          accept={BACKEND_UPLOAD_ACCEPT}
+          selectedNames={tenderFileNames}
+          onFiles={dispatchProjectFiles}
+        >
+          <TenderNoticeUrlImporter projectId={projectId} onImport={onImportTenderNoticeUrl} />
+        </UploadCard>
+        <UploadCard
+          title="已制作完成的标书"
+          description="如已有商务标、技术标或报价单，可上传后直接进入校核。"
+          inputLabel="选择或拖拽已制作完成的标书"
+          accept={BACKEND_UPLOAD_ACCEPT}
+          selectedNames={existingBidFileNames}
+          showImmediateStatus={false}
+          onFiles={dispatchExistingBidFiles}
+        />
       </div>
     </section>
   );
