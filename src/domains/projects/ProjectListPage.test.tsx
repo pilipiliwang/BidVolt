@@ -23,7 +23,7 @@ const projectSummaries: ProjectSummary[] = [
     code: 'BV-2026-015',
     title: '风电场升压站设备项目',
     buyer: '沿海新能源有限公司',
-    stage: '方案编制',
+    stage: '内部评审',
     progress: 50,
     deadline: '2020-08-21 10:00',
     materialCount: 5,
@@ -61,6 +61,28 @@ describe('ProjectListPage', () => {
       '/projects/BV-2026-015/overview',
     );
     expect(screen.queryByText('±800kV特高压直流输电工程换流站设备采购')).not.toBeInTheDocument();
+  });
+
+  it('shows date-only values and the derived execution stage', () => {
+    renderProjectList();
+
+    expect(screen.getByText('2099-08-21')).toBeInTheDocument();
+    expect(screen.getByText('2099-08-01')).toBeInTheDocument();
+    expect(screen.getByText('上传材料')).toBeInTheDocument();
+    expect(screen.getByText('标书制作/审核')).toBeInTheDocument();
+    expect(screen.queryByText('2099-08-21 10:00')).not.toBeInTheDocument();
+  });
+
+  it('prioritizes the enterprise-material step when the enterprise library is empty', () => {
+    render(
+      <ProjectListPage
+        enterpriseReady={false}
+        projects={projectSummaries}
+        onCreateProject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('上传企业资料')).toHaveLength(projectSummaries.length);
   });
 
   it('labels the single loaded backend page without exposing fake pagination controls', async () => {

@@ -180,14 +180,14 @@ export function ProjectOverviewPage({
       workspaceNavigation={!workflowFacts || showWorkflowResults
         ? <ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />
         : undefined}
-      rightRail={(
+      rightRail={showWorkflowResults ? (
         <ProjectOutcomeReviewPanel
           onOpenImprovementSuggestions={onOpenImprovementSuggestions}
           onOpenReviewCenter={showWorkflowResults ? onOpenImprovementSuggestions : undefined}
           onOpenTasks={onOpenTasks}
           viewModel={outcomeReview}
         />
-      )}
+      ) : undefined}
     >
       {workflowFacts && !showWorkflowResults ? (
         workflowTask ? (

@@ -1342,15 +1342,31 @@ export function App() {
       String(routeTenderNoticeId),
       generation,
       tenantGuardRef.current,
-      loadProject,
+      async (projectId, job) => {
+        await refreshProjectMaterials(projectId);
+        if (!tenantGuardRef.current.isCurrent(generation)) return;
+        setProjectData((current) => {
+          const existing = current[projectId];
+          if (!existing) return current;
+          return {
+            ...current,
+            [projectId]: {
+              ...existing,
+              tenderNotices: existing.tenderNotices.map((notice) => (
+                notice.tender_notice_id === job.tender_notice_id ? job : notice
+              )),
+            },
+          };
+        });
+      },
       setStatusMessage,
       controller.signal,
     );
     return () => controller.abort();
   }, [
     authState,
-    loadProject,
     localPreviewActive,
+    refreshProjectMaterials,
     routeProjectId,
     routeTenderNoticeId,
   ]);
@@ -1787,7 +1803,7 @@ export function App() {
     const outcome = readUploadOutcome(result.files);
     const { uploaded } = outcome;
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    if (uploaded.length > 0) await loadProject(projectId);
+    if (uploaded.length > 0) await refreshProjectMaterials(projectId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     const outcomeError = uploadOutcomeError(
       options.outcomeLabel ?? '当前项目材料',
@@ -1843,7 +1859,7 @@ export function App() {
     }
     if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('会话已切换，已忽略旧企业的导入结果。');
     if (job.status === 2) {
-      await loadProject(projectId);
+      await refreshProjectMaterials(projectId);
       tenantGuardRef.current.commit(generation, () => {
         setStatusMessage({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });
       });
@@ -2781,7 +2797,7 @@ export function App() {
           <progress aria-label="后台图片识别进度" />
         </div>
       ) : null}
-      {statusMessage && (route.name !== 'project-materials' || statusMessage.tone === 'error') ? (
+      {statusMessage?.tone === 'error' ? (
         <div className={`integration-status integration-status--${statusMessage.tone}`} role={statusMessage.tone === 'error' ? 'alert' : 'status'}>
           <span>{statusMessage.text}</span>
           <button aria-label="关闭提示" type="button" onClick={() => setStatusMessage(null)}>×</button>
@@ -2813,6 +2829,7 @@ export function App() {
       {route.name === 'projects' ? (
         <ProjectListPage
           error={undefined}
+          enterpriseReady={workspaceEnterprise.length > 0}
           isLive={!localPreviewActive}
           projects={projects}
           total={projectsTotal}
@@ -3234,7 +3251,7 @@ async function pollTenderImport(
   noticeId: string,
   generation: number,
   guard: ReturnType<typeof createTenantGenerationGuard>,
-  reload: (projectId: string) => Promise<void>,
+  onComplete: (projectId: string, job: TenderNoticeImportJob) => Promise<void>,
   setStatus: (message: { tone: 'error' | 'info'; text: string } | null) => void,
   signal?: AbortSignal,
 ) {
@@ -3246,7 +3263,7 @@ async function pollTenderImport(
       const job = await backendApi.tenderNotices.get(projectId, noticeId);
       if (job.status === 2) {
         if (signal?.aborted) return;
-        await reload(projectId);
+        await onComplete(projectId, job);
         if (signal?.aborted) return;
         guard.commit(generation, () => {
           setStatus({ tone: 'info', text: '招标公告已下载、解析并加入当前项目材料。' });

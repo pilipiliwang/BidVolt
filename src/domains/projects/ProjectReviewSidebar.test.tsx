@@ -186,9 +186,9 @@ describe('ProjectReviewSidebar', () => {
 
     expect(within(overviewRender.container).queryByRole('list', { name: '模拟评标六项指标' }))
       .not.toBeInTheDocument();
-    const outcomeMetrics = within(overviewRender.container)
-      .getByRole('group', { name: '标书成果模拟评标分项' });
-    expect(within(outcomeMetrics).getByText('商务分').parentElement).toHaveTextContent('30 分');
+    expect(within(overviewRender.container)
+      .queryByRole('group', { name: '标书成果模拟评标分项' }))
+      .not.toBeInTheDocument();
     expect(snapshotReviewMetrics(materialsRender.container).map((metric) => metric.id))
       .toEqual(active.metrics.map((metric) => metric.id));
 

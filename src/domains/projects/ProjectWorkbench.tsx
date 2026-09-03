@@ -449,7 +449,7 @@ type ProjectWorkbenchProps = {
   onEnterpriseUploadFeedbackChange?: (feedback: EnterpriseUploadFeedback) => void;
   onOpenEnterpriseUpload?: () => void;
   onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
-  rightRail: ReactNode;
+  rightRail?: ReactNode;
   workspaceNavigation?: ReactNode;
 };
 
@@ -475,7 +475,7 @@ export function ProjectWorkbench({
   workspaceNavigation,
 }: ProjectWorkbenchProps) {
   return (
-    <div className={`bv-project-workspace bv-project-workspace--${heightMode}`}>
+    <div className={`bv-project-workspace bv-project-workspace--${heightMode}${rightRail ? '' : ' bv-project-workspace--without-right'}`}>
       <ProjectSourceRail
         key={enterpriseLibraryKey}
         enterpriseCategories={enterpriseCategories}
@@ -492,7 +492,7 @@ export function ProjectWorkbench({
           <div className="bv-project-workspace__content">{children}</div>
         ) : children}
       </main>
-      <aside className="bv-project-workspace__right">{rightRail}</aside>
+      {rightRail ? <aside className="bv-project-workspace__right">{rightRail}</aside> : null}
       <ProjectChatBar
         focusRequest={assistantFocusRequest}
         hint={footerHint}

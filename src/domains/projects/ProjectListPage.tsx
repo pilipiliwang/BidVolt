@@ -7,11 +7,13 @@ import './ProjectListPage.css';
 
 type ProjectTableRow = ProjectSummary & {
   deadlineHint: string;
+  executionStatus: '上传企业资料' | '上传材料' | '标书制作/审核' | '成果生成';
   score: string;
 };
 
 type ProjectListPageProps = {
   error?: string;
+  enterpriseReady?: boolean;
   /** Kept for call-site compatibility; this page now always renders supplied backend records only. */
   isLive?: boolean;
   onArchiveProject?: (projectId: string) => void | Promise<void>;
@@ -62,6 +64,11 @@ function getMinimumDeadline() {
   return toDateTimeLocalValue(minimum);
 }
 
+export function formatDateOnly(value: string) {
+  const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? value;
+}
+
 function deadlineState(deadlineValue: string, now = Date.now()) {
   const deadline = new Date(deadlineValue.replace(' ', 'T')).getTime();
   if (!Number.isFinite(deadline)) return { hint: '截止时间待确认', state: 'unknown' as const };
@@ -76,6 +83,7 @@ function deadlineState(deadlineValue: string, now = Date.now()) {
 
 export function ProjectListPage({
   error,
+  enterpriseReady = true,
   onArchiveProject,
   onCreateProject,
   onSearchProjects,
@@ -104,10 +112,19 @@ export function ProjectListPage({
   const projectRows = useMemo<ProjectTableRow[]>(
     () => projects.map((project) => ({
         ...project,
+        deadline: formatDateOnly(project.deadline),
         deadlineHint: deadlineState(project.deadline).hint,
+        executionStatus: !enterpriseReady
+          ? '上传企业资料'
+          : project.stage === '待提交'
+            ? '成果生成'
+            : project.stage === '内部评审'
+              ? '标书制作/审核'
+              : '上传材料',
         score: scores[project.id] === undefined ? '-' : String(scores[project.id]),
+        updatedAt: formatDateOnly(project.updatedAt),
       })),
-    [projects, scores],
+    [enterpriseReady, projects, scores],
   );
   const projectTotal = total ?? projects.length;
   const deadlineSummary = useMemo(
@@ -358,6 +375,7 @@ export function ProjectListPage({
                   <th scope="col">项目名称</th>
                   <th scope="col">招标编号</th>
                   <th scope="col">截止时间</th>
+                  <th scope="col">执行状态</th>
                   <th scope="col">评审得分</th>
                   <th scope="col">最近更新时间</th>
                   <th scope="col">操作</th>
@@ -375,6 +393,7 @@ export function ProjectListPage({
                       <time>{project.deadline}</time>
                       <span className="ui0802-deadline-hint">（{project.deadlineHint}）</span>
                     </td>
+                    <td><span className="ui0802-execution-status">{project.executionStatus}</span></td>
                     <td>{project.score}</td>
                     <td>{project.updatedAt}</td>
                     <td>

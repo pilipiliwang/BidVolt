@@ -102,7 +102,8 @@ describe('App local read-only preview', () => {
     let previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
     await user.click(within(previewNavigation).getByRole('link', { name: '项目概览' }));
 
-    expect(await screen.findByRole('heading', { name: '等待标书成果生成完成' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '成果生成正在执行' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '等待标书成果生成完成' })).not.toBeInTheDocument();
     expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
     const taskProgress = screen.getByRole('progressbar', { name: '成果生成任务进度' });
     expect(taskProgress).toHaveAttribute('aria-valuenow', '0');
@@ -129,19 +130,7 @@ describe('App local read-only preview', () => {
     expect(screen.getByText('已有成果编制任务正在排队')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
 
-    const reviewMetrics = screen.getByRole('list', { name: '模拟评标六项指标' });
-    expect(within(reviewMetrics).getAllByRole('listitem')).toHaveLength(6);
-    expect(within(reviewMetrics).getByText('已识别评分项').closest('[role="listitem"]'))
-      .toHaveTextContent('0项');
-    expect(within(reviewMetrics).getByText('商务标状态').closest('[role="listitem"]'))
-      .toHaveTextContent('已生成当前版本 V2');
-    expect(within(reviewMetrics).getByText('技术标状态').closest('[role="listitem"]'))
-      .toHaveTextContent('执行中后端生成任务处理中');
-    expect(within(reviewMetrics).getByText('技术标状态').closest('[role="listitem"]'))
-      .toHaveAttribute('data-metric-state', 'in-progress');
-    expect(within(reviewMetrics).getByText('报价单状态').closest('[role="listitem"]'))
-      .toHaveTextContent('已生成当前版本 V1');
-    expect(within(reviewMetrics).getAllByText('接口待提供')).toHaveLength(2);
+    expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   }, 15_000);
 

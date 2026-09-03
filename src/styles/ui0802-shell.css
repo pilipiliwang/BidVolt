@@ -877,27 +877,45 @@
 }
 
 .ui0802-project-table th:nth-child(1) {
-  width: 25%;
+  width: 22%;
 }
 
 .ui0802-project-table th:nth-child(2) {
-  width: 15%;
+  width: 14%;
 }
 
 .ui0802-project-table th:nth-child(3) {
-  width: 17%;
+  width: 14%;
 }
 
 .ui0802-project-table th:nth-child(4) {
-  width: 13%;
+  width: 14%;
 }
 
 .ui0802-project-table th:nth-child(5) {
-  width: 18%;
+  width: 10%;
 }
 
 .ui0802-project-table th:nth-child(6) {
+  width: 16%;
+}
+
+.ui0802-project-table th:nth-child(7) {
   width: 12%;
+}
+
+.ui0802-execution-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid #b9e2cd;
+  border-radius: 999px;
+  color: #087847;
+  background: #eefaf4;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .ui0802-project-title,
@@ -1799,14 +1817,18 @@
   }
 
   .ui0802-project-table td:nth-child(4)::before {
-    content: '模拟得分';
+    content: '执行状态';
   }
 
   .ui0802-project-table td:nth-child(5)::before {
-    content: '最近更新';
+    content: '模拟得分';
   }
 
   .ui0802-project-table td:nth-child(6)::before {
+    content: '最近更新';
+  }
+
+  .ui0802-project-table td:nth-child(7)::before {
     content: '操作';
   }
 

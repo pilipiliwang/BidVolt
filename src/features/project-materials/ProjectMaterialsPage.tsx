@@ -443,7 +443,9 @@ export function ProjectMaterialsPage({
         ? <ProjectWorkspaceTabs activeTab="materials" projectId={projectId} />
         : undefined}
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
-      rightRail={<ProjectReviewSidebar viewModel={reviewSidebar} />}
+      rightRail={!workflowEnabled || workflowPhase === 'completed'
+        ? <ProjectReviewSidebar viewModel={reviewSidebar} />
+        : undefined}
     >
       {workflowEnabled && workflowPhase !== 'completed' ? (
         workflowPhase === 'executing' || workflowPhase === 'finalizing'

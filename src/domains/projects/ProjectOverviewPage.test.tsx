@@ -77,7 +77,7 @@ describe('ProjectOverviewPage', () => {
 
     expect(screen.getByText('当前暂无标书成果')).toBeInTheDocument();
     expect(screen.getByText('尚未发现成果生成任务，请完成材料准备后发起成果生成。')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '尚无模拟评标结果' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '尚无模拟评标结果' })).not.toBeInTheDocument();
     expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
     const emptyState = screen.getByText('当前暂无标书成果').closest<HTMLElement>('.bv-overview-empty');
     expect(emptyState).not.toBeNull();

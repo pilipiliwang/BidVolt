@@ -16,6 +16,10 @@
   background: #f8fafc;
 }
 
+.bv-project-workspace--without-right {
+  grid-template-columns: clamp(250px, 16vw, 290px) minmax(560px, 1fr);
+}
+
 .bv-project-workspace button,
 .bv-project-workspace input,
 .bv-project-workspace select,
@@ -31,6 +35,10 @@
   border-radius: 17px;
   background: #fff;
   box-shadow: 0 7px 23px rgb(16 55 73 / 6%);
+}
+
+.bv-project-workspace--without-right .bv-project-chat {
+  grid-column: 2;
 }
 
 .bv-source-rail {
