@@ -23,6 +23,8 @@ import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-as
 import {
   ProjectWorkbench,
   ScoreRing,
+  type EnterpriseMaterialsRefreshHandler,
+  type EnterpriseUploadHandler,
   type WorkspaceMaterial,
 } from '../projects/ProjectWorkbench';
 import styles from './ReviewCenter.module.css';
@@ -77,7 +79,8 @@ type ReviewCenterProps = {
   enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   onAddFiles: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
@@ -118,6 +121,7 @@ export function ReviewCenter({
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
+  onRefreshEnterpriseMaterials,
   onAddFiles,
   onAssistantAddFiles,
   onAssistantSend,
@@ -281,6 +285,7 @@ export function ReviewCenter({
       footerHint="请输入您的问题，如“解释第 2 条提升建议的评审依据”"
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
+      onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
       onAddFiles={onAddFiles}
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}

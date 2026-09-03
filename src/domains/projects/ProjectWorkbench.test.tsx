@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
 import {
@@ -10,6 +10,8 @@ import {
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
 import projectWorkbenchCss from './project-workbench.css?raw';
+
+afterEach(() => vi.useRealTimers());
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -300,6 +302,55 @@ describe('ProjectSourceRail', () => {
     expect(screen.queryByLabelText('当前招标文件.pdf')).not.toBeInTheDocument();
   });
 
+  it('opens the enterprise file chooser from an explicit button', () => {
+    render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onAddEnterpriseFiles={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText('上传企业资料并同步资料库') as HTMLInputElement;
+    const inputClick = vi.spyOn(input, 'click');
+    fireEvent.click(screen.getByRole('button', { name: '上传企业资料' }));
+
+    expect(inputClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('can delegate enterprise upload to a reusable dialog without opening the file chooser', () => {
+    const onOpenEnterpriseUpload = vi.fn();
+    render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onOpenEnterpriseUpload={onOpenEnterpriseUpload}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: '上传企业资料' });
+    expect(button).toHaveAttribute('aria-haspopup', 'dialog');
+    fireEvent.click(button);
+
+    expect(onOpenEnterpriseUpload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('上传企业资料并同步资料库')).not.toBeInTheDocument();
+  });
+
+  it('keeps backend material status available without repeating it as a text column', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectSourceRail
+        enterpriseCategories={enterpriseCategories}
+        enterpriseMaterials={enterpriseMaterials}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '未分类资料，1项' }));
+
+    expect(screen.queryByText('待确认')).not.toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '资料状态：待确认' })).toHaveClass(
+      'bv-source-status-icon--orange',
+    );
+  });
+
   it('shows enterprise upload pending and failure states without an unhandled rejection', async () => {
     const user = userEvent.setup();
     const upload = deferred<void>();
@@ -315,12 +366,234 @@ describe('ProjectSourceRail', () => {
     await user.upload(input, new File(['enterprise'], '失败资质.pdf', { type: 'application/pdf' }));
 
     expect(screen.getByText('正在上传企业资料…')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('正在上传');
+    expect(screen.getByRole('status')).toHaveTextContent('正在上传 1 个文件');
     expect(input).toBeDisabled();
 
     upload.reject(new Error('企业资料上传接口不可用'));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('企业资料上传接口不可用');
     expect(screen.getByLabelText('上传企业资料并同步资料库')).toBeEnabled();
+  });
+
+  it('shows backend processing and completes only after the real enterprise list changes', async () => {
+    const user = userEvent.setup();
+    const upload = deferred<{
+      assetIds: string[];
+      message: string;
+      status: 'processing';
+    }>();
+    const onAddEnterpriseFiles = vi.fn(() => upload.promise);
+    const { rerender } = render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText('上传企业资料并同步资料库'),
+      new File(['enterprise'], '新增资质.pdf', { type: 'application/pdf' }),
+    );
+    upload.resolve({
+      assetIds: ['new-enterprise-asset'],
+      message: '后端已受理，正在解析。',
+      status: 'processing',
+    });
+
+    expect(await screen.findByRole('status')).toHaveTextContent('后台处理中');
+    expect(screen.getByRole('status')).toHaveTextContent('后端已受理，正在解析。');
+
+    rerender(
+      <ProjectSourceRail
+        enterpriseMaterials={[
+          ...enterpriseMaterials,
+          {
+            id: 'enterprise:new-enterprise-asset',
+            name: '新增资质.pdf',
+            status: '处理中',
+            tone: 'blue',
+          },
+        ]}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    expect(await screen.findByText('列表同步完成')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('识别与归类进度请以各文件的后端状态为准');
+  });
+
+  it('waits for every returned asset id before reporting that the list is synchronized', async () => {
+    const user = userEvent.setup();
+    const onAddEnterpriseFiles = vi.fn().mockResolvedValue({
+      assetIds: ['new-enterprise-a', 'new-enterprise-b'],
+      status: 'processing' as const,
+    });
+    const { rerender } = render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText('上传企业资料并同步资料库'),
+      [
+        new File(['a'], '资质-a.pdf', { type: 'application/pdf' }),
+        new File(['b'], '资质-b.pdf', { type: 'application/pdf' }),
+      ],
+    );
+
+    expect(await screen.findByText('后台处理中')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '企业资料后台处理中…' })).toBeDisabled();
+
+    rerender(
+      <ProjectSourceRail
+        enterpriseMaterials={[
+          ...enterpriseMaterials,
+          { id: 'enterprise:new-enterprise-a', name: '资质-a.pdf', status: '处理中', tone: 'blue' },
+        ]}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    expect(screen.getByText('后台处理中')).toBeInTheDocument();
+    expect(screen.queryByText('列表同步完成')).not.toBeInTheDocument();
+
+    rerender(
+      <ProjectSourceRail
+        enterpriseMaterials={[
+          ...enterpriseMaterials,
+          { id: 'enterprise:new-enterprise-a', name: '资质-a.pdf', status: '处理中', tone: 'blue' },
+          { id: 'enterprise:new-enterprise-b', name: '资质-b.pdf', status: '待确认', tone: 'orange' },
+        ]}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    expect(await screen.findByText('列表同步完成')).toBeInTheDocument();
+  });
+
+  it('uses the selected batch size when the upload response has no asset ids', async () => {
+    const user = userEvent.setup();
+    const onAddEnterpriseFiles = vi.fn().mockResolvedValue({ status: 'processing' as const });
+    const { rerender } = render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText('上传企业资料并同步资料库'),
+      [
+        new File(['a'], '无编号-a.pdf', { type: 'application/pdf' }),
+        new File(['b'], '无编号-b.pdf', { type: 'application/pdf' }),
+      ],
+    );
+    expect(await screen.findByText('后台处理中')).toBeInTheDocument();
+
+    rerender(
+      <ProjectSourceRail
+        enterpriseMaterials={[
+          ...enterpriseMaterials,
+          { id: 'enterprise:new-without-id-a', name: '无编号-a.pdf', status: '处理中', tone: 'blue' },
+        ]}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+    expect(screen.queryByText('列表同步完成')).not.toBeInTheDocument();
+
+    rerender(
+      <ProjectSourceRail
+        enterpriseMaterials={[
+          ...enterpriseMaterials,
+          { id: 'enterprise:new-without-id-a', name: '无编号-a.pdf', status: '处理中', tone: 'blue' },
+          { id: 'enterprise:new-without-id-b', name: '无编号-b.pdf', status: '待确认', tone: 'orange' },
+        ]}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+    expect(await screen.findByText('列表同步完成')).toBeInTheDocument();
+  });
+
+  it('releases the upload control when a receipt has no observable list item after a minute', async () => {
+    vi.useFakeTimers();
+    const onAddEnterpriseFiles = vi.fn().mockResolvedValue({
+      expectedNewAssetCount: 1,
+      status: 'processing' as const,
+    });
+    render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('上传企业资料并同步资料库'), {
+        target: { files: [new File(['duplicate'], '重复资料.pdf', { type: 'application/pdf' })] },
+      });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: '企业资料后台处理中…' })).toBeDisabled();
+
+    act(() => vi.advanceTimersByTime(60_000));
+
+    expect(screen.getByText('后台已受理')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('资料列表仍在后台同步');
+    expect(screen.getByRole('button', { name: '上传企业资料' })).toBeEnabled();
+    vi.useRealTimers();
+  });
+
+  it('polls without overlapping refreshes, keeps processing on refresh failure, and cleans up', async () => {
+    vi.useFakeTimers();
+    const firstRefresh = deferred<void>();
+    const secondRefresh = deferred<void>();
+    const onRefreshEnterpriseMaterials = vi.fn()
+      .mockImplementationOnce(() => firstRefresh.promise)
+      .mockImplementationOnce(() => secondRefresh.promise);
+    const onAddEnterpriseFiles = vi.fn().mockResolvedValue({
+      assetIds: ['still-processing'],
+      status: 'processing' as const,
+    });
+    const { unmount } = render(
+      <ProjectSourceRail
+        enterpriseMaterials={enterpriseMaterials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+        onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('上传企业资料并同步资料库'), {
+        target: { files: [new File(['asset'], '待同步.pdf', { type: 'application/pdf' })] },
+      });
+      await Promise.resolve();
+    });
+    expect(screen.getByText('后台处理中')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(onRefreshEnterpriseMaterials).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(6_000));
+    expect(onRefreshEnterpriseMaterials).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      firstRefresh.reject(new Error('企业资料列表暂时不可用'));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('列表刷新暂时失败，系统将继续重试');
+    expect(screen.queryByText('列表同步完成')).not.toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(onRefreshEnterpriseMaterials).toHaveBeenCalledTimes(2);
+    unmount();
+    act(() => vi.advanceTimersByTime(6_000));
+    expect(onRefreshEnterpriseMaterials).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      secondRefresh.resolve();
+      await Promise.resolve();
+    });
   });
 
   it('shows a dedicated empty state for enterprise data', () => {

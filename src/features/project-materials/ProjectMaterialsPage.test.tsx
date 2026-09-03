@@ -110,6 +110,127 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
   });
 
+  it('keeps confirmation disabled while tender materials are still parsing', () => {
+    render(
+      <ProjectMaterialsPage
+        initialWorkflowMode="generate"
+        materials={materials}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        workflowFacts={{
+          currentTenderMaterialCount: 2,
+          enterpriseMaterialCount: 7,
+          hasDeliverables: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在解析招标材料');
+    expect(screen.getByRole('progressbar', { name: '招标材料解析进度' }))
+      .toHaveAttribute('value', '1');
+    expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '返回任务选择' })).toBeInTheDocument();
+    expect(screen.queryByText('本次任务文件')).not.toBeInTheDocument();
+  });
+
+  it('shows central loading while a tender notice import has not created materials yet', () => {
+    render(
+      <ProjectMaterialsPage
+        initialWorkflowMode="generate"
+        materials={[]}
+        onStartTask={vi.fn()}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        workflowFacts={{
+          currentTenderMaterialCount: 0,
+          enterpriseMaterialCount: 7,
+          hasDeliverables: false,
+          tenderImporting: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在下载并解析招标公告');
+    expect(screen.getByRole('progressbar', { name: '招标公告导入进度' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
+    expect(screen.queryByText('请先上传招标材料，或粘贴招标公告网址并完成解析。'))
+      .not.toBeInTheDocument();
+  });
+
+  it('enables confirmation only after all tender materials are parsed', async () => {
+    const user = userEvent.setup();
+    const onStartTask = vi.fn().mockResolvedValue(undefined);
+    const parsedMaterials = materials.map((material) => ({
+      ...material,
+      parseProgress: 100,
+      parseStatus: 'parsed' as const,
+    }));
+    render(
+      <ProjectMaterialsPage
+        initialWorkflowMode="generate"
+        materials={parsedMaterials}
+        onStartTask={onStartTask}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        workflowFacts={{
+          currentTenderMaterialCount: 2,
+          enterpriseMaterialCount: 7,
+          hasDeliverables: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('招标材料解析完成');
+    const startButton = screen.getByRole('button', { name: /确认材料并开始生成标书/ });
+    expect(startButton).toBeEnabled();
+    await user.click(startButton);
+    expect(onStartTask).toHaveBeenCalledWith('53', 'generate');
+  });
+
+  it('rolls material confirmation back when generation task creation fails', async () => {
+    const user = userEvent.setup();
+    const onStartTask = vi.fn().mockRejectedValue(new Error('任务队列暂不可用'));
+    const parsedMaterials = materials.map((material) => ({
+      ...material,
+      parseProgress: 100,
+      parseStatus: 'parsed' as const,
+    }));
+    render(
+      <ProjectMaterialsPage
+        initialWorkflowMode="generate"
+        materials={parsedMaterials}
+        onStartTask={onStartTask}
+        projectId="53"
+        projectName="测试项目"
+        requirements={[]}
+        snapshots={[]}
+        workflowFacts={{
+          currentTenderMaterialCount: 2,
+          enterpriseMaterialCount: 7,
+          hasDeliverables: false,
+        }}
+      />,
+    );
+
+    const flowTrack = screen.getByRole('navigation', { name: '项目流程' });
+    expect(within(flowTrack).getByText('待确认')).toBeInTheDocument();
+    const startButton = screen.getByRole('button', { name: /确认材料并开始生成标书/ });
+    await user.click(startButton);
+
+    expect(onStartTask).toHaveBeenCalledWith('53', 'generate');
+    expect(await screen.findByRole('alert')).toHaveTextContent('任务队列暂不可用');
+    expect(within(flowTrack).getByText('待确认')).toBeInTheDocument();
+    expect(within(flowTrack).queryByText('已确认 2 项招标材料')).not.toBeInTheDocument();
+    expect(startButton).toBeEnabled();
+  });
+
   it('does not expose creation actions before backend project state is known', () => {
     render(
       <ProjectMaterialsPage

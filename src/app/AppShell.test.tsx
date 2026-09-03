@@ -23,6 +23,13 @@ function renderShell(onLogout = vi.fn()) {
 }
 
 describe('AppShell mobile navigation', () => {
+  it('marks the project list shell for route-scoped laptop layout rules', () => {
+    const { container } = renderShell();
+
+    expect(container.querySelector('.ui0802-shell--project-list')).toBeInTheDocument();
+    expect(container.querySelector('.ui0802-shell--project-workflow')).not.toBeInTheDocument();
+  });
+
   it('uses the full product name in navigation branding', () => {
     renderShell();
 
@@ -216,6 +223,8 @@ describe('AppShell mobile navigation', () => {
       );
 
       expect(container.querySelector('.ui0802-shell--project')).toBeInTheDocument();
+      expect(container.querySelector('.ui0802-shell--project-workflow')).toBeInTheDocument();
+      expect(container.querySelector('.ui0802-shell--enterprise-assets')).not.toBeInTheDocument();
       expect(container.querySelector('.ui0802-project-topbar')).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: '返回投标工作台' })).not.toBeInTheDocument();
       expect(screen.getByText('合并后的项目流程顶部')).toBeInTheDocument();

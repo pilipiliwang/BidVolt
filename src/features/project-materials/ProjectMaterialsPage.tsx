@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   FileCheck2,
@@ -258,11 +259,45 @@ const taskActionBlockingStatuses = new Set<NonNullable<ProjectMaterialsPageProps
   'succeeded',
 ]);
 
+type TenderPreparationSummary = {
+  failed: number;
+  parsed: number;
+  processing: number;
+  state: 'empty' | 'error' | 'processing' | 'ready';
+  total: number;
+  unknown: number;
+};
+
+export function summarizeTenderPreparation(
+  materials: readonly ProjectMaterial[],
+): TenderPreparationSummary {
+  const tenderMaterials = materials.filter((material) => material.purpose === 'current_tender');
+  const parsed = tenderMaterials.filter((material) => (
+    material.parseStatus === 'parsed' || material.parseStatus === 'needs_confirmation'
+  )).length;
+  const failed = tenderMaterials.filter((material) => material.parseStatus === 'failed').length;
+  const unknown = tenderMaterials.filter((material) => material.parseStatus === 'unknown').length;
+  const processing = tenderMaterials.filter((material) => (
+    material.parseStatus === 'queued' || material.parseStatus === 'parsing'
+  )).length;
+  const total = tenderMaterials.length;
+  const state = total === 0
+    ? 'empty'
+    : failed > 0
+      ? 'error'
+      : parsed === total
+        ? 'ready'
+        : 'processing';
+
+  return { failed, parsed, processing, state, total, unknown };
+}
+
 export function ProjectMaterialsPage({
   enterpriseCategories = [],
   enterpriseLibraryKey,
   enterpriseMaterials = [],
   onAddEnterpriseFiles,
+  onRefreshEnterpriseMaterials,
   onAssistantAddFiles,
   onAssistantSend,
   onCompletedBidUpload,
@@ -297,6 +332,7 @@ export function ProjectMaterialsPage({
   const [selectedTaskMode, setSelectedTaskMode] = useState<'generate' | 'validate' | null>(null);
   const [workflowMode, setWorkflowMode] = useState<'choose' | 'generate'>(initialWorkflowMode);
   const [retryFailedTask, setRetryFailedTask] = useState(false);
+  const [materialPreparationConfirmed, setMaterialPreparationConfirmed] = useState(false);
   const [taskState, setTaskState] = useState<{
     message: string;
     status: 'error' | 'idle' | 'loading';
@@ -323,14 +359,30 @@ export function ProjectMaterialsPage({
     () => materials.filter((material) => material.purpose === 'current_tender'),
     [materials],
   );
+  const tenderPreparation = useMemo(
+    () => summarizeTenderPreparation(materials),
+    [materials],
+  );
   const workflowEnabled = Boolean(workflowFactsOverride) || hasDeliverables !== undefined;
   const workflowTask = taskSummary ?? toWorkflowTaskSummary(taskStatus);
-  const workflowFacts = workflowFactsOverride ?? {
-    currentTenderMaterialCount: workflowTenderMaterials.length,
-    enterpriseMaterialCount: enterpriseMaterials.length,
-    hasDeliverables: Boolean(hasDeliverables),
-    task: workflowTask,
+  const workflowFacts = {
+    ...(workflowFactsOverride ?? {
+      currentTenderMaterialCount: workflowTenderMaterials.length,
+      enterpriseMaterialCount: enterpriseMaterials.length,
+      hasDeliverables: Boolean(hasDeliverables),
+      task: workflowTask,
+    }),
+    currentTenderMaterialState:
+      workflowFactsOverride?.currentTenderMaterialState ?? tenderPreparation.state,
+    materialPreparationConfirmed:
+      workflowFactsOverride?.materialPreparationConfirmed || materialPreparationConfirmed,
   };
+  const importingTenderNoticeWithoutMaterials = Boolean(
+    workflowFacts.tenderImporting && tenderPreparation.total === 0,
+  );
+  const tenderPreparationDisplayState = importingTenderNoticeWithoutMaterials
+    ? 'processing'
+    : tenderPreparation.state;
   const workflowPhase = resolveProjectWorkflowPhase(workflowFacts);
   const workflowResourceState = workflowFacts.materialsState !== undefined
     && workflowFacts.materialsState !== 'ready'
@@ -358,6 +410,7 @@ export function ProjectMaterialsPage({
       setRetryFailedTask(false);
       setTaskState({ message: '', status: 'idle' });
     } catch (error) {
+      if (mode === 'generate') setMaterialPreparationConfirmed(false);
       setTaskState({
         message: error instanceof Error && error.message
           ? error.message
@@ -375,6 +428,7 @@ export function ProjectMaterialsPage({
   useEffect(() => {
     setWorkflowMode(initialWorkflowMode);
     setRetryFailedTask(false);
+    setMaterialPreparationConfirmed(false);
   }, [initialWorkflowMode, projectId]);
 
   const workbench = (
@@ -384,6 +438,7 @@ export function ProjectMaterialsPage({
       enterpriseMaterials={enterpriseMaterials}
       materials={workspaceMaterials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
+      onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
       onAddFiles={onUpload ? uploadProjectFiles : undefined}
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}
@@ -415,11 +470,62 @@ export function ProjectMaterialsPage({
             />
           ) : (
             <section className="project-generation-setup" aria-labelledby="project-generation-setup-title">
-              <header>
-                <span>生成新的标书</span>
-                <h1 id="project-generation-setup-title">准备项目材料</h1>
-                <p>上传当前招标材料并按需补充项目资料，确认后开始生成标书。</p>
+              <header className="project-generation-setup__header">
+                <button
+                  className="project-generation-setup__back"
+                  disabled={taskState.status === 'loading'}
+                  onClick={() => {
+                    setRetryFailedTask(false);
+                    setWorkflowMode('choose');
+                  }}
+                  type="button"
+                >
+                  <ArrowLeft aria-hidden="true" size={17} />
+                  返回任务选择
+                </button>
+                <div>
+                  <h1 id="project-generation-setup-title">准备项目材料</h1>
+                  <p>上传招标材料并按需补充项目资料，解析完成后即可确认生成。</p>
+                </div>
               </header>
+              {tenderPreparation.state !== 'empty' || importingTenderNoticeWithoutMaterials ? (
+                <div
+                  aria-live="polite"
+                  className={`project-generation-setup__status project-generation-setup__status--${tenderPreparationDisplayState}`}
+                  role={tenderPreparationDisplayState === 'error' ? 'alert' : 'status'}
+                >
+                  <span className="project-generation-setup__status-icon" aria-hidden="true">
+                    {tenderPreparationDisplayState === 'ready' ? <CheckCircle2 size={20} />
+                      : tenderPreparationDisplayState === 'error' ? <AlertTriangle size={20} />
+                        : <LoaderCircle size={20} />}
+                  </span>
+                  <span className="project-generation-setup__status-copy">
+                    <strong>{importingTenderNoticeWithoutMaterials
+                      ? '正在下载并解析招标公告'
+                      : tenderPreparationDisplayState === 'ready'
+                      ? '招标材料解析完成'
+                      : tenderPreparationDisplayState === 'error'
+                        ? '部分招标材料解析失败'
+                        : '正在解析招标材料'}</strong>
+                    <small>{importingTenderNoticeWithoutMaterials
+                      ? '公告已提交，服务端处理完成后将自动同步为项目材料。'
+                      : tenderPreparationDisplayState === 'ready'
+                      ? `已完成 ${tenderPreparation.parsed}/${tenderPreparation.total} 项，可以确认开始生成。`
+                      : tenderPreparationDisplayState === 'error'
+                        ? `解析成功 ${tenderPreparation.parsed} 项，失败 ${tenderPreparation.failed} 项，请处理后再确认。`
+                        : `已完成 ${tenderPreparation.parsed}/${tenderPreparation.total} 项${tenderPreparation.processing > 0 ? `，处理中 ${tenderPreparation.processing} 项` : ''}${tenderPreparation.unknown > 0 ? `，等待状态 ${tenderPreparation.unknown} 项` : ''}。`}</small>
+                  </span>
+                  {importingTenderNoticeWithoutMaterials ? (
+                    <progress aria-label="招标公告导入进度" />
+                  ) : (
+                    <progress
+                      aria-label="招标材料解析进度"
+                      max={Math.max(1, tenderPreparation.total)}
+                      value={tenderPreparation.parsed}
+                    />
+                  )}
+                </div>
+              ) : null}
               <ProjectMaterialUpload
                 mode="generation"
                 projectId={projectId}
@@ -432,21 +538,11 @@ export function ProjectMaterialsPage({
               />
               <div className="project-generation-setup__actions">
                 <button
-                  className="project-generation-setup__back"
-                  disabled={taskState.status === 'loading'}
-                  onClick={() => {
-                    setRetryFailedTask(false);
-                    setWorkflowMode('choose');
-                  }}
-                  type="button"
-                >
-                  返回选择
-                </button>
-                <button
                   className="project-generation-setup__start"
-                  disabled={workflowTenderMaterials.length === 0 || taskState.status === 'loading'}
+                  disabled={tenderPreparation.state !== 'ready' || taskState.status === 'loading'}
                   onClick={() => {
                     setSelectedTaskMode('generate');
+                    setMaterialPreparationConfirmed(true);
                     void startTaskForMode('generate');
                   }}
                   type="button"
@@ -455,8 +551,8 @@ export function ProjectMaterialsPage({
                   {taskState.status === 'loading' ? '正在创建任务…' : '确认材料并开始生成标书'}
                 </button>
               </div>
-              {workflowTenderMaterials.length === 0 ? (
-                <p className="project-generation-setup__hint">请先上传招标材料，或粘贴招标公告网址并等待材料返回。</p>
+              {tenderPreparation.state === 'empty' && !importingTenderNoticeWithoutMaterials ? (
+                <p className="project-generation-setup__hint">请先上传招标材料，或粘贴招标公告网址并完成解析。</p>
               ) : null}
               {taskState.status === 'error' ? (
                 <p className="project-generation-setup__error" role="alert">{taskState.message}</p>

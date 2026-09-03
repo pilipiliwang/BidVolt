@@ -17,6 +17,8 @@ import {
 import {
   ProjectWorkbench,
   ResultCover,
+  type EnterpriseMaterialsRefreshHandler,
+  type EnterpriseUploadHandler,
   type WorkspaceMaterial,
 } from './ProjectWorkbench';
 import { ProjectWorkspaceTabs } from './ProjectWorkspaceTabs';
@@ -40,7 +42,8 @@ type ProjectOverviewPageProps = {
   enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
@@ -106,6 +109,7 @@ export function ProjectOverviewPage({
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
+  onRefreshEnterpriseMaterials,
   onAddFiles,
   onAssistantAddFiles,
   onAssistantSend,
@@ -169,6 +173,7 @@ export function ProjectOverviewPage({
       footerHint="请输入您的问题，如“请分析招标文件的评分细则”"
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
+      onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
       onAddFiles={onAddFiles}
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}

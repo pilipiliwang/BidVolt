@@ -19,7 +19,7 @@ describe('project workflow', () => {
       hasDeliverables: false,
     })).toMatchObject({
       'enterprise-assets': { status: 'pending' },
-      'project-materials': { status: 'current' },
+      'project-materials': { status: 'current', statusLabel: '待上传' },
       'bid-preparation': { status: 'pending' },
       deliverables: { status: 'pending' },
     });
@@ -36,7 +36,50 @@ describe('project workflow', () => {
       enterpriseMaterialCount: 3,
       hasDeliverables: false,
       task,
-    })['bid-preparation']).toMatchObject({ status: 'current' });
+    })).toMatchObject({
+      'project-materials': { status: 'completed', statusLabel: '已完成' },
+      'bid-preparation': { status: 'current', statusLabel: '执行中' },
+    });
+  });
+
+  it('keeps uploaded tender materials in parsing or confirmation until task start', () => {
+    const baseFacts = {
+      currentTenderMaterialCount: 3,
+      enterpriseMaterialCount: 12,
+      hasDeliverables: false,
+    };
+
+    expect(buildProjectFlowStages({
+      ...baseFacts,
+      currentTenderMaterialState: 'processing',
+    })['project-materials']).toMatchObject({
+      description: '正在解析 3 项招标材料',
+      status: 'current',
+      statusLabel: '解析中',
+    });
+    expect(buildProjectFlowStages({
+      ...baseFacts,
+      currentTenderMaterialState: 'ready',
+    })['project-materials']).toMatchObject({
+      description: '已接收 3 项招标材料，请确认',
+      status: 'current',
+      statusLabel: '待确认',
+    });
+    expect(buildProjectFlowStages({
+      ...baseFacts,
+      currentTenderMaterialState: 'error',
+    })['project-materials']).toMatchObject({
+      status: 'error',
+      statusLabel: '解析异常',
+    });
+    expect(buildProjectFlowStages({
+      ...baseFacts,
+      currentTenderMaterialState: 'ready',
+      materialPreparationConfirmed: true,
+    })['project-materials']).toMatchObject({
+      status: 'completed',
+      statusLabel: '已完成',
+    });
   });
 
   it('does not call generation from the disabled existing-bid entry', async () => {
@@ -91,7 +134,8 @@ describe('project workflow', () => {
 
     const workflow = screen.getByRole('navigation', { name: '项目流程' });
     expect(workflow).toHaveTextContent('已同步 12 项企业资料');
-    expect(workflow).toHaveTextContent('已接收 6 项招标材料');
+    expect(workflow).toHaveTextContent('待确认');
+    expect(workflow).toHaveTextContent('已接收 6 项招标材料，请确认');
     expect(workflow).toHaveTextContent('材料确认后开始制作');
     expect(screen.getByRole('region', { name: '材料准备区' })).toBeInTheDocument();
   });

@@ -6,7 +6,7 @@ import { ProjectFlowTrack, type ProjectFlowTrackProps } from './ProjectFlowTrack
 
 const stages: ProjectFlowTrackProps['stages'] = {
   'enterprise-assets': { status: 'completed', description: '资料已入库' },
-  'project-materials': { status: 'current', description: '正在解析招标文件' },
+  'project-materials': { status: 'current', statusLabel: '解析中', description: '正在解析招标文件' },
   'bid-preparation': { status: 'pending' },
   deliverables: { status: 'error', description: '生成任务执行失败' },
 };
@@ -24,11 +24,18 @@ describe('ProjectFlowTrack', () => {
     expect(items[1]).toHaveAttribute('aria-current', 'step');
     expect(items[1].querySelector('.project-flow-track__marker')).toHaveTextContent('2');
     expect(items[1]).toHaveTextContent('上传材料');
+    expect(items[1]).toHaveTextContent('解析中');
     expect(items[2].querySelector('.project-flow-track__marker')).toHaveTextContent('3');
-    expect(items[2]).toHaveTextContent('标书制作 / 审核');
+    expect(items[2]).toHaveTextContent('标书制作/审核');
     expect(items[2]).toHaveTextContent('未开始');
     expect(items[3]).toHaveTextContent('成果生成');
     expect(items[3]).toHaveTextContent('生成任务执行失败');
+    expect(items[0].querySelector('.project-flow-track__connector')).toHaveClass(
+      'project-flow-track__connector--completed',
+    );
+    expect(items[1].querySelector('.project-flow-track__connector')).not.toHaveClass(
+      'project-flow-track__connector--completed',
+    );
   });
 
   it('does not invent descriptions when the caller does not provide them', () => {

@@ -45,6 +45,7 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
 
     const file = new File(['notice'], '招标文件.pdf', { type: 'application/pdf' });
     await user.upload(screen.getByLabelText('选择或拖拽招标材料'), file);
+    expect(screen.getByRole('button', { name: '导入并解析' })).toBeDisabled();
     await user.type(screen.getByLabelText('招标公告网址'), 'https://notice.example.gov.cn/42');
     await user.click(screen.getByRole('button', { name: '导入并解析' }));
 

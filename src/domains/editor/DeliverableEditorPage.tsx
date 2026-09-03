@@ -16,6 +16,8 @@ import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-as
 import type { ProjectSummary } from '../projects/project-view-model';
 import {
   ProjectWorkbench,
+  type EnterpriseMaterialsRefreshHandler,
+  type EnterpriseUploadHandler,
   type WorkspaceMaterial,
 } from '../projects/ProjectWorkbench';
 import { SpreadsheetEditor } from './SpreadsheetMockEditor';
@@ -30,7 +32,8 @@ type DeliverableEditorPageProps = {
   enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
@@ -79,6 +82,7 @@ export function DeliverableEditorPage({
   enterpriseMaterials,
   materials,
   onAddEnterpriseFiles,
+  onRefreshEnterpriseMaterials,
   onAddFiles,
   onAssistantAddFiles,
   onAssistantSend,
@@ -200,6 +204,7 @@ export function DeliverableEditorPage({
         footerHint="请输入您的问题，如“检查当前成果中仍需人工确认的内容”"
         materials={materials}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
+        onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
         onAddFiles={onAddFiles}
         onAssistantAddFiles={onAssistantAddFiles}
         onAssistantDraftChange={setAssistantDraft}

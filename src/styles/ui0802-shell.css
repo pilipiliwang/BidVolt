@@ -834,11 +834,17 @@
 }
 
 .ui0802-project-table-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
 }
 
 .ui0802-project-table {
   width: 100%;
+  min-width: 920px;
   border-collapse: collapse;
   table-layout: fixed;
   color: #182334;
@@ -1511,6 +1517,43 @@
   }
 }
 
+/* Keep the desktop navigation at laptop widths without squeezing the project
+   list. Its table remains wider than the card and scrolls inside that card. */
+@media (min-width: 1025px) and (max-width: 1180px) {
+  .ui0802-shell--project-list {
+    --sidebar-width: 220px;
+  }
+
+  .ui0802-shell--project-list .desktop-sidebar {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .ui0802-shell--project-list .page-content {
+    padding: 24px 20px 20px;
+  }
+
+  .ui0802-shell--project-list .ui0802-project-page {
+    gap: 18px;
+  }
+
+  .ui0802-shell--project-list .ui0802-summary-grid {
+    gap: 12px;
+  }
+
+  .ui0802-shell--project-list .ui0802-summary-card {
+    min-height: 112px;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 13px;
+    padding: 17px;
+  }
+
+  .ui0802-shell--project-list .ui0802-summary-card__icon {
+    width: 54px;
+    height: 54px;
+  }
+}
+
 @media (max-width: 1024px) {
   .ui0802-shell {
     display: block;
@@ -1605,9 +1648,6 @@
     margin-top: 0;
   }
 
-  .ui0802-project-table {
-    min-width: 920px;
-  }
 }
 
 @media (max-width: 760px) {

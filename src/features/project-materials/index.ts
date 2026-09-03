@@ -1,4 +1,4 @@
-export { ProjectMaterialsPage } from './ProjectMaterialsPage';
+export { ProjectMaterialsPage, summarizeTenderPreparation } from './ProjectMaterialsPage';
 export { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
 export { RequirementsPanel } from './components/RequirementsPanel';
 export { SnapshotsPanel } from './components/SnapshotsPanel';

@@ -1,6 +1,10 @@
 import type { PublicTaskEvent } from '../../shared/task-events';
 import type { ProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
 import type {
+  EnterpriseMaterialsRefreshHandler,
+  EnterpriseUploadHandler,
+} from '../../domains/projects/ProjectWorkbench';
+import type {
   ProjectWorkflowFacts,
   ProjectWorkflowTaskSummary,
 } from '../../domains/projects/ProjectWorkflow';
@@ -96,7 +100,8 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   materials: ProjectMaterial[];
   hasDeliverables?: boolean;
   initialWorkflowMode?: 'choose' | 'generate';
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onCompletedBidUpload?: (projectId: string, files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;

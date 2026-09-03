@@ -115,6 +115,44 @@
   margin-top: 24px;
 }
 
+/* Overview/materials own their workflow header and stay within one viewport.
+   The workflow itself receives the remaining space while diagnostics remain a
+   separate bottom row, so neither needs a viewport-offset calculation. */
+.ui0802-shell.ui0802-shell--project-workflow {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ui0802-shell--project-workflow .app-shell__body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ui0802-shell--project-workflow .page-content {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ui0802-shell--project-workflow .project-workflow-frame {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.ui0802-shell--project-workflow .page-diagnostics {
+  min-width: 0;
+  max-height: min(42dvh, 420px);
+  flex: 0 0 auto;
+  margin-top: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .ui0802-shell--knowledge-library .app-shell__body {
   display: grid;
   height: 100dvh;

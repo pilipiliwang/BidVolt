@@ -18,6 +18,8 @@ export interface ProjectFlowStageState {
   activity?: 'manual' | 'processing';
   description?: string;
   status: ProjectFlowStageStatus;
+  /** Optional business-facing status text. Visual state still comes from `status`. */
+  statusLabel?: string;
 }
 
 export interface ProjectFlowTrackProps {
@@ -34,7 +36,7 @@ interface StageDefinition {
 const stageDefinitions: StageDefinition[] = [
   { id: 'enterprise-assets', label: '上传企业资料' },
   { id: 'project-materials', label: '上传材料' },
-  { id: 'bid-preparation', label: '标书制作 / 审核' },
+  { id: 'bid-preparation', label: '标书制作/审核' },
   { id: 'deliverables', label: '成果生成' },
 ];
 
@@ -74,11 +76,25 @@ export function ProjectFlowTrack({ className = '', stages }: ProjectFlowTrackPro
               </span>
               <span className="project-flow-track__content">
                 <strong>{label}</strong>
-                <span className="project-flow-track__status">{statusLabels[stage.status]}</span>
-                {stage.description ? <small>{stage.description}</small> : null}
+                <span className="project-flow-track__meta">
+                  <span className="project-flow-track__status">
+                    {stage.statusLabel ?? statusLabels[stage.status]}
+                  </span>
+                  {stage.description ? (
+                    <>
+                      <i aria-hidden="true">·</i>
+                      <small>{stage.description}</small>
+                    </>
+                  ) : null}
+                </span>
               </span>
               {index < stageDefinitions.length - 1 ? (
-                <span aria-hidden="true" className="project-flow-track__connector" />
+                <span
+                  aria-hidden="true"
+                  className={`project-flow-track__connector${stage.status === 'completed'
+                    ? ' project-flow-track__connector--completed'
+                    : ''}`}
+                />
               ) : null}
             </li>
           );

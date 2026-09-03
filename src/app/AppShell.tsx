@@ -313,6 +313,7 @@ export function AppShell({
   const hasProjectWorkflowHeader =
     isProjectMode &&
     (currentRoute === 'project-overview' || currentRoute === 'project-materials');
+  const isProjectListMode = currentRoute === 'projects';
   const projectSummary = projectSummaryOverride;
   const isEnterpriseAssetsMode = currentRoute === 'enterprise-assets';
   const isKnowledgeLibraryMode = isEnterpriseAssetsMode || currentRoute === 'bid-market-library';
@@ -378,7 +379,7 @@ export function AppShell({
 
   return (
     <div
-      className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}${isKnowledgeLibraryMode ? ' ui0802-shell--knowledge-library' : ''}${isEnterpriseAssetsMode ? ' ui0802-shell--enterprise-assets' : ''}`}
+      className={`app-shell ui0802-shell${isProjectMode ? ' ui0802-shell--project' : ''}${hasProjectWorkflowHeader ? ' ui0802-shell--project-workflow' : ''}${isProjectListMode ? ' ui0802-shell--project-list' : ''}${isKnowledgeLibraryMode ? ' ui0802-shell--knowledge-library' : ''}${isEnterpriseAssetsMode ? ' ui0802-shell--enterprise-assets' : ''}`}
     >
       <a
         className="skip-link"

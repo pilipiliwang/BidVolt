@@ -27,6 +27,7 @@ type UploadCardProps = {
   onFiles: (files: FileList | null) => Promise<void> | void;
   required?: boolean;
   selectedNames?: string[];
+  showScope?: boolean;
   title: string;
 };
 
@@ -80,6 +81,7 @@ function UploadCard({
   onFiles,
   required = false,
   selectedNames = [],
+  showScope = true,
   title,
 }: UploadCardProps) {
   const inputId = useId();
@@ -125,10 +127,12 @@ function UploadCard({
           <h2>{title} <em>{required ? '必填' : '可选'}</em></h2>
           <p>{description}</p>
         </div>
-        <span className={required ? 'project-upload-card__scope' : 'project-upload-card__scope project-upload-card__scope--optional'}>
-          <FileLock2 aria-hidden="true" size={13} />
-          当前项目
-        </span>
+        {showScope ? (
+          <span className={required ? 'project-upload-card__scope' : 'project-upload-card__scope project-upload-card__scope--optional'}>
+            <FileLock2 aria-hidden="true" size={13} />
+            当前项目
+          </span>
+        ) : null}
       </header>
 
       {children}
@@ -161,17 +165,22 @@ function UploadCard({
       />
 
       {uploadState.type !== 'idle' && (
-        <p
-          className={`project-upload-card__message project-upload-card__message--${uploadState.type}`}
-          role={uploadState.type === 'error' ? 'alert' : 'status'}
-        >
-          {uploadState.type === 'error'
-            ? <AlertCircle aria-hidden="true" size={14} />
-            : uploadState.type === 'success'
-              ? <CheckCircle2 aria-hidden="true" size={14} />
-              : <LoaderCircle aria-hidden="true" size={14} />}
-          {uploadState.message}
-        </p>
+        <div className={`project-upload-card__feedback project-upload-card__feedback--${uploadState.type}`}>
+          <p
+            className={`project-upload-card__message project-upload-card__message--${uploadState.type}`}
+            role={uploadState.type === 'error' ? 'alert' : 'status'}
+          >
+            {uploadState.type === 'error'
+              ? <AlertCircle aria-hidden="true" size={14} />
+              : uploadState.type === 'success'
+                ? <CheckCircle2 aria-hidden="true" size={14} />
+                : <LoaderCircle aria-hidden="true" size={14} />}
+            {uploadState.message}
+          </p>
+          {uploadState.type === 'loading' ? (
+            <progress aria-label={`${title}上传进度`} />
+          ) : null}
+        </div>
       )}
 
       {selectedNames.length > 0 && (
@@ -335,14 +344,18 @@ function TenderNoticeUrlImporter({
             }}
           />
         </div>
-        <button disabled={isLoading} type="submit">
+        <button
+          className={isLoading ? 'is-loading' : undefined}
+          disabled={isLoading || !value.trim() || !onImport}
+          type="submit"
+        >
           {isLoading ? <LoaderCircle aria-hidden="true" size={16} /> : <Link2 aria-hidden="true" size={16} />}
           {isLoading ? '正在导入…' : '导入并解析'}
         </button>
       </form>
       <p className="project-tender-url-import__security">
         <ShieldCheck aria-hidden="true" size={14} />
-        仅允许公开 HTTP/HTTPS 地址；本机、内网地址将被拒绝，服务端还会再次执行安全校验。
+        仅支持可公开访问的 HTTP/HTTPS 地址。
       </p>
       {state.type !== 'idle' && (
         <p
@@ -402,15 +415,25 @@ export function ProjectMaterialUpload({
   };
 
   return (
-    <section className="project-material-upload" aria-labelledby="project-material-upload-title">
-      <div className="project-material-upload__heading">
-        <span className="project-material-upload__icon" aria-hidden="true"><FileLock2 size={18} /></span>
-        <div>
-          <p className="project-material-eyebrow">资料上传</p>
-          <h2 id="project-material-upload-title">本次任务文件</h2>
-          <p>所有上传仅保存到“{projectName}”（{projectId}），不会写入企业资料库。</p>
+    <section
+      className={`project-material-upload project-material-upload--${mode}`}
+      aria-labelledby="project-material-upload-title"
+    >
+      {mode === 'generation' ? (
+        <div className="project-material-upload__generation-heading">
+          <h2 id="project-material-upload-title">上传材料</h2>
+          <p>上传招标文件或导入公告网址，系统将自动解析材料内容。</p>
         </div>
-      </div>
+      ) : (
+        <div className="project-material-upload__heading">
+          <span className="project-material-upload__icon" aria-hidden="true"><FileLock2 size={18} /></span>
+          <div>
+            <p className="project-material-eyebrow">资料上传</p>
+            <h2 id="project-material-upload-title">本次任务文件</h2>
+            <p>所有上传仅保存到“{projectName}”（{projectId}），不会写入企业资料库。</p>
+          </div>
+        </div>
+      )}
 
       <div className="project-upload-card-list">
         {mode === 'generation' ? (
@@ -422,6 +445,7 @@ export function ProjectMaterialUpload({
               inputLabel="选择或拖拽招标材料"
               accept={BACKEND_UPLOAD_ACCEPT}
               selectedNames={tenderFileNames}
+              showScope={false}
               onFiles={dispatchProjectFiles}
             />
             <TenderNoticeUrlImporter
@@ -453,6 +477,7 @@ export function ProjectMaterialUpload({
             inputLabel="选择或拖拽补充资料"
             accept={BACKEND_UPLOAD_ACCEPT}
             selectedNames={supplementalFileNames}
+            showScope={false}
             onFiles={dispatchSupplementalFiles}
           />
         ) : (

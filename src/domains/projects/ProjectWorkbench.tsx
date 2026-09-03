@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -7,11 +8,14 @@ import {
   FileSpreadsheet,
   FileText,
   Folder,
+  LoaderCircle,
   Paperclip,
   Send,
   UploadCloud,
+  XCircle,
 } from 'lucide-react';
 import {
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -33,18 +37,49 @@ export type WorkspaceMaterial = {
   tone?: 'blue' | 'green' | 'orange' | 'red';
 };
 
+export type EnterpriseUploadFeedback = {
+  message?: string;
+  status: 'idle' | 'uploading' | 'processing' | 'accepted' | 'completed' | 'error';
+};
+
+export type EnterpriseUploadResult = {
+  assetIds?: string[];
+  expectedNewAssetCount?: number;
+  message?: string;
+  status?: 'processing' | 'accepted' | 'completed';
+};
+
+export type EnterpriseUploadHandler = (
+  files: File[],
+) => EnterpriseUploadResult | void | Promise<EnterpriseUploadResult | void>;
+
+export type EnterpriseMaterialsRefreshHandler = () => void | Promise<void>;
+
+const ENTERPRISE_MATERIALS_REFRESH_INTERVAL_MS = 2_000;
+const ENTERPRISE_UPLOAD_PROCESSING_NOTICE_MS = 60_000;
+
 type ProjectSourceRailProps = {
   enterpriseCategories?: readonly EnterpriseAssetCategoryFolder[];
   enterpriseMaterials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  enterpriseUploadFeedback?: EnterpriseUploadFeedback;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
+  onEnterpriseUploadFeedbackChange?: (feedback: EnterpriseUploadFeedback) => void;
+  onOpenEnterpriseUpload?: () => void;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
 };
 
 export function ProjectSourceRail({
   enterpriseCategories = [],
   enterpriseMaterials,
+  enterpriseUploadFeedback,
   onAddEnterpriseFiles,
+  onEnterpriseUploadFeedbackChange,
+  onOpenEnterpriseUpload,
+  onRefreshEnterpriseMaterials,
 }: ProjectSourceRailProps) {
   const folderContentId = useId();
+  const uploadFeedbackId = useId();
+  const enterpriseFileInputRef = useRef<HTMLInputElement>(null);
   const folders = buildEnterpriseAssetFolders(enterpriseCategories, enterpriseMaterials, {
     allLabel: '全部资料',
     separateSourceArchives: true,
@@ -67,18 +102,118 @@ export function ProjectSourceRail({
     : folders.some((folder) => folder.id === openFolderId)
       ? openFolderId
       : null;
-  const [uploadState, setUploadState] = useState({ error: null as string | null, pending: false });
+  const [localUploadFeedback, setLocalUploadFeedback] = useState<EnterpriseUploadFeedback>({
+    status: 'idle',
+  });
+  const uploadFeedback = enterpriseUploadFeedback ?? localUploadFeedback;
+  const uploadBaselineIdsRef = useRef<Set<string>>(
+    new Set(enterpriseMaterials.map((material) => material.id)),
+  );
+  const expectedAssetIdsRef = useRef<Set<string>>(new Set());
+  const expectedNewAssetCountRef = useRef(0);
+  const refreshEnterpriseMaterialsRef = useRef(onRefreshEnterpriseMaterials);
+  const refreshInFlightRef = useRef(false);
+  refreshEnterpriseMaterialsRef.current = onRefreshEnterpriseMaterials;
+  const publishUploadFeedback = useCallback((nextFeedback: EnterpriseUploadFeedback) => {
+    if (enterpriseUploadFeedback === undefined) setLocalUploadFeedback(nextFeedback);
+    onEnterpriseUploadFeedbackChange?.(nextFeedback);
+  }, [enterpriseUploadFeedback, onEnterpriseUploadFeedbackChange]);
+
+  useEffect(() => {
+    if (enterpriseUploadFeedback !== undefined || uploadFeedback.status !== 'processing') return;
+    const expectedAssetIds = expectedAssetIdsRef.current;
+    const currentAssetIds = new Set(
+      enterpriseMaterials.map((material) => material.id.replace(/^enterprise:/, '')),
+    );
+    const allExpectedAssetsAreVisible = expectedAssetIds.size > 0
+      && [...expectedAssetIds].every((assetId) => currentAssetIds.has(assetId));
+    const newAssetCount = enterpriseMaterials.reduce(
+      (count, material) => count + (uploadBaselineIdsRef.current.has(material.id) ? 0 : 1),
+      0,
+    );
+    const uploadAppearedInList = expectedAssetIds.size > 0
+      ? allExpectedAssetsAreVisible
+      : expectedNewAssetCountRef.current > 0
+        && newAssetCount >= expectedNewAssetCountRef.current;
+    if (!uploadAppearedInList) return;
+    publishUploadFeedback({
+      message: '企业资料列表已同步。识别与归类进度请以各文件的后端状态为准。',
+      status: 'completed',
+    });
+  }, [enterpriseMaterials, enterpriseUploadFeedback, publishUploadFeedback, uploadFeedback.status]);
+
+  useEffect(() => {
+    const canRefresh = Boolean(refreshEnterpriseMaterialsRef.current);
+    if (uploadFeedback.status !== 'processing' || !canRefresh) return undefined;
+    let disposed = false;
+    const refresh = async () => {
+      if (refreshInFlightRef.current || disposed) return;
+      const refreshEnterpriseMaterials = refreshEnterpriseMaterialsRef.current;
+      if (!refreshEnterpriseMaterials) return;
+      refreshInFlightRef.current = true;
+      try {
+        await refreshEnterpriseMaterials();
+        if (!disposed) {
+          publishUploadFeedback({
+            message: '文件已受理，正在等待企业资料列表同步。',
+            status: 'processing',
+          });
+        }
+      } catch {
+        if (!disposed) {
+          publishUploadFeedback({
+            message: '资料已受理，但列表刷新暂时失败，系统将继续重试。',
+            status: 'processing',
+          });
+        }
+      } finally {
+        refreshInFlightRef.current = false;
+      }
+    };
+    const intervalId = window.setInterval(
+      () => void refresh(),
+      ENTERPRISE_MATERIALS_REFRESH_INTERVAL_MS,
+    );
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [onRefreshEnterpriseMaterials !== undefined, publishUploadFeedback, uploadFeedback.status]);
+
+  useEffect(() => {
+    if (uploadFeedback.status !== 'processing') return undefined;
+    const timeoutId = window.setTimeout(() => {
+      publishUploadFeedback({
+        message: '文件已由后端受理，资料列表仍在后台同步；您可以继续上传，稍后刷新查看结果。',
+        status: 'accepted',
+      });
+    }, ENTERPRISE_UPLOAD_PROCESSING_NOTICE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [publishUploadFeedback, uploadFeedback.status]);
 
   const uploadEnterpriseFiles = async (files: File[]) => {
-    if (!onAddEnterpriseFiles || uploadState.pending) return;
-    setUploadState({ error: null, pending: true });
+    if (!onAddEnterpriseFiles
+      || uploadFeedback.status === 'uploading'
+      || uploadFeedback.status === 'processing') return;
+    uploadBaselineIdsRef.current = new Set(enterpriseMaterials.map((material) => material.id));
+    expectedAssetIdsRef.current = new Set();
+    expectedNewAssetCountRef.current = files.length;
+    publishUploadFeedback({
+      message: `正在上传 ${files.length} 个文件，请勿关闭页面。`,
+      status: 'uploading',
+    });
     try {
-      await onAddEnterpriseFiles(files);
-      setUploadState({ error: null, pending: false });
+      const result = await onAddEnterpriseFiles(files);
+      expectedAssetIdsRef.current = new Set(result?.assetIds ?? []);
+      expectedNewAssetCountRef.current = result?.expectedNewAssetCount ?? files.length;
+      publishUploadFeedback({
+        message: result?.message ?? '文件已受理，后台正在解析并同步企业资料库。',
+        status: result?.status ?? 'processing',
+      });
     } catch (error) {
-      setUploadState({
-        error: error instanceof Error && error.message ? error.message : '文件上传失败，请重试',
-        pending: false,
+      publishUploadFeedback({
+        message: error instanceof Error && error.message ? error.message : '文件上传失败，请重试',
+        status: 'error',
       });
     }
   };
@@ -140,34 +275,65 @@ export function ProjectSourceRail({
         ))}
       </nav>
 
-      {onAddEnterpriseFiles ? (
-        <label
-          aria-busy={uploadState.pending || undefined}
-          className="bv-source-rail__upload"
-        >
-          <UploadCloud aria-hidden="true" size={21} />
-          <span>{uploadState.pending ? '正在上传企业资料…' : '上传企业资料'}</span>
-          <input
-            aria-label="上传企业资料并同步资料库"
-            disabled={uploadState.pending}
-            multiple
-            type="file"
-            onChange={(event) => {
-              const files = Array.from(event.currentTarget.files ?? []);
-              event.currentTarget.value = '';
-              if (files.length > 0) void uploadEnterpriseFiles(files);
+      {onAddEnterpriseFiles || onOpenEnterpriseUpload ? (
+        <>
+          <button
+            aria-busy={uploadFeedback.status === 'uploading' || uploadFeedback.status === 'processing' || undefined}
+            aria-describedby={uploadFeedback.status === 'idle' ? undefined : uploadFeedbackId}
+            aria-haspopup={onOpenEnterpriseUpload ? 'dialog' : undefined}
+            className="bv-source-rail__upload"
+            disabled={uploadFeedback.status === 'uploading' || uploadFeedback.status === 'processing'}
+            onClick={() => {
+              if (onOpenEnterpriseUpload) {
+                onOpenEnterpriseUpload();
+                return;
+              }
+              enterpriseFileInputRef.current?.click();
             }}
-          />
-        </label>
+            type="button"
+          >
+            <UploadCloud aria-hidden="true" size={21} />
+            <span>
+              {uploadFeedback.status === 'uploading'
+                ? '正在上传企业资料…'
+                : uploadFeedback.status === 'processing'
+                  ? '企业资料后台处理中…'
+                  : '上传企业资料'}
+            </span>
+          </button>
+          {onAddEnterpriseFiles ? (
+            <input
+              ref={enterpriseFileInputRef}
+              aria-label="上传企业资料并同步资料库"
+              className="bv-source-rail__file-input"
+              disabled={uploadFeedback.status === 'uploading' || uploadFeedback.status === 'processing'}
+              multiple
+              type="file"
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files ?? []);
+                event.currentTarget.value = '';
+                if (files.length > 0) void uploadEnterpriseFiles(files);
+              }}
+            />
+          ) : null}
+        </>
       ) : (
         <ReadonlyUploadControl
           label="企业资料上传不可用"
           title="当前页面未提供企业资料上传能力"
         />
       )}
-      {uploadState.error ? (
-        <p className="bv-source-rail__upload-error" role="alert">
-          {uploadState.error}
+      {uploadFeedback.status !== 'idle' ? (
+        <p
+          className={`bv-source-rail__upload-feedback bv-source-rail__upload-feedback--${uploadFeedback.status}`}
+          id={uploadFeedbackId}
+          role={uploadFeedback.status === 'error' ? 'alert' : 'status'}
+        >
+          <UploadFeedbackIcon status={uploadFeedback.status} />
+          <span>
+            <strong>{uploadFeedbackTitle(uploadFeedback.status)}</strong>
+            {uploadFeedback.message ? <small>{uploadFeedback.message}</small> : null}
+          </span>
         </p>
       ) : null}
     </aside>
@@ -194,12 +360,50 @@ function MaterialList({
             data-name={material.name}
             title={material.name}
           />
-          <small>{material.status ?? '已识别'}</small>
-          <CheckCircle2 aria-hidden="true" size={15} />
+          <MaterialStatusIndicator material={material} />
         </li>
       ))}
     </ul>
   );
+}
+
+function MaterialStatusIndicator({ material }: { material: WorkspaceMaterial }) {
+  const status = material.status ?? '状态未提供';
+  const tone = material.tone ?? 'blue';
+  const Icon = tone === 'green'
+    ? CheckCircle2
+    : tone === 'orange'
+      ? AlertCircle
+      : tone === 'red'
+        ? XCircle
+        : LoaderCircle;
+  return (
+    <span
+      aria-label={`资料状态：${status}`}
+      className={`bv-source-status-icon bv-source-status-icon--${tone}`}
+      role="img"
+      title={`资料状态：${status}`}
+    >
+      <Icon aria-hidden="true" size={15} />
+    </span>
+  );
+}
+
+function UploadFeedbackIcon({ status }: { status: EnterpriseUploadFeedback['status'] }) {
+  if (status === 'accepted' || status === 'completed') {
+    return <CheckCircle2 aria-hidden="true" size={16} />;
+  }
+  if (status === 'error') return <XCircle aria-hidden="true" size={16} />;
+  return <LoaderCircle aria-hidden="true" size={16} />;
+}
+
+function uploadFeedbackTitle(status: EnterpriseUploadFeedback['status']) {
+  if (status === 'uploading') return '正在上传';
+  if (status === 'processing') return '后台处理中';
+  if (status === 'accepted') return '后台已受理';
+  if (status === 'completed') return '列表同步完成';
+  if (status === 'error') return '上传失败';
+  return '';
 }
 
 function ReadonlyUploadControl({ label, title }: { label: string; title: string }) {
@@ -232,15 +436,19 @@ type ProjectWorkbenchProps = {
   enterpriseCategories?: readonly EnterpriseAssetCategoryFolder[];
   enterpriseLibraryKey?: string;
   enterpriseMaterials: WorkspaceMaterial[];
+  enterpriseUploadFeedback?: EnterpriseUploadFeedback;
   footerHint?: string;
   heightMode?: 'content' | 'fill';
   /** Retained for page-level compatibility; project materials render in the center workspace. */
   materials?: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantDraftChange?: (value: string) => void;
   onAssistantSend?: (value: string) => void | Promise<void>;
+  onEnterpriseUploadFeedbackChange?: (feedback: EnterpriseUploadFeedback) => void;
+  onOpenEnterpriseUpload?: () => void;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   rightRail: ReactNode;
   workspaceNavigation?: ReactNode;
 };
@@ -253,12 +461,16 @@ export function ProjectWorkbench({
   enterpriseCategories = [],
   enterpriseLibraryKey,
   enterpriseMaterials,
+  enterpriseUploadFeedback,
   footerHint = '请输入您的问题，如“请分析招标文件的评分细则”',
   onAddEnterpriseFiles,
   onAddFiles,
   onAssistantAddFiles,
   onAssistantDraftChange,
   onAssistantSend,
+  onEnterpriseUploadFeedbackChange,
+  onOpenEnterpriseUpload,
+  onRefreshEnterpriseMaterials,
   rightRail,
   workspaceNavigation,
 }: ProjectWorkbenchProps) {
@@ -268,7 +480,11 @@ export function ProjectWorkbench({
         key={enterpriseLibraryKey}
         enterpriseCategories={enterpriseCategories}
         enterpriseMaterials={enterpriseMaterials}
+        enterpriseUploadFeedback={enterpriseUploadFeedback}
         onAddEnterpriseFiles={onAddEnterpriseFiles}
+        onEnterpriseUploadFeedbackChange={onEnterpriseUploadFeedbackChange}
+        onOpenEnterpriseUpload={onOpenEnterpriseUpload}
+        onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
       />
       <main className={`bv-project-workspace__main${workspaceNavigation ? ' bv-project-workspace__main--with-navigation' : ''}`}>
         {workspaceNavigation}

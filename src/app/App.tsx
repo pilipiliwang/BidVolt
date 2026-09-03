@@ -32,7 +32,10 @@ import {
 import type { ProjectSummary } from '../domains/projects/project-view-model';
 import { buildProjectOutcomeReviewViewModel } from '../domains/projects/ProjectOutcomeReviewPanel';
 import { buildProjectReviewSidebarViewModel } from '../domains/projects/ProjectReviewSidebar';
-import type { WorkspaceMaterial } from '../domains/projects/ProjectWorkbench';
+import type {
+  EnterpriseUploadResult,
+  WorkspaceMaterial,
+} from '../domains/projects/ProjectWorkbench';
 import type {
   ProjectWorkflowFacts,
   ProjectWorkflowResourceState,
@@ -52,6 +55,7 @@ import {
 } from '../features/bid-market-library';
 import {
   ProjectMaterialsPage,
+  summarizeTenderPreparation,
   type ProjectMaterial,
   type ProjectRequirement,
   type ProjectSnapshot,
@@ -829,6 +833,30 @@ export function App() {
     }
   }, [requestTaskSnapshots]);
 
+  const refreshProjectMaterials = useCallback(async (projectId: string) => {
+    const tenantGeneration = tenantGuardRef.current.capture();
+    const [files, materials] = await Promise.all([
+      backendApi.files.listAll({ target: 'project', project_id: projectId }),
+      backendApi.files.projectMaterials(projectId),
+    ]);
+    if (!tenantGuardRef.current.isCurrent(tenantGeneration)
+      || routeProjectIdRef.current !== projectId) return;
+    const filesById = Object.fromEntries(files.map((file) => [String(file.file_id), file]));
+    const nextMaterials = adaptBackendProjectMaterials(materials, filesById);
+    setProjectData((current) => {
+      const existing = current[projectId];
+      if (!existing) return current;
+      return { ...current, [projectId]: { ...existing, materials: nextMaterials } };
+    });
+    setProjectResourceErrors((current) => {
+      const existing = current[projectId];
+      if (!existing?.materials) return current;
+      const next = { ...existing };
+      delete next.materials;
+      return { ...current, [projectId]: next };
+    });
+  }, []);
+
   const refreshProjectDeliverables = useCallback(async (
     projectId: string,
     task: DeliverableTaskIdentity,
@@ -1231,6 +1259,35 @@ export function App() {
   useEffect(() => {
     if (authState !== 'authenticated'
       || localPreviewActive
+      || route.name !== 'project-materials'
+      || !routeProjectId) return undefined;
+    const currentMaterials = projectData[routeProjectId]?.materials ?? [];
+    const hasParsingTenderMaterial = currentMaterials.some((material) =>
+      material.purpose === 'current_tender'
+      && (material.parseStatus === 'queued' || material.parseStatus === 'parsing'));
+    if (!hasParsingTenderMaterial) return undefined;
+
+    let refreshing = false;
+    const timer = window.setInterval(() => {
+      if (refreshing) return;
+      refreshing = true;
+      void refreshProjectMaterials(routeProjectId).catch(() => undefined).finally(() => {
+        refreshing = false;
+      });
+    }, 4_000);
+    return () => window.clearInterval(timer);
+  }, [
+    authState,
+    localPreviewActive,
+    projectData,
+    refreshProjectMaterials,
+    route.name,
+    routeProjectId,
+  ]);
+
+  useEffect(() => {
+    if (authState !== 'authenticated'
+      || localPreviewActive
       || !routeProjectId
       || routeTenderNoticeId === undefined) return undefined;
     const controller = new AbortController();
@@ -1568,9 +1625,23 @@ export function App() {
     };
   };
 
-  const handleEnterpriseUploadFromWorkspace = async (files: File[]) => {
+  const handleEnterpriseUploadFromWorkspace = async (files: File[]): Promise<EnterpriseUploadResult | void> => {
     const result = await handleEnterpriseUpload(files);
-    if (result?.type === 'error') throw new Error(result.message);
+    if (!result) return undefined;
+    const acceptedRecords = result.records.filter((record) => record.status === 'accepted');
+    if (acceptedRecords.length === 0) throw new Error(result.message);
+    const newRecords = acceptedRecords.filter((record) => record.duplicate !== true);
+    const allAcceptedRecordsAreDuplicates = newRecords.length === 0;
+    return {
+      assetIds: newRecords.flatMap((record) => record.assetId ? [record.assetId] : []),
+      expectedNewAssetCount: newRecords.length,
+      message: result.type === 'error'
+        ? `${result.message}；已成功受理的文件将继续在后台处理。`
+        : allAcceptedRecordsAreDuplicates
+          ? '后端已识别为已有资料，无需重复入库。'
+          : '文件已上传，后台正在解析并同步企业资料库。',
+      status: allAcceptedRecordsAreDuplicates ? 'accepted' : 'processing',
+    };
   };
 
   const handleCorrectEnterpriseFact = async (assetId: string, factId: string, value: string) => {
@@ -1737,9 +1808,22 @@ export function App() {
       throw new Error(job.error_message || '招标公告网址解析失败。');
     }
     tenantGuardRef.current.commit(generation, () => {
+      setProjectData((current) => {
+        const existing = current[projectId];
+        if (!existing) return current;
+        const tenderNotices = [
+          job,
+          ...existing.tenderNotices.filter((notice) => (
+            notice.tender_notice_id !== job.tender_notice_id
+          )),
+        ];
+        return {
+          ...current,
+          [projectId]: { ...existing, tenderNotices },
+        };
+      });
       setStatusMessage({ tone: 'info', text: '招标公告网址已提交，服务端正在安全下载并解析。' });
     });
-    await loadProject(projectId);
     return { status: 'queued' as const, message: '网址已提交，正在下载并解析招标公告。' };
   };
 
@@ -2531,10 +2615,15 @@ export function App() {
     : routeProjectId && projectResourceErrors[routeProjectId]?.deliverables
       ? 'error'
       : 'ready';
+  const tenderPreparation = summarizeTenderPreparation(activeMaterials);
   const projectWorkflowFacts: ProjectWorkflowFacts = {
     agentCompletion: selectedAgentRun?.completion,
-    currentTenderMaterialCount: activeMaterials.filter((material) =>
-      material.purpose === 'current_tender').length,
+    currentTenderMaterialCount: tenderPreparation.total,
+    currentTenderMaterialState: projectMaterialsState === 'error'
+      ? 'error'
+      : projectMaterialsState === 'loading'
+        ? 'processing'
+        : tenderPreparation.state,
     deliverablesState: projectDeliverablesState,
     enterpriseMaterialCount: workspaceEnterprise.length,
     enterpriseState: enterpriseDataState,
@@ -2623,7 +2712,7 @@ export function App() {
           </nav>
         </aside>
       ) : null}
-      {!localPreviewActive && imageDescribeProgress
+      {route.name === 'enterprise-assets' && !localPreviewActive && imageDescribeProgress
         && shouldShowImageDescribeProgress(imageDescribeProgress) ? (
         <div className="integration-status integration-status--info" role="status">
           <span>
@@ -2634,7 +2723,7 @@ export function App() {
           <progress aria-label="后台图片识别进度" />
         </div>
       ) : null}
-      {statusMessage ? (
+      {statusMessage && (route.name !== 'project-materials' || statusMessage.tone === 'error') ? (
         <div className={`integration-status integration-status--${statusMessage.tone}`} role={statusMessage.tone === 'error' ? 'alert' : 'status'}>
           <span>{statusMessage.text}</span>
           <button aria-label="关闭提示" type="button" onClick={() => setStatusMessage(null)}>×</button>
@@ -2718,6 +2807,7 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
+          onRefreshEnterpriseMaterials={loadEnterprise}
           onAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
             throw error;
@@ -2759,6 +2849,7 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
+          onRefreshEnterpriseMaterials={loadEnterprise}
           onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).catch((error) => {
             setError(error, '补充资料上传失败');
             throw error;
@@ -2809,6 +2900,7 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
+          onRefreshEnterpriseMaterials={loadEnterprise}
           onAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
             throw error;
@@ -2847,6 +2939,7 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
+          onRefreshEnterpriseMaterials={loadEnterprise}
           onAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
             throw error;
@@ -2889,6 +2982,7 @@ export function App() {
             setError(error, '企业资料上传失败');
             throw error;
           })}
+          onRefreshEnterpriseMaterials={loadEnterprise}
           onAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files).then(() => undefined).catch((error) => {
             setError(error, '项目材料上传失败');
             throw error;
@@ -3086,8 +3180,9 @@ async function pollTenderImport(
   setStatus: (message: { tone: 'error' | 'info'; text: string } | null) => void,
   signal?: AbortSignal,
 ) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+  let attempt = 0;
+  while (!signal?.aborted && guard.isCurrent(generation)) {
+    await new Promise((resolve) => setTimeout(resolve, attempt < 30 ? 2000 : 5000));
     if (signal?.aborted || !guard.isCurrent(generation)) return;
     try {
       const job = await backendApi.tenderNotices.get(projectId, noticeId);
@@ -3112,16 +3207,17 @@ async function pollTenderImport(
       guard.commit(generation, () => {
         setStatus({
           tone: 'error',
-          text: tenderNoticeImportErrorMessage(error, '招标公告导入状态查询失败。'),
+          text: `${tenderNoticeImportErrorMessage(error, '招标公告导入状态查询暂时失败。')} 系统将继续重试。`,
         });
       });
-      return;
+    }
+    attempt += 1;
+    if (attempt === 30) {
+      guard.commit(generation, () => {
+        setStatus({ tone: 'info', text: '招标公告仍在后台处理，系统会继续同步项目材料。' });
+      });
     }
   }
-  if (signal?.aborted) return;
-  guard.commit(generation, () => {
-    setStatus({ tone: 'info', text: '招标公告仍在后台处理，可稍后刷新项目材料查看。' });
-  });
 }
 
 function LoadingScreen() {

@@ -13,7 +13,12 @@ import {
 } from 'lucide-react';
 
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
-import { ProjectWorkbench, type WorkspaceMaterial } from '../projects/ProjectWorkbench';
+import {
+  ProjectWorkbench,
+  type EnterpriseMaterialsRefreshHandler,
+  type EnterpriseUploadHandler,
+  type WorkspaceMaterial,
+} from '../projects/ProjectWorkbench';
 import styles from './PricingCenter.module.css';
 import type {
   HistoryPriceSample,
@@ -30,7 +35,8 @@ type PricingCenterProps = {
   enterpriseLibraryKey?: string;
   enterpriseMaterials?: WorkspaceMaterial[];
   materials: WorkspaceMaterial[];
-  onAddEnterpriseFiles?: (files: File[]) => void | Promise<void>;
+  onAddEnterpriseFiles?: EnterpriseUploadHandler;
+  onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onCalculate?: (input: QuoteCalculationInput) => Promise<void>;
@@ -112,6 +118,7 @@ export function PricingCenter({
   enterpriseMaterials = [],
   materials,
   onAddEnterpriseFiles,
+  onRefreshEnterpriseMaterials,
   onAddFiles,
   onAssistantAddFiles,
   onCalculate,
@@ -316,6 +323,7 @@ export function PricingCenter({
       footerHint="请输入您的问题，如“解释当前单价的时间与地区调整”"
       materials={materials}
       onAddEnterpriseFiles={onAddEnterpriseFiles}
+      onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
       onAddFiles={onAddFiles}
       onAssistantAddFiles={onAssistantAddFiles}
       onAssistantSend={onAssistantSend}

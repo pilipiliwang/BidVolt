@@ -44,14 +44,19 @@ export type ProjectWorkflowPhase =
   | 'completed';
 
 export type ProjectWorkflowResourceState = 'error' | 'loading' | 'ready';
+export type ProjectTenderMaterialState = 'empty' | 'processing' | 'ready' | 'error';
 
 export type ProjectWorkflowFacts = {
   agentCompletion?: 'active' | 'complete' | 'incomplete' | 'failed' | 'cancelled' | 'unknown_terminal';
   currentTenderMaterialCount: number;
+  /** Aggregate state derived from the current project's tender-material records. */
+  currentTenderMaterialState?: ProjectTenderMaterialState;
   deliverablesState?: ProjectWorkflowResourceState;
   enterpriseMaterialCount: number;
   enterpriseState?: ProjectWorkflowResourceState;
   hasDeliverables: boolean;
+  /** Allows the caller to reflect an accepted confirmation before task polling catches up. */
+  materialPreparationConfirmed?: boolean;
   materialsState?: ProjectWorkflowResourceState;
   task?: ProjectWorkflowTaskSummary;
   tenderImporting?: boolean;
@@ -89,10 +94,12 @@ export function resolveProjectWorkflowPhase({
 export function buildProjectFlowStages({
   agentCompletion,
   currentTenderMaterialCount,
+  currentTenderMaterialState,
   deliverablesState = 'ready',
   enterpriseMaterialCount,
   enterpriseState = 'ready',
   hasDeliverables,
+  materialPreparationConfirmed = false,
   materialsState = 'ready',
   task,
   tenderImporting = false,
@@ -112,7 +119,49 @@ export function buildProjectFlowStages({
     tenderImporting,
   });
   const taskStarted = Boolean(task);
-  const materialsComplete = currentTenderMaterialCount > 0 || taskStarted || hasDeliverables;
+  const materialsConfirmed = materialPreparationConfirmed
+    || taskStarted
+    || Boolean(agentCompletion)
+    || hasDeliverables;
+  const inferredTenderMaterialState: ProjectTenderMaterialState = materialsState === 'error'
+    ? 'error'
+    : materialsState === 'loading' || tenderImporting
+      ? 'processing'
+      : currentTenderMaterialCount > 0
+        ? 'ready'
+        : 'empty';
+  const tenderMaterialState = currentTenderMaterialState ?? inferredTenderMaterialState;
+  const materialStatus: ProjectFlowStageState['status'] = materialsConfirmed
+    ? 'completed'
+    : tenderMaterialState === 'error'
+      ? 'error'
+      : 'current';
+  const materialStatusLabel = materialsConfirmed
+    ? '已完成'
+    : tenderMaterialState === 'processing'
+      ? '解析中'
+      : tenderMaterialState === 'ready'
+        ? '待确认'
+        : tenderMaterialState === 'error'
+          ? '解析异常'
+          : '待上传';
+  const materialDescription = materialsConfirmed
+    ? currentTenderMaterialCount > 0
+      ? `已确认 ${currentTenderMaterialCount} 项招标材料`
+      : '本次任务已确认使用项目材料'
+    : tenderImporting
+      ? '正在导入并解析招标公告'
+      : materialsState === 'loading' && currentTenderMaterialState === undefined
+        ? '正在同步项目材料'
+        : tenderMaterialState === 'processing'
+          ? currentTenderMaterialCount > 0
+            ? `正在解析 ${currentTenderMaterialCount} 项招标材料`
+            : '正在解析招标材料'
+          : tenderMaterialState === 'ready'
+            ? `已接收 ${currentTenderMaterialCount} 项招标材料，请确认`
+            : tenderMaterialState === 'error'
+              ? '存在未解析成功的招标材料'
+              : '上传招标材料或导入公告网址';
 
   return {
     'enterprise-assets': {
@@ -129,27 +178,17 @@ export function buildProjectFlowStages({
         : enterpriseState === 'error'
           ? 'error'
           : enterpriseMaterialCount > 0 ? 'completed' : 'pending',
+      statusLabel: enterpriseState === 'loading'
+        ? '同步中'
+        : enterpriseState === 'error'
+          ? '读取失败'
+          : enterpriseMaterialCount > 0 ? '已完成' : '未完成',
     },
     'project-materials': {
-      activity: materialsState === 'loading' || tenderImporting ? 'processing' : 'manual',
-      description: materialsState === 'loading'
-        ? '正在同步项目材料'
-        : materialsState === 'error'
-        ? '项目材料暂时无法读取'
-        : tenderImporting
-          ? '招标公告正在导入和解析'
-        : materialsComplete
-        ? currentTenderMaterialCount > 0
-          ? `已接收 ${currentTenderMaterialCount} 项招标材料`
-          : '材料已提交并由当前任务使用'
-        : '上传招标材料或导入公告网址',
-      status: materialsState === 'loading'
-        ? enterpriseState === 'loading' ? 'pending' : 'current'
-        : materialsState === 'error'
-        ? 'error'
-        : materialsComplete
-          ? 'completed'
-          : 'current',
+      activity: tenderMaterialState === 'processing' ? 'processing' : 'manual',
+      description: materialDescription,
+      status: materialStatus,
+      statusLabel: materialStatusLabel,
     },
     'bid-preparation': {
       activity: phase === 'executing' ? 'processing' : 'manual',
@@ -167,6 +206,13 @@ export function buildProjectFlowStages({
           : phase === 'executing'
             ? 'current'
             : 'pending',
+      statusLabel: phase === 'completed' || phase === 'finalizing'
+        ? '已完成'
+        : phase === 'failed'
+          ? '执行失败'
+          : phase === 'executing'
+            ? '执行中'
+            : '未开始',
     },
     deliverables: {
       activity: phase === 'finalizing' ? 'processing' : 'manual',
@@ -184,6 +230,13 @@ export function buildProjectFlowStages({
         : phase === 'finalizing'
           ? 'current'
           : 'pending',
+      statusLabel: deliverablesState === 'error' && (taskStarted || agentCompletion)
+        ? '同步失败'
+        : phase === 'completed'
+          ? '已完成'
+          : phase === 'finalizing'
+            ? '同步中'
+            : '未开始',
     },
   };
 }
