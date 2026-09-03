@@ -862,6 +862,7 @@ export function App() {
       delete next.materials;
       return { ...current, [projectId]: next };
     });
+    return nextMaterials;
   }, []);
 
   const refreshProjectDeliverables = useCallback(async (
@@ -1803,7 +1804,9 @@ export function App() {
     const outcome = readUploadOutcome(result.files);
     const { uploaded } = outcome;
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    if (uploaded.length > 0) await refreshProjectMaterials(projectId);
+    const refreshedMaterials = uploaded.length > 0
+      ? await refreshProjectMaterials(projectId)
+      : undefined;
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     const outcomeError = uploadOutcomeError(
       options.outcomeLabel ?? '当前项目材料',
@@ -1811,6 +1814,18 @@ export function App() {
       outcome.errors,
     );
     if (outcomeError) throw outcomeError;
+    if (options.documentRole && refreshedMaterials) {
+      const expectedPurpose = options.documentRole;
+      const uploadedIds = new Set(uploaded.map((file) => String(file.file_id)));
+      const hasRoleMismatch = refreshedMaterials.some((material) => (
+        uploadedIds.has(material.id) && material.purpose !== expectedPurpose
+      ));
+      if (hasRoleMismatch) {
+        throw new Error(
+          `${options.outcomeLabel ?? '项目材料'}未保存到所选分类：相同内容已存在于当前项目的其他分类，后端暂不支持修改材料用途。`,
+        );
+      }
+    }
     tenantGuardRef.current.commit(generation, () => {
       setStatusMessage({
         tone: 'info',
@@ -1886,6 +1901,14 @@ export function App() {
       setStatusMessage({ tone: 'info', text: '招标公告网址已提交，服务端正在安全下载并解析。' });
     });
     return { status: 'queued' as const, message: '网址已提交，正在下载并解析招标公告。' };
+  };
+
+  const handleRemoveProjectMaterial = async (projectId: string, fileId: string) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('删除项目材料');
+    const generation = tenantGuardRef.current.capture();
+    await backendApi.files.remove(fileId);
+    if (!tenantGuardRef.current.isCurrent(generation)) return;
+    await refreshProjectMaterials(projectId);
   };
 
   const handleConfirmRequirement = async (projectId: string, requirementId: string) => {
@@ -2947,6 +2970,9 @@ export function App() {
           }}
           onOpenSnapshot={handleOpenSnapshot}
           onOpenTasks={() => setTaskDrawerProjectId(route.projectId)}
+          onRemoveMaterial={(projectId, fileId) => handleRemoveProjectMaterial(projectId, fileId).catch((error) => {
+            throw new Error(error instanceof Error && error.message ? error.message : '项目材料删除失败');
+          })}
           onStartTask={handleStartTask}
           onUpload={(projectId, files) => handleCurrentTenderUpload(projectId, files).then(() => undefined).catch((error) => {
             setError(error, '当前招标材料上传失败');

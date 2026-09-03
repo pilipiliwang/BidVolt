@@ -316,6 +316,7 @@ export function ProjectMaterialsPage({
   onCorrectRequirement,
   onOpenSnapshot,
   onOpenTasks,
+  onRemoveMaterial,
   onStartTask,
   taskSummary,
   taskStatus,
@@ -358,6 +359,14 @@ export function ProjectMaterialsPage({
   const workflowTenderMaterials = useMemo(
     () => materials.filter((material) => material.purpose === 'current_tender'),
     [materials],
+  );
+  const urlImportedMaterials = useMemo(
+    () => workflowTenderMaterials.filter((material) => /^portal(?:\s*\(\d+\))?\.html?$/i.test(material.name)),
+    [workflowTenderMaterials],
+  );
+  const manuallyUploadedTenderMaterials = useMemo(
+    () => workflowTenderMaterials.filter((material) => !/^portal(?:\s*\(\d+\))?\.html?$/i.test(material.name)),
+    [workflowTenderMaterials],
   );
   const tenderPreparation = useMemo(
     () => summarizeTenderPreparation(materials),
@@ -492,10 +501,14 @@ export function ProjectMaterialsPage({
                 projectId={projectId}
                 projectName={projectName}
                 onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+                onRemoveMaterial={onRemoveMaterial}
                 onSupplementalUpload={onAssistantAddFiles}
                 onUpload={onUpload}
                 supplementalFileNames={supplementalMaterials.map((material) => material.name)}
-                tenderFileNames={workflowTenderMaterials.map((material) => material.name)}
+                supplementalFiles={supplementalMaterials.map(({ id, name }) => ({ id, name }))}
+                tenderFileNames={manuallyUploadedTenderMaterials.map((material) => material.name)}
+                tenderFiles={manuallyUploadedTenderMaterials.map(({ id, name }) => ({ id, name }))}
+                urlImportedFiles={urlImportedMaterials.map(({ id, name }) => ({ id, name }))}
               />
               <div className="project-generation-setup__actions">
                 <button

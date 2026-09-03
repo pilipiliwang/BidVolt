@@ -91,6 +91,7 @@ export interface ProjectMaterialUploadProps {
   projectId: string;
   projectName: string;
   onUpload?: (projectId: string, files: File[]) => Promise<void> | void;
+  onRemoveMaterial?: (projectId: string, fileId: string) => Promise<void> | void;
 }
 
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {

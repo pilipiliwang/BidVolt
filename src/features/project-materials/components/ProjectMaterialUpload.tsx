@@ -6,6 +6,7 @@ import {
   Link2,
   LoaderCircle,
   ShieldCheck,
+  Trash2,
   UploadCloud,
 } from 'lucide-react';
 import {
@@ -26,12 +27,16 @@ type UploadCardProps = {
   description: string;
   inputLabel: string;
   onFiles: (files: FileList | null) => Promise<void> | void;
+  onRemoveFile?: (fileId: string, fileName: string) => Promise<void> | void;
+  persistedFiles?: PersistedUploadItem[];
   required?: boolean;
   selectedNames?: string[];
   showImmediateStatus?: boolean;
   showScope?: boolean;
   title: string;
 };
+
+type PersistedUploadItem = { id: string; name: string };
 
 type LocalUploadItem = {
   id: string;
@@ -49,7 +54,10 @@ type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
     url: string,
   ) => Promise<TenderNoticeUrlImportResult | void>;
   supplementalFileNames?: string[];
+  supplementalFiles?: PersistedUploadItem[];
   tenderFileNames?: string[];
+  tenderFiles?: PersistedUploadItem[];
+  urlImportedFiles?: PersistedUploadItem[];
 };
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -87,6 +95,8 @@ function UploadCard({
   description,
   inputLabel,
   onFiles,
+  onRemoveFile,
+  persistedFiles = [],
   required = false,
   selectedNames = [],
   showImmediateStatus = true,
@@ -97,6 +107,7 @@ function UploadCard({
   const uploadSequenceRef = useRef(0);
   const [localUploadItems, setLocalUploadItems] = useState<LocalUploadItem[]>([]);
   const [uploadError, setUploadError] = useState('');
+  const [removingFileIds, setRemovingFileIds] = useState<Set<string>>(new Set());
   const isUploading = localUploadItems.some((item) => item.status === 'uploading');
 
   const submitFiles = async (files: FileList | null) => {
@@ -151,16 +162,42 @@ function UploadCard({
     void submitFiles(event.dataTransfer.files);
   };
 
-  const visibleLocalUploadItems = showImmediateStatus ? localUploadItems : [];
+  const persistedNamesSet = new Set(persistedFiles.map((item) => item.name));
+  const visibleLocalUploadItems = showImmediateStatus
+    ? localUploadItems.filter((item) => item.status !== 'success' || !persistedNamesSet.has(item.name))
+    : [];
   const locallySelectedNames = new Set(visibleLocalUploadItems.map((item) => item.name));
-  const persistedNames = selectedNames.filter((name) => !locallySelectedNames.has(name));
-  const hasSelectedFiles = visibleLocalUploadItems.length > 0 || persistedNames.length > 0;
+  const normalizedPersistedFiles = persistedFiles.length > 0
+    ? persistedFiles
+    : selectedNames.map((name, index) => ({ id: '', name: `${name}\u0000${index}` }));
+  const visiblePersistedFiles = normalizedPersistedFiles
+    .map((item) => ({ ...item, name: item.name.split('\u0000')[0] }))
+    .filter((item) => !locallySelectedNames.has(item.name));
+  const hasSelectedFiles = visibleLocalUploadItems.length > 0 || visiblePersistedFiles.length > 0;
+
+  const removeFile = async (file: PersistedUploadItem) => {
+    if (!file.id || !onRemoveFile || removingFileIds.has(file.id)) return;
+    if (!window.confirm(`确认删除“${file.name}”吗？`)) return;
+    setRemovingFileIds((current) => new Set(current).add(file.id));
+    setUploadError('');
+    try {
+      await onRemoveFile(file.id, file.name);
+    } catch (error) {
+      setUploadError(error instanceof Error && error.message ? error.message : '材料删除失败，请重试。');
+    } finally {
+      setRemovingFileIds((current) => {
+        const next = new Set(current);
+        next.delete(file.id);
+        return next;
+      });
+    }
+  };
 
   return (
     <article className="project-upload-card">
       <header>
         <div>
-          <h2>{title} <em>{required ? '必填' : '可选'}</em></h2>
+          <h2>{title} <em className={required ? 'is-required' : 'is-optional'}>{required ? '必填' : '可选'}</em></h2>
           <p>{description}</p>
         </div>
         {showScope ? (
@@ -225,17 +262,30 @@ function UploadCard({
               </span>
             </li>
           ))}
-          {persistedNames.map((name, index) => (
-            <li key={`${name}-${index}`}>
+          {visiblePersistedFiles.map((file, index) => (
+            <li key={file.id || `${file.name}-${index}`}>
               <FileText aria-hidden="true" size={14} />
-              <span>{name}</span>
+              <span>{file.name}</span>
               <span
-                aria-label={`${name}已上传`}
+                aria-label={`${file.name}已上传`}
                 className="project-upload-card__selected-status project-upload-card__selected-status--success"
                 role="img"
               >
                 <CheckCircle2 aria-hidden="true" size={14} />
               </span>
+              {file.id && onRemoveFile ? (
+                <button
+                  aria-label={`删除${file.name}`}
+                  className="project-upload-card__remove"
+                  disabled={removingFileIds.has(file.id)}
+                  onClick={() => void removeFile(file)}
+                  type="button"
+                >
+                  {removingFileIds.has(file.id)
+                    ? <LoaderCircle aria-hidden="true" size={14} />
+                    : <Trash2 aria-hidden="true" size={14} />}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -318,10 +368,14 @@ export function validateTenderNoticeUrl(value: string): { error?: string; url?: 
 }
 
 function TenderNoticeUrlImporter({
+  importedFiles = [],
+  onRemoveFile,
   projectId,
   onImport,
   standalone = false,
 }: {
+  importedFiles?: PersistedUploadItem[];
+  onRemoveFile?: (fileId: string, fileName: string) => Promise<void> | void;
   projectId: string;
   onImport?: EnhancedProjectMaterialUploadProps['onImportTenderNoticeUrl'];
   standalone?: boolean;
@@ -331,6 +385,8 @@ function TenderNoticeUrlImporter({
   const [state, setState] = useState<
     { message: string; type: 'error' | 'idle' | 'loading' | 'success' }
   >({ message: '', type: 'idle' });
+  const [removeError, setRemoveError] = useState('');
+  const [removingFileIds, setRemovingFileIds] = useState<Set<string>>(new Set());
   const normalizedValue = normalizeTenderNoticeUrlInput(value);
   const liveValidation = validateTenderNoticeUrl(value);
   const hasValue = normalizedValue.length > 0;
@@ -370,15 +426,32 @@ function TenderNoticeUrlImporter({
 
   const isLoading = state.type === 'loading';
 
+  const removeImportedFile = async (file: PersistedUploadItem) => {
+    if (!onRemoveFile || removingFileIds.has(file.id)) return;
+    if (!window.confirm(`确认删除“${file.name}”吗？`)) return;
+    setRemovingFileIds((current) => new Set(current).add(file.id));
+    setRemoveError('');
+    try {
+      await onRemoveFile(file.id, file.name);
+    } catch (error) {
+      setRemoveError(error instanceof Error && error.message ? error.message : '材料删除失败，请重试。');
+    } finally {
+      setRemovingFileIds((current) => {
+        const next = new Set(current);
+        next.delete(file.id);
+        return next;
+      });
+    }
+  };
+
   return (
     <section
       aria-label={standalone ? '粘贴招标公告地址' : undefined}
       className={`project-tender-url-import${standalone ? ' project-tender-url-import--card' : ''}`}
     >
       <div className="project-tender-url-import__heading">
-        <span aria-hidden="true"><Link2 size={18} /></span>
         <div>
-          {standalone ? <h2>粘贴招标公告地址 <em>可选</em></h2> : <strong>粘贴招标公告网址</strong>}
+          {standalone ? <h2>粘贴招标公告地址 <em className="is-optional">可选</em></h2> : <strong>粘贴招标公告网址</strong>}
           <small>适用于可公开访问的招标公告网页，系统将在服务端下载附件并开始解析。</small>
         </div>
       </div>
@@ -414,7 +487,7 @@ function TenderNoticeUrlImporter({
           {isLoading ? '正在导入…' : '导入并解析'}
         </button>
       </form>
-      <p
+      {!(state.type === 'success' || (!hasValue && importedFiles.length > 0)) ? <p
         className={`project-tender-url-import__security${
           isUrlValid
             ? ' project-tender-url-import__security--valid'
@@ -435,7 +508,7 @@ function TenderNoticeUrlImporter({
           : hasValue
             ? liveValidation.error
             : '请输入以 http:// 或 https:// 开头的公开招标公告链接。'}
-      </p>
+      </p> : null}
       {state.type !== 'idle' && (
         <p
           className={`project-tender-url-import__message project-tender-url-import__message--${state.type}`}
@@ -452,6 +525,31 @@ function TenderNoticeUrlImporter({
       {standalone ? null : (
         <div className="project-tender-url-import__divider"><span>或手动上传招标公告文件</span></div>
       )}
+      {importedFiles.length > 0 ? (
+        <ul className="project-upload-card__selected project-tender-url-import__files" aria-label="公告地址导入文件">
+          {importedFiles.map((file) => (
+            <li key={file.id}>
+              <FileText aria-hidden="true" size={14} />
+              <span>{file.name}</span>
+              <span aria-label={`${file.name}已上传`} className="project-upload-card__selected-status project-upload-card__selected-status--success" role="img">
+                <CheckCircle2 aria-hidden="true" size={14} />
+              </span>
+              {onRemoveFile ? (
+                <button
+                  aria-label={`删除${file.name}`}
+                  className="project-upload-card__remove"
+                  disabled={removingFileIds.has(file.id)}
+                  onClick={() => void removeImportedFile(file)}
+                  type="button"
+                >
+                  {removingFileIds.has(file.id) ? <LoaderCircle aria-hidden="true" size={14} /> : <Trash2 aria-hidden="true" size={14} />}
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {removeError ? <p className="project-tender-url-import__message project-tender-url-import__message--error" role="alert">{removeError}</p> : null}
     </section>
   );
 }
@@ -464,6 +562,7 @@ export function ProjectMaterialUpload({
   projectId,
   projectName,
   onUpload,
+  onRemoveMaterial,
   existingBidFileNames = [],
   mode = 'legacy',
   onExistingBidUpload,
@@ -471,6 +570,9 @@ export function ProjectMaterialUpload({
   onImportTenderNoticeUrl,
   supplementalFileNames = [],
   tenderFileNames = [],
+  supplementalFiles = [],
+  tenderFiles = [],
+  urlImportedFiles = [],
 }: EnhancedProjectMaterialUploadProps) {
   const dispatchProjectFiles = async (files: FileList | null) => {
     const selectedFiles = toFiles(files);
@@ -524,10 +626,14 @@ export function ProjectMaterialUpload({
               inputLabel="选择或拖拽招标材料"
               accept={BACKEND_UPLOAD_ACCEPT}
               selectedNames={tenderFileNames}
+              persistedFiles={tenderFiles}
+              onRemoveFile={onRemoveMaterial ? (fileId) => onRemoveMaterial(projectId, fileId) : undefined}
               showScope={false}
               onFiles={dispatchProjectFiles}
             />
             <TenderNoticeUrlImporter
+              importedFiles={urlImportedFiles}
+              onRemoveFile={onRemoveMaterial ? (fileId) => onRemoveMaterial(projectId, fileId) : undefined}
               standalone
               projectId={projectId}
               onImport={onImportTenderNoticeUrl}
@@ -556,6 +662,8 @@ export function ProjectMaterialUpload({
             inputLabel="选择或拖拽补充资料"
             accept={BACKEND_UPLOAD_ACCEPT}
             selectedNames={supplementalFileNames}
+            persistedFiles={supplementalFiles}
+            onRemoveFile={onRemoveMaterial ? (fileId) => onRemoveMaterial(projectId, fileId) : undefined}
             showScope={false}
             onFiles={dispatchSupplementalFiles}
           />

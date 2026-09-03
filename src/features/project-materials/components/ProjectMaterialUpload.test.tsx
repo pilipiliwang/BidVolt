@@ -37,6 +37,35 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     expect(urlCard?.parentElement).toBe(primaryRow);
     expect(screen.getByRole('heading', { name: /补充资料/ }).closest('article')?.parentElement)
       .toHaveClass('project-upload-card-list');
+    expect(screen.getByText('必填')).toHaveClass('is-required');
+    expect(screen.getAllByText('可选').every((label) => label.classList.contains('is-optional')))
+      .toBe(true);
+    expect(urlCard.querySelector('.project-tender-url-import__heading > span')).toBeNull();
+  });
+
+  it('将网址导入文件放在网址区域并允许调用真实删除回调', async () => {
+    const user = userEvent.setup();
+    const onRemoveMaterial = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onRemoveMaterial={onRemoveMaterial}
+        onSupplementalUpload={vi.fn()}
+        onUpload={vi.fn()}
+        urlImportedFiles={[{ id: '91', name: 'portal.html' }]}
+      />,
+    );
+
+    const urlCard = screen.getByRole('region', { name: '粘贴招标公告地址' });
+    expect(within(urlCard).getByRole('list', { name: '公告地址导入文件' }))
+      .toHaveTextContent('portal.html');
+    expect(within(urlCard).queryByText('请输入以 http:// 或 https:// 开头的公开招标公告链接。'))
+      .not.toBeInTheDocument();
+
+    await user.click(within(urlCard).getByRole('button', { name: '删除portal.html' }));
+    expect(onRemoveMaterial).toHaveBeenCalledWith('BV-2026-018', '91');
   });
 
   it('generation 模式仍把两个入口分别交给原有真实回调', async () => {
@@ -199,6 +228,8 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     );
     expect(await screen.findByText('公告与附件已进入解析队列')).toBeInTheDocument();
     expect(input).toHaveValue('');
+    expect(screen.queryByText('请输入以 http:// 或 https:// 开头的公开招标公告链接。'))
+      .not.toBeInTheDocument();
   });
 
   it('识别复制链接首尾的不可见字符，并明确显示公开 HTTPS 地址可导入', async () => {
