@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import {
   useId,
+  useRef,
   useState,
   type ChangeEvent,
   type DragEvent,
@@ -27,8 +28,15 @@ type UploadCardProps = {
   onFiles: (files: FileList | null) => Promise<void> | void;
   required?: boolean;
   selectedNames?: string[];
+  showImmediateStatus?: boolean;
   showScope?: boolean;
   title: string;
+};
+
+type LocalUploadItem = {
+  id: string;
+  name: string;
+  status: 'error' | 'success' | 'uploading';
 };
 
 type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
@@ -81,29 +89,54 @@ function UploadCard({
   onFiles,
   required = false,
   selectedNames = [],
+  showImmediateStatus = true,
   showScope = true,
   title,
 }: UploadCardProps) {
   const inputId = useId();
-  const [uploadState, setUploadState] = useState<{
-    message: string;
-    type: 'error' | 'idle' | 'loading' | 'success';
-  }>({ message: '', type: 'idle' });
+  const uploadSequenceRef = useRef(0);
+  const [localUploadItems, setLocalUploadItems] = useState<LocalUploadItem[]>([]);
+  const [uploadError, setUploadError] = useState('');
+  const isUploading = localUploadItems.some((item) => item.status === 'uploading');
 
   const submitFiles = async (files: FileList | null) => {
-    if (!files?.length || uploadState.type === 'loading') return;
+    if (!files?.length || isUploading) return;
+    const selectedFiles = Array.from(files);
     try {
       validateUploadFiles(files, accept);
-      setUploadState({ message: '正在上传文件…', type: 'loading' });
-      await onFiles(files);
-      setUploadState({ message: '文件上传完成，解析状态将从服务端刷新。', type: 'success' });
     } catch (error) {
-      setUploadState({
-        message: error instanceof Error && error.message
-          ? error.message
-          : '文件上传失败，请重试。',
-        type: 'error',
-      });
+      setUploadError(error instanceof Error && error.message
+        ? error.message
+        : '文件校验失败，请重新选择。');
+      return;
+    }
+
+    const uploadSequence = ++uploadSequenceRef.current;
+    const selectedNames = new Set(selectedFiles.map((file) => file.name));
+    const pendingItems = selectedFiles.map((file, index): LocalUploadItem => ({
+      id: `${uploadSequence}-${index}`,
+      name: file.name,
+      status: 'uploading',
+    }));
+    const pendingIds = new Set(pendingItems.map((item) => item.id));
+    setUploadError('');
+    setLocalUploadItems((current) => [
+      ...current.filter((item) => !selectedNames.has(item.name)),
+      ...pendingItems,
+    ]);
+
+    try {
+      await onFiles(files);
+      setLocalUploadItems((current) => current.map((item) => (
+        pendingIds.has(item.id) ? { ...item, status: 'success' } : item
+      )));
+    } catch (error) {
+      setLocalUploadItems((current) => current.map((item) => (
+        pendingIds.has(item.id) ? { ...item, status: 'error' } : item
+      )));
+      setUploadError(error instanceof Error && error.message
+        ? error.message
+        : '文件上传失败，请重试。');
     }
   };
 
@@ -118,7 +151,10 @@ function UploadCard({
     void submitFiles(event.dataTransfer.files);
   };
 
-  const isUploading = uploadState.type === 'loading';
+  const visibleLocalUploadItems = showImmediateStatus ? localUploadItems : [];
+  const locallySelectedNames = new Set(visibleLocalUploadItems.map((item) => item.name));
+  const persistedNames = selectedNames.filter((name) => !locallySelectedNames.has(name));
+  const hasSelectedFiles = visibleLocalUploadItems.length > 0 || persistedNames.length > 0;
 
   return (
     <article className="project-upload-card">
@@ -164,32 +200,42 @@ function UploadCard({
         onChange={handleChange}
       />
 
-      {uploadState.type !== 'idle' && (
-        <div className={`project-upload-card__feedback project-upload-card__feedback--${uploadState.type}`}>
-          <p
-            className={`project-upload-card__message project-upload-card__message--${uploadState.type}`}
-            role={uploadState.type === 'error' ? 'alert' : 'status'}
-          >
-            {uploadState.type === 'error'
-              ? <AlertCircle aria-hidden="true" size={14} />
-              : uploadState.type === 'success'
-                ? <CheckCircle2 aria-hidden="true" size={14} />
-                : <LoaderCircle aria-hidden="true" size={14} />}
-            {uploadState.message}
-          </p>
-          {uploadState.type === 'loading' ? (
-            <progress aria-label={`${title}上传进度`} />
-          ) : null}
-        </div>
-      )}
+      {uploadError ? <p className="project-upload-card__error" role="alert">{uploadError}</p> : null}
 
-      {selectedNames.length > 0 && (
+      {hasSelectedFiles && (
         <ul className="project-upload-card__selected" aria-label={`${title}已选择文件`}>
-          {selectedNames.map((name, index) => (
+          {visibleLocalUploadItems.map((item) => (
+            <li key={item.id}>
+              <FileText aria-hidden="true" size={14} />
+              <span>{item.name}</span>
+              <span
+                aria-label={`${item.name}${item.status === 'uploading'
+                  ? '上传中'
+                  : item.status === 'success'
+                    ? '上传成功'
+                    : '上传失败'}`}
+                className={`project-upload-card__selected-status project-upload-card__selected-status--${item.status}`}
+                role="img"
+              >
+                {item.status === 'uploading'
+                  ? <LoaderCircle aria-hidden="true" size={14} />
+                  : item.status === 'success'
+                    ? <CheckCircle2 aria-hidden="true" size={14} />
+                    : <AlertCircle aria-hidden="true" size={14} />}
+              </span>
+            </li>
+          ))}
+          {persistedNames.map((name, index) => (
             <li key={`${name}-${index}`}>
               <FileText aria-hidden="true" size={14} />
               <span>{name}</span>
-              <CheckCircle2 aria-hidden="true" size={14} />
+              <span
+                aria-label={`${name}已上传`}
+                className="project-upload-card__selected-status project-upload-card__selected-status--success"
+                role="img"
+              >
+                <CheckCircle2 aria-hidden="true" size={14} />
+              </span>
             </li>
           ))}
         </ul>
@@ -199,6 +245,11 @@ function UploadCard({
 }
 
 const LOCAL_HOST_NAMES = new Set(['localhost', 'localhost.localdomain', '0.0.0.0']);
+const URL_EDGE_ARTIFACTS = /^[\s\u200B-\u200D\u2060\uFEFF]+|[\s\u200B-\u200D\u2060\uFEFF]+$/gu;
+
+export function normalizeTenderNoticeUrlInput(value: string): string {
+  return value.replace(URL_EDGE_ARTIFACTS, '');
+}
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split('.');
@@ -235,12 +286,12 @@ function isPrivateIpv6(hostname: string): boolean {
 }
 
 export function validateTenderNoticeUrl(value: string): { error?: string; url?: string } {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) return { error: '请输入招标公告网页地址。' };
+  const normalizedValue = normalizeTenderNoticeUrlInput(value);
+  if (!normalizedValue) return { error: '请输入招标公告网页地址。' };
 
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(trimmedValue);
+    parsedUrl = new URL(normalizedValue);
   } catch {
     return { error: '网址格式不正确，请输入完整的 http:// 或 https:// 地址。' };
   }
@@ -280,6 +331,11 @@ function TenderNoticeUrlImporter({
   const [state, setState] = useState<
     { message: string; type: 'error' | 'idle' | 'loading' | 'success' }
   >({ message: '', type: 'idle' });
+  const normalizedValue = normalizeTenderNoticeUrlInput(value);
+  const liveValidation = validateTenderNoticeUrl(value);
+  const hasValue = normalizedValue.length > 0;
+  const isUrlValid = Boolean(liveValidation.url);
+  const helperId = `${inputId}-help`;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -332,6 +388,8 @@ function TenderNoticeUrlImporter({
           <Link2 aria-hidden="true" size={16} />
           <input
             id={inputId}
+            aria-describedby={helperId}
+            aria-invalid={hasValue && !isUrlValid ? true : undefined}
             autoComplete="url"
             disabled={isLoading}
             inputMode="url"
@@ -342,20 +400,41 @@ function TenderNoticeUrlImporter({
               setValue(event.currentTarget.value);
               if (state.type !== 'idle') setState({ message: '', type: 'idle' });
             }}
+            onBlur={() => {
+              if (normalizedValue !== value) setValue(normalizedValue);
+            }}
           />
         </div>
         <button
           className={isLoading ? 'is-loading' : undefined}
-          disabled={isLoading || !value.trim() || !onImport}
+          disabled={isLoading || !isUrlValid || !onImport}
           type="submit"
         >
           {isLoading ? <LoaderCircle aria-hidden="true" size={16} /> : <Link2 aria-hidden="true" size={16} />}
           {isLoading ? '正在导入…' : '导入并解析'}
         </button>
       </form>
-      <p className="project-tender-url-import__security">
-        <ShieldCheck aria-hidden="true" size={14} />
-        仅支持可公开访问的 HTTP/HTTPS 地址。
+      <p
+        className={`project-tender-url-import__security${
+          isUrlValid
+            ? ' project-tender-url-import__security--valid'
+            : hasValue
+              ? ' project-tender-url-import__security--invalid'
+              : ''
+        }`}
+        id={helperId}
+        role={hasValue && !isUrlValid ? 'alert' : undefined}
+      >
+        {isUrlValid
+          ? <CheckCircle2 aria-hidden="true" size={14} />
+          : hasValue
+            ? <AlertCircle aria-hidden="true" size={14} />
+            : <ShieldCheck aria-hidden="true" size={14} />}
+        {isUrlValid
+          ? '网址格式正确，可提交服务端检查并导入。'
+          : hasValue
+            ? liveValidation.error
+            : '请输入以 http:// 或 https:// 开头的公开招标公告链接。'}
       </p>
       {state.type !== 'idle' && (
         <p
@@ -487,6 +566,7 @@ export function ProjectMaterialUpload({
             inputLabel="选择或拖拽已制作完成的标书"
             accept={BACKEND_UPLOAD_ACCEPT}
             selectedNames={existingBidFileNames}
+            showImmediateStatus={false}
             onFiles={dispatchExistingBidFiles}
           />
         )}

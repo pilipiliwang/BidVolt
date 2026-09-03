@@ -151,6 +151,7 @@ import {
 } from './enterprise-data';
 import {
   buildProjectOverviewVersionOptions,
+  findTaskDeliverableEditorTarget,
   isCurrentDeliverableVersionFromTask,
   loadDeliverableVersionLists,
   type DeliverableTaskIdentity,
@@ -362,6 +363,11 @@ export function App() {
   const projectResourceGenerationRef = useRef<Record<string, number>>({});
   const taskEventsRef = useRef<Record<string, PublicTaskEvent[]>>({});
   const pendingAgentTaskReceiptRef = useRef<Record<string, string>>({});
+  const pendingGenerationEditorNavigationRef = useRef<{
+    hasReachedOverview: boolean;
+    projectId: string;
+    taskId: string;
+  } | null>(null);
   const taskLoadGenerationRef = useRef<Record<string, number>>({});
   const taskSnapshotRequestRef = useRef(new Map<string, Promise<BackendTask[]>>());
   const enterpriseCategoryRecordsRef = useRef<EnterpriseCategory[]>([]);
@@ -410,6 +416,7 @@ export function App() {
     projectResourceGenerationRef.current = {};
     taskEventsRef.current = {};
     pendingAgentTaskReceiptRef.current = {};
+    pendingGenerationEditorNavigationRef.current = null;
     taskLoadGenerationRef.current = {};
     taskSnapshotRequestRef.current.clear();
     enterpriseCategoryRecordsRef.current = [];
@@ -1027,6 +1034,44 @@ export function App() {
           : latest
       ), undefined)
     : undefined;
+
+  useEffect(() => {
+    const pending = pendingGenerationEditorNavigationRef.current;
+    if (!pending) return;
+    if (!routeProjectId || routeProjectId !== pending.projectId) {
+      pendingGenerationEditorNavigationRef.current = null;
+      return;
+    }
+    if (route.name === 'project-overview') {
+      pending.hasReachedOverview = true;
+    } else if (pending.hasReachedOverview) {
+      // Once the safe progress page has been shown, respect any later manual
+      // navigation instead of unexpectedly pulling the user into an editor.
+      pendingGenerationEditorNavigationRef.current = null;
+      return;
+    }
+
+    const data = projectData[pending.projectId];
+    const matchingRun = data?.agentRun?.taskId === pending.taskId ? data.agentRun : undefined;
+    if (matchingRun && ['cancelled', 'failed', 'incomplete'].includes(matchingRun.completion)) {
+      pendingGenerationEditorNavigationRef.current = null;
+      return;
+    }
+    const target = data && findTaskDeliverableEditorTarget(
+      data.deliverables,
+      data.deliverableVersions,
+      pending.taskId,
+    );
+    if (!target) return;
+
+    pendingGenerationEditorNavigationRef.current = null;
+    setTaskDrawerProjectId(null);
+    navigate(deliverableEditorPath(
+      pending.projectId,
+      target.deliverableId,
+      target.versionId,
+    ), { replace: true });
+  }, [projectData, route.name, routeProjectId]);
 
   useEffect(() => {
     if (authState !== 'authenticated'
@@ -1938,7 +1983,20 @@ export function App() {
           },
         };
       });
-      setTaskDrawerProjectId(projectId);
+      if (mode === 'generate') {
+        pendingGenerationEditorNavigationRef.current = {
+          hasReachedOverview: false,
+          projectId,
+          taskId: agentRun.taskId,
+        };
+        setTaskDrawerProjectId(null);
+        // POST /agent-run currently guarantees a task id, but not a persisted
+        // deliverable/version id. The project overview is the safe in-project
+        // progress destination until a version linked by source_task_id exists.
+        navigate(`/projects/${encodeURIComponent(projectId)}/overview`);
+      } else {
+        setTaskDrawerProjectId(projectId);
+      }
       taskSnapshotRequestRef.current.delete(projectId);
       await loadProject(projectId);
     } catch (error) {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,6 +8,16 @@ const baseProps = {
   projectId: 'BV-2026-018',
   projectName: '虚拟电厂数据融合系统',
 };
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 describe('ProjectMaterialUpload tender notice URL import', () => {
   it('在 generation 模式将文件和网址入口并列，并让补充资料独占下一行', () => {
@@ -54,6 +64,46 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
       'BV-2026-018',
       'https://notice.example.gov.cn/42',
     );
+  });
+
+  it('选择招标材料和补充资料后立即逐文件展示真实上传状态', async () => {
+    const user = userEvent.setup();
+    const tenderUpload = deferred<void>();
+    const supplementalUpload = deferred<void>();
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onSupplementalUpload={() => supplementalUpload.promise}
+        onUpload={() => tenderUpload.promise}
+      />,
+    );
+
+    const tenderFile = new File(['notice'], '招标文件.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('选择或拖拽招标材料'), tenderFile);
+
+    const tenderList = screen.getByRole('list', { name: '上传招标材料已选择文件' });
+    expect(within(tenderList).getByText('招标文件.pdf')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '招标文件.pdf上传中' }))
+      .toHaveClass('project-upload-card__selected-status--uploading');
+
+    await act(async () => tenderUpload.resolve());
+    expect(await screen.findByRole('img', { name: '招标文件.pdf上传成功' }))
+      .toHaveClass('project-upload-card__selected-status--success');
+
+    const supplementalFile = new File(['appendix'], '补充说明.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    await user.upload(screen.getByLabelText('选择或拖拽补充资料'), supplementalFile);
+
+    const supplementalList = screen.getByRole('list', { name: '补充资料已选择文件' });
+    expect(within(supplementalList).getByText('补充说明.docx')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '补充说明.docx上传中' }))
+      .toHaveClass('project-upload-card__selected-status--uploading');
+
+    await act(async () => supplementalUpload.resolve());
+    expect(await screen.findByRole('img', { name: '补充说明.docx上传成功' }))
+      .toHaveClass('project-upload-card__selected-status--success');
   });
 
   it('保留手动上传招标公告文件功能', async () => {
@@ -121,6 +171,8 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     await user.upload(screen.getByLabelText('选择或拖拽招标材料'), file);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('招标公告.pdf：文件为空');
+    expect(screen.getByRole('img', { name: '招标公告.pdf上传失败' }))
+      .toHaveClass('project-upload-card__selected-status--error');
     expect(screen.queryByText('文件上传完成，解析状态将从服务端刷新。')).not.toBeInTheDocument();
   });
 
@@ -147,6 +199,53 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     );
     expect(await screen.findByText('公告与附件已进入解析队列')).toBeInTheDocument();
     expect(input).toHaveValue('');
+  });
+
+  it('识别复制链接首尾的不可见字符，并明确显示公开 HTTPS 地址可导入', async () => {
+    const user = userEvent.setup();
+    const onImportTenderNoticeUrl = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+      />,
+    );
+
+    const input = screen.getByLabelText('招标公告网址');
+    fireEvent.change(input, {
+      target: { value: '\u200Bhttps://notice.example.gov.cn/tender/42\u2060' },
+    });
+
+    expect(screen.getByText('网址格式正确，可提交服务端检查并导入。')).toBeInTheDocument();
+    expect(screen.queryByText('仅支持可公开访问的 HTTP/HTTPS 地址。')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导入并解析' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: '导入并解析' }));
+
+    expect(onImportTenderNoticeUrl).toHaveBeenCalledWith(
+      'BV-2026-018',
+      'https://notice.example.gov.cn/tender/42',
+    );
+  });
+
+  it('未输入完整协议时展示真实校验错误并禁用导入按钮', () => {
+    const onImportTenderNoticeUrl = vi.fn();
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        onImportTenderNoticeUrl={onImportTenderNoticeUrl}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('招标公告网址'), {
+      target: { value: 'notice.example.gov.cn/tender/42' },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '网址格式不正确，请输入完整的 http:// 或 https:// 地址。',
+    );
+    expect(screen.getByRole('button', { name: '导入并解析' })).toBeDisabled();
+    expect(onImportTenderNoticeUrl).not.toHaveBeenCalled();
   });
 
   it.each([

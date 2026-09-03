@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Deliverable, DeliverableVersion } from '../shared/backend-api';
 import {
   buildProjectOverviewVersionOptions,
+  findTaskDeliverableEditorTarget,
   isCurrentDeliverableVersionFromTask,
   loadDeliverableVersionLists,
 } from './deliverable-versions';
@@ -38,6 +39,26 @@ const version = (versionNo: number): DeliverableVersion => ({
 });
 
 describe('deliverable version data', () => {
+  it('routes to the newest persisted version explicitly produced by the started task', () => {
+    expect(findTaskDeliverableEditorTarget(deliverables, {
+      '11': [
+        { ...version(2), source_task_id: 901 },
+        { ...version(3), source_task_id: 901 },
+      ],
+      '12': [{ ...version(4), source_task_id: 901 }],
+    }, '901')).toEqual({ deliverableId: 'business', versionId: '3' });
+  });
+
+  it('does not invent an editor target from an older or untraceable current version', () => {
+    expect(findTaskDeliverableEditorTarget(deliverables, {
+      '11': [{ ...version(2), source_task_id: 900 }],
+      '12': [{ ...version(4), source_task_id: null }],
+    }, 901)).toBeNull();
+    expect(findTaskDeliverableEditorTarget(deliverables, {
+      '11': [{ ...version(2), source_task_id: 901 }],
+    }, null)).toBeNull();
+  });
+
   it('uses source_task_id as the authoritative latest-task match', () => {
     expect(isCurrentDeliverableVersionFromTask({
       currentVersion: { ...version(2), source_task_id: 901, created_at: '2026-09-03T09:00:00Z' },

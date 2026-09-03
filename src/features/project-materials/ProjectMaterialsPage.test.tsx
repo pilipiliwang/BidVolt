@@ -128,15 +128,15 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('正在解析招标材料');
-    expect(screen.getByRole('progressbar', { name: '招标材料解析进度' }))
-      .toHaveAttribute('value', '1');
+    expect(screen.queryByText('正在解析招标材料')).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: '招标材料解析进度' }))
+      .not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '返回任务选择' })).toBeInTheDocument();
     expect(screen.queryByText('本次任务文件')).not.toBeInTheDocument();
   });
 
-  it('shows central loading while a tender notice import has not created materials yet', () => {
+  it('keeps URL import progress out of the page-level preparation header', () => {
     render(
       <ProjectMaterialsPage
         initialWorkflowMode="generate"
@@ -155,8 +155,9 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('正在下载并解析招标公告');
-    expect(screen.getByRole('progressbar', { name: '招标公告导入进度' })).toBeInTheDocument();
+    expect(screen.queryByText('正在下载并解析招标公告')).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: '招标公告导入进度' }))
+      .not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
     expect(screen.queryByText('请先上传招标材料，或粘贴招标公告网址并完成解析。'))
       .not.toBeInTheDocument();
@@ -187,7 +188,7 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('招标材料解析完成');
+    expect(screen.queryByText('招标材料解析完成')).not.toBeInTheDocument();
     const startButton = screen.getByRole('button', { name: /确认材料并开始生成标书/ });
     expect(startButton).toBeEnabled();
     await user.click(startButton);

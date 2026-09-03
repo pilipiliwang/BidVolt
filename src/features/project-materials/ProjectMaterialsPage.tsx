@@ -380,9 +380,6 @@ export function ProjectMaterialsPage({
   const importingTenderNoticeWithoutMaterials = Boolean(
     workflowFacts.tenderImporting && tenderPreparation.total === 0,
   );
-  const tenderPreparationDisplayState = importingTenderNoticeWithoutMaterials
-    ? 'processing'
-    : tenderPreparation.state;
   const workflowPhase = resolveProjectWorkflowPhase(workflowFacts);
   const workflowResourceState = workflowFacts.materialsState !== undefined
     && workflowFacts.materialsState !== 'ready'
@@ -488,44 +485,6 @@ export function ProjectMaterialsPage({
                   <p>上传招标材料并按需补充项目资料，解析完成后即可确认生成。</p>
                 </div>
               </header>
-              {tenderPreparation.state !== 'empty' || importingTenderNoticeWithoutMaterials ? (
-                <div
-                  aria-live="polite"
-                  className={`project-generation-setup__status project-generation-setup__status--${tenderPreparationDisplayState}`}
-                  role={tenderPreparationDisplayState === 'error' ? 'alert' : 'status'}
-                >
-                  <span className="project-generation-setup__status-icon" aria-hidden="true">
-                    {tenderPreparationDisplayState === 'ready' ? <CheckCircle2 size={20} />
-                      : tenderPreparationDisplayState === 'error' ? <AlertTriangle size={20} />
-                        : <LoaderCircle size={20} />}
-                  </span>
-                  <span className="project-generation-setup__status-copy">
-                    <strong>{importingTenderNoticeWithoutMaterials
-                      ? '正在下载并解析招标公告'
-                      : tenderPreparationDisplayState === 'ready'
-                      ? '招标材料解析完成'
-                      : tenderPreparationDisplayState === 'error'
-                        ? '部分招标材料解析失败'
-                        : '正在解析招标材料'}</strong>
-                    <small>{importingTenderNoticeWithoutMaterials
-                      ? '公告已提交，服务端处理完成后将自动同步为项目材料。'
-                      : tenderPreparationDisplayState === 'ready'
-                      ? `已完成 ${tenderPreparation.parsed}/${tenderPreparation.total} 项，可以确认开始生成。`
-                      : tenderPreparationDisplayState === 'error'
-                        ? `解析成功 ${tenderPreparation.parsed} 项，失败 ${tenderPreparation.failed} 项，请处理后再确认。`
-                        : `已完成 ${tenderPreparation.parsed}/${tenderPreparation.total} 项${tenderPreparation.processing > 0 ? `，处理中 ${tenderPreparation.processing} 项` : ''}${tenderPreparation.unknown > 0 ? `，等待状态 ${tenderPreparation.unknown} 项` : ''}。`}</small>
-                  </span>
-                  {importingTenderNoticeWithoutMaterials ? (
-                    <progress aria-label="招标公告导入进度" />
-                  ) : (
-                    <progress
-                      aria-label="招标材料解析进度"
-                      max={Math.max(1, tenderPreparation.total)}
-                      value={tenderPreparation.parsed}
-                    />
-                  )}
-                </div>
-              ) : null}
               <ProjectMaterialUpload
                 mode="generation"
                 projectId={projectId}

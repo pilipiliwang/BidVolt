@@ -15,6 +15,11 @@ export type DeliverableVersionOption = {
   isCurrent?: boolean;
 };
 
+export type TaskDeliverableEditorTarget = {
+  deliverableId: DeliverableRouteId;
+  versionId: string;
+};
+
 export type DeliverableTaskIdentity = {
   occurred_at?: string | null;
   task_id?: number | string | null;
@@ -39,6 +44,35 @@ function positiveInteger(value: number | undefined) {
 function normalizedId(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === '') return null;
   return String(value);
+}
+
+/**
+ * Resolves an editor route only when a persisted backend version explicitly
+ * identifies the task that created it. This intentionally does not fall back
+ * to current_version_no: doing so could send a newly started task to an older
+ * project's result while the new version is still being generated.
+ */
+export function findTaskDeliverableEditorTarget(
+  deliverables: readonly Deliverable[],
+  versionsById: DeliverableVersionsById,
+  taskId: number | string | null | undefined,
+): TaskDeliverableEditorTarget | null {
+  const normalizedTaskId = normalizedId(taskId);
+  if (normalizedTaskId === null) return null;
+
+  for (const deliverable of deliverables) {
+    const deliverableId = routeIdByDeliverableType[deliverable.deliverable_type];
+    if (!deliverableId) continue;
+    const version = [...(versionsById[String(deliverable.deliverable_id)] ?? [])]
+      .filter((candidate) => (
+        positiveInteger(candidate.version_no) !== undefined
+        && normalizedId(candidate.source_task_id) === normalizedTaskId
+      ))
+      .sort((left, right) => right.version_no - left.version_no)[0];
+    if (!version) continue;
+    return { deliverableId, versionId: String(version.version_no) };
+  }
+  return null;
 }
 
 function timestamp(value: string | null | undefined) {

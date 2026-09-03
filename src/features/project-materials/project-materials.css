@@ -186,33 +186,9 @@
   line-height: 1.5;
 }
 
-.project-upload-card__feedback {
-  display: grid;
-  gap: 7px;
+.project-upload-card .project-upload-card__error {
   margin-top: 9px;
-}
-
-.project-upload-card__feedback progress,
-.project-generation-setup__status progress {
-  width: 100%;
-  height: 5px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 99px;
-  accent-color: var(--project-accent);
-  background: #e5eee9;
-}
-
-.project-upload-card__feedback progress::-webkit-progress-bar,
-.project-generation-setup__status progress::-webkit-progress-bar {
-  border-radius: inherit;
-  background: #e5eee9;
-}
-
-.project-upload-card__feedback progress::-webkit-progress-value,
-.project-generation-setup__status progress::-webkit-progress-value {
-  border-radius: inherit;
-  background: var(--project-accent);
+  color: #b42318;
 }
 
 .project-upload-card__scope {
@@ -342,6 +318,8 @@
 }
 
 .project-tender-url-import__security { color: #64766c; }
+.project-tender-url-import__security--valid { color: #087c47; }
+.project-tender-url-import__security--invalid { color: #b42318; }
 .project-tender-url-import__security svg,
 .project-tender-url-import__message svg { flex: 0 0 auto; margin-top: 1px; }
 .project-tender-url-import__message--loading { color: #286bc7; }
@@ -423,8 +401,18 @@
   background: #f7faf8;
   font-size: var(--font-size-xs);
 }
-.project-upload-card__selected li svg:first-child { color: #296ddd; }
-.project-upload-card__selected li svg:last-child { color: var(--project-accent); }
+.project-upload-card__selected li > svg:first-child { color: #296ddd; }
+.project-upload-card__selected-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.project-upload-card__selected-status--uploading { color: #2d6fb7; }
+.project-upload-card__selected-status--uploading svg {
+  animation: project-material-spin 1.1s linear infinite;
+}
+.project-upload-card__selected-status--success { color: var(--project-accent); }
+.project-upload-card__selected-status--error { color: #d13b31; }
 
 .project-section-heading {
   display: flex;
@@ -694,49 +682,6 @@
 .project-generation-setup__start:hover:not(:disabled) { background: var(--project-accent-deep); }
 .project-generation-setup__actions button:disabled { cursor: not-allowed; opacity: .55; }
 
-.project-generation-setup__status {
-  display: grid;
-  width: 100%;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  margin: 12px auto 0;
-  padding: 11px 13px;
-  border: 1px solid #cde4d6;
-  border-radius: 9px;
-  color: #256548;
-  background: #f6fbf8;
-}
-
-.project-generation-setup__status--error {
-  border-color: #f0c9c4;
-  color: #a63b31;
-  background: #fff8f7;
-}
-
-.project-generation-setup__status-icon {
-  display: grid;
-  place-items: center;
-}
-
-.project-generation-setup__status--processing .project-generation-setup__status-icon svg {
-  animation: project-material-spin 1.2s linear infinite;
-}
-
-.project-generation-setup__status-copy strong,
-.project-generation-setup__status-copy small {
-  display: block;
-}
-
-.project-generation-setup__status-copy strong { font-size: 13px; }
-.project-generation-setup__status-copy small {
-  margin-top: 2px;
-  color: #64766c;
-  font-size: 12px;
-}
-
-.project-generation-setup__status progress { grid-column: 2; }
-
 .project-generation-setup__hint,
 .project-generation-setup__error {
   max-width: 880px;
@@ -952,7 +897,6 @@
   .project-material-content { padding: 14px; }
   .project-generation-setup { padding: 18px 14px; }
   .project-generation-setup__header { align-items: stretch; flex-direction: column; }
-  .project-generation-setup__status { grid-template-columns: auto minmax(0, 1fr); }
   .project-upload-card-list__primary { grid-template-columns: 1fr; }
   .project-tender-url-import__form { grid-template-columns: 1fr; }
   .project-tender-url-import__form button { justify-self: stretch; }
@@ -988,6 +932,7 @@
 @media (prefers-reduced-motion: reduce) {
   .project-section-heading__toggle svg { transition: none; }
   .project-parse-state svg,
+  .project-upload-card__selected-status--uploading svg,
   .project-tender-url-import__form button svg,
   .project-tender-url-import__message svg { animation: none; }
 }
