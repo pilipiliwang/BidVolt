@@ -73,14 +73,58 @@ describe('ProjectListPage', () => {
     expect(screen.queryByText('2099-08-21 10:00')).not.toBeInTheDocument();
   });
 
-  it('maps backend proposal-compilation projects to bid production and resumes that workflow directly', () => {
-    const project = { ...projectSummaries[0]!, stage: '方案编制' as const };
-    render(<ProjectListPage projects={[project]} onCreateProject={vi.fn()} />);
+  it('keeps every mobile card label paired with one value container, including multi-part cells', () => {
+    renderProjectList();
 
-    expect(screen.getByText('标书制作/审核')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '进入海上平台电气设备采购项目工作台' }))
-      .toHaveAttribute('href', '/projects/BV-2026-018/materials?workflow=generate');
+    const table = screen.getByRole('table', { name: '投标项目' });
+    const headings = within(table).getAllByRole('columnheader').map((heading) => heading.textContent);
+    const rows = within(table).getAllByRole('row').slice(1);
+    for (const row of rows) {
+      within(row).getAllByRole('cell').forEach((cell, index) => {
+        expect(cell).toHaveAttribute('data-label', headings[index]);
+        expect(cell.children).toHaveLength(1);
+        expect(cell.firstElementChild).toHaveClass('ui0802-project-cell-value');
+      });
+    }
+
+    const title = screen.getByText(projectSummaries[0]!.title);
+    expect(title.parentElement).toContainElement(screen.getByText(projectSummaries[0]!.buyer));
+    const deadline = screen.getByText('2099-08-21');
+    expect(deadline.parentElement?.querySelector('.ui0802-deadline-hint')).not.toBeNull();
   });
+
+  it('preserves complete long names and codes while providing keyboard access to the scrolling table', () => {
+    const project = {
+      ...projectSummaries[0]!,
+      title: '跨区域新能源电网调度系统设备采购及配套技术服务项目'.repeat(3),
+      code: 'BIDVOLT20260905ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(3),
+      buyer: '区域新能源电网技术服务有限公司'.repeat(3),
+    };
+    const onCreateProject = vi.fn();
+    const onArchiveProject = vi.fn();
+    render(<ProjectListPage projects={[project]} onCreateProject={onCreateProject} onArchiveProject={onArchiveProject} />);
+
+    expect(screen.getByText(project.title)).toHaveAttribute('title', project.title);
+    expect(screen.getByText(project.buyer)).toHaveAttribute('title', project.buyer);
+    expect(screen.getByText(project.code)).toHaveClass('ui0802-project-code');
+    expect(screen.getByRole('region', { name: '项目列表滚动区域' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('link', { name: `进入${project.title}工作台` })).toHaveAttribute('href', `/projects/${project.id}/overview`);
+    expect(onCreateProject).not.toHaveBeenCalled();
+    expect(onArchiveProject).not.toHaveBeenCalled();
+  });
+
+  it.each(['方案编制', '内部评审', '待提交'] as const)(
+    'reopens the selected generation workflow for a %s project regardless of stage',
+    (stage) => {
+      const project = { ...projectSummaries[0]!, stage };
+      window.localStorage.setItem('bidvolt:project-workflow-mode:BV-2026-018', 'generate');
+      render(<ProjectListPage projects={[project]} onCreateProject={vi.fn()} />);
+
+      expect(screen.getByRole('link', { name: '进入海上平台电气设备采购项目工作台' }))
+        .toHaveAttribute('href', '/projects/BV-2026-018/materials?workflow=generate');
+      window.localStorage.removeItem('bidvolt:project-workflow-mode:BV-2026-018');
+    },
+  );
 
   it('resumes a previously selected generation mode before the backend stage changes', () => {
     window.localStorage.setItem('bidvolt:project-workflow-mode:BV-2026-018', 'generate');

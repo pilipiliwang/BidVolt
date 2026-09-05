@@ -86,6 +86,8 @@ export interface EnterpriseUploadRecord {
 
 export type EnterpriseAssetPreview =
   | { kind: 'image' | 'pdf'; blob: Blob; mimeType: string }
+  | { kind: 'html'; blob: Blob; mimeType: string; unavailableReason?: string }
+  | { kind: 'office'; blob: Blob; mimeType: string }
   | { kind: 'text'; blocks: Array<{ id: string; pageNo?: number; text: string }> }
   | { kind: 'unsupported'; message: string };
 

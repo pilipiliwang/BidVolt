@@ -30,7 +30,7 @@ const capabilities = [
     icon: Building2,
     title: '企业资料自动归类',
     description:
-      '营业执照、资质、人员、业绩和产品资料统一沉淀，Agent 自动分类与抽取，人工纠正形成新修订。',
+      '营业执照、资质、人员、业绩和产品资料统一沉淀，BidVolt 自动分类与抽取，人工纠正形成新修订。',
     meta: '长期资产 · 跨项目复用',
   },
   {

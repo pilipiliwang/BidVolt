@@ -31,30 +31,89 @@
   --shadow-sm: 0 2px 8px rgb(7 28 39 / 5%);
   --shadow-md: 0 18px 48px rgb(7 28 39 / 10%);
   --sidebar-width: 258px;
-  --font-size-xs: clamp(12px, calc(11px + 0.08vw), 13px);
-  --font-size-sm: clamp(13px, calc(12px + 0.1vw), 14px);
-  --font-size-md: clamp(14px, calc(13px + 0.12vw), 16px);
+  --font-size-xs: 0.8125rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
   /* App stacking scale: local layers stay isolated; drawers cover page content. */
   --z-layer-content: 0;
   --z-layer-local-sticky: 1;
   --z-layer-drawer: 100;
+  --scrollbar-thumb: #9aafa4;
+  --scrollbar-thumb-hover: #708c7c;
+  --scrollbar-thumb-active: #3f765a;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Keep native scrolling; Chromium/WebKit gets the same slim, rounded rail on both axes. */
+@media (forced-colors: none) {
+  @supports selector(::-webkit-scrollbar) {
+    * {
+      /* Non-auto standard values take precedence over the WebKit pseudo-elements. */
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
+
+    *::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    *::-webkit-scrollbar-track,
+    *::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      min-width: 32px;
+      min-height: 32px;
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: var(--scrollbar-thumb);
+      background-clip: padding-box;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-hover);
+    }
+
+    *::-webkit-scrollbar-thumb:active {
+      background-color: var(--scrollbar-thumb-active);
+    }
+
+    *::-webkit-scrollbar-button {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+  }
+}
+
+/* Honor OS high-contrast preferences instead of imposing low-saturation custom controls. */
+@media (forced-colors: active) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
 }
 
 html {
-  min-width: 320px;
+  min-width: 0;
   min-height: 100%;
   background: #eef3f5;
-  font-size: clamp(15px, calc(13px + 0.16vw), 17px);
+  /* Keep text independent of viewport width and honor browser font settings.
+     Responsive layouts should reflow, not shrink the user's reading size. */
+  font-size: 100%;
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 0;
   min-height: 100vh;
   line-height: 1.5;
   background:

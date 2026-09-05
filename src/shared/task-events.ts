@@ -73,6 +73,8 @@ export type AgentQuestion = {
   askId: string;
   createdAt: string | null;
   items: AgentQuestionItem[];
+  /** Backend interaction kind. Omitted for legacy/question payloads for compatibility. */
+  kind?: string;
   legacy: boolean;
   timeoutNotified: boolean;
   windowMinutes: number | null;
@@ -83,6 +85,8 @@ export type AgentStreamState = 'idle' | 'connecting' | 'connected' | 'ended' | '
 /** A backend-DTO-free view model shared by the overview and task drawer. */
 export type AgentRunViewModel = {
   actionList: string[];
+  /** Stream boundary captured when this action list first arrived; not a live max. */
+  actionListAfterSequence?: number | null;
   completion: AgentRunCompletion;
   conversation: AgentConversationMessage[];
   errorMessage: string | null;
@@ -209,13 +213,19 @@ export function normalizeAgentQuestions(value: unknown): AgentQuestion[] {
   return value.flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== 'object') return [];
     const source = candidate as Record<string, unknown>;
-    if (source.kind !== undefined && source.kind !== 'question') return [];
-    const items = Array.isArray(source.items)
+    const kind = normalizedString(source.kind) ?? 'question';
+    let items = Array.isArray(source.items)
       ? source.items.flatMap((item) => {
         const normalized = normalizeAgentQuestionItem(item);
         return normalized ? [normalized] : [];
       })
       : [];
+    if (items.length === 0) {
+      const content = normalizedString(source.content)
+        ?? normalizedString(source.message)
+        ?? normalizedString(source.title);
+      if (content) items = [{ checked: '', need: '', question: content }];
+    }
     if (items.length === 0) return [];
     const rawAnswer = source.answer;
     const answer = typeof rawAnswer === 'string'
@@ -237,6 +247,7 @@ export function normalizeAgentQuestions(value: unknown): AgentQuestion[] {
       askId,
       createdAt: normalizedString(source.created_at),
       items,
+      ...(kind === 'question' ? {} : { kind }),
       legacy: source.legacy === true || source.ask_id === undefined || source.ask_id === null,
       timeoutNotified: source.timeout_notified === true,
       windowMinutes,
@@ -258,11 +269,13 @@ export function createAgentRunViewModel(
     questions,
     conversation = [],
     streamState = 'idle',
+    previousRun,
   }: {
     conversation?: AgentConversationMessage[];
     projectId: number | string;
     questions?: unknown;
     streamState?: AgentStreamState;
+    previousRun?: Pick<AgentRunViewModel, 'taskId' | 'actionList' | 'actionListAfterSequence'>;
   },
 ): AgentRunViewModel {
   const status = normalizeAgentRunStatus(source.status);
@@ -281,6 +294,8 @@ export function createAgentRunViewModel(
   );
   return {
     actionList,
+    actionListAfterSequence: resolveActionListBoundary(actionList, conversation,
+      previousRun?.taskId === String(source.task_id) ? previousRun : undefined),
     completion: resolveAgentRunCompletion(status, outcome),
     conversation: mergeAgentConversationMessages([], conversation),
     errorMessage: publicErrorMessage(source.error),
@@ -300,6 +315,23 @@ export function createAgentRunViewModel(
   };
 }
 
+function resolveActionListBoundary(
+  actionList: readonly string[],
+  conversation: readonly AgentConversationMessage[],
+  previous?: Pick<AgentRunViewModel, 'actionList' | 'actionListAfterSequence'>,
+): number | null {
+  if (!actionList.length) return null;
+  if (previous && previous.actionList.length === actionList.length
+    && previous.actionList.every((action, index) => action === actionList[index])
+    && typeof previous.actionListAfterSequence === 'number' && Number.isFinite(previous.actionListAfterSequence)) {
+    return previous.actionListAfterSequence;
+  }
+  const sequences = conversation.map((message) => message.seq).filter(Number.isFinite);
+  // A status response can precede loading history. Do not cement a guessed zero
+  // boundary; a later snapshot with loaded conversation will fill it in.
+  return sequences.length ? Math.max(...sequences) : null;
+}
+
 export function mergeAgentConversationMessages(
   previous: readonly AgentConversationMessage[],
   incoming: readonly AgentConversationMessage[],
@@ -307,7 +339,9 @@ export function mergeAgentConversationMessages(
 ): AgentConversationMessage[] {
   const bySequence = new Map<number, AgentConversationMessage>();
   for (const message of [...previous, ...incoming]) {
-    if (!Number.isFinite(message.seq) || !message.content.trim()) continue;
+    // A whitespace-only SSE fragment can separate English words or preserve
+    // a code block's indentation. Filter empty records, not meaningful bytes.
+    if (!Number.isFinite(message.seq) || message.content === '') continue;
     bySequence.set(message.seq, {
       content: message.content,
       kind: message.kind,
@@ -347,6 +381,8 @@ export function applyAgentStreamEnd(
   const outcome = normalizedOutcome(end.outcome);
   const completion = resolveAgentRunCompletion(status, outcome);
   const reason = normalizedString(end.reason) ?? run.reason;
+  const incomingActions = normalizedStrings(end.action_list);
+  const actionList = incomingActions.length ? incomingActions : run.actionList;
   const messages: Record<Exclude<AgentRunCompletion, 'active'>, string> = {
     cancelled: '主会话任务已取消',
     complete: '全部验收门已通过，最终成果已生成',
@@ -356,9 +392,8 @@ export function applyAgentStreamEnd(
   };
   return {
     ...run,
-    actionList: normalizedStrings(end.action_list).length > 0
-      ? normalizedStrings(end.action_list)
-      : run.actionList,
+    actionList,
+    actionListAfterSequence: resolveActionListBoundary(actionList, run.conversation, run),
     completion,
     errorMessage: publicErrorMessage(end.error) ?? run.errorMessage,
     message: completion === 'active' ? run.message : messages[completion],

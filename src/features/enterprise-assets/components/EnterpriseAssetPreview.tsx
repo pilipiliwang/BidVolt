@@ -47,7 +47,8 @@ export function EnterpriseAssetPreview({
 
   useEffect(() => {
     setPreviewUrl('');
-    if (!preview || (preview.kind !== 'image' && preview.kind !== 'pdf')) return undefined;
+    if (!preview || (preview.kind !== 'image' && preview.kind !== 'pdf' && preview.kind !== 'html')) return undefined;
+    if (preview.kind === 'html' && preview.unavailableReason) return undefined;
     if (typeof URL.createObjectURL !== 'function') return undefined;
     const objectUrl = URL.createObjectURL(new Blob([preview.blob], { type: preview.mimeType }));
     setPreviewUrl(objectUrl);
@@ -114,6 +115,22 @@ export function EnterpriseAssetPreview({
         ) : null}
         {!isLoading && !error && preview?.kind === 'pdf' && previewUrl ? (
           <iframe className="enterprise-preview__pdf" src={previewUrl} title={`${fileName} PDF 预览`} />
+        ) : null}
+        {!isLoading && !error && preview?.kind === 'html' && preview.unavailableReason ? (
+          <div className="enterprise-preview-state" role="status">
+            <FileSearch aria-hidden="true" size={28} />
+            <strong>HTML 未包含可直接预览的内容</strong>
+            <span>{preview.unavailableReason}</span>
+          </div>
+        ) : null}
+        {!isLoading && !error && preview?.kind === 'html' && !preview.unavailableReason && previewUrl ? (
+          <iframe
+            className="enterprise-preview__pdf"
+            referrerPolicy="no-referrer"
+            sandbox=""
+            src={previewUrl}
+            title={`${fileName} HTML 预览`}
+          />
         ) : null}
         {!isLoading && !error && preview?.kind === 'text' ? (
           preview.blocks.length > 0 ? (

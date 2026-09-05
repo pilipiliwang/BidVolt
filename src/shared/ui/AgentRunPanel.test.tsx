@@ -45,12 +45,12 @@ describe('AgentRunPanel', () => {
     expect(screen.getByRole('heading', { name: '成果生成正在执行' })).toBeInTheDocument();
     expect(screen.getByText('资料确认')).toBeInTheDocument();
     expect(screen.getByText('正在提取评分规则与响应文件格式')).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Agent 成果生成进度' })).toHaveAttribute(
+    expect(screen.getByRole('progressbar', { name: 'BidVolt 成果生成进度' })).toHaveAttribute(
       'aria-valuetext',
       '15% · 正在提取评分规则与响应文件格式',
     );
     expect(screen.getByText('实时会话已连接')).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Agent 主会话实时消息' })).toHaveTextContent(
+    expect(screen.getByRole('list', { name: 'BidVolt 主会话实时消息' })).toHaveTextContent(
       '正在核验采购文件要求',
     );
   });
@@ -81,6 +81,22 @@ describe('AgentRunPanel', () => {
     expect(onDownloadResponsePackage).toHaveBeenCalledOnce();
     await user.click(screen.getByRole('button', { name: '继续处理未闭环事项' }));
     expect(onResume).toHaveBeenCalledWith('1773');
+  });
+
+  it.each(['rejected promise', 'synchronous error'])('handles the download event rejection while its owner provides feedback: %s', async (kind) => {
+    const user = userEvent.setup();
+    const failure = new Error('下载失败，由 App 展示');
+    const onDownloadResponsePackage = vi.fn(() => {
+      if (kind === 'synchronous error') throw failure;
+      return Promise.reject(failure);
+    });
+    render(<AgentRunPanel
+      onDownloadResponsePackage={onDownloadResponsePackage}
+      run={{ ...activeRun, completion: 'complete', status: 'succeeded' }}
+    />);
+    await user.click(screen.getByRole('button', { name: '下载最终响应文件包' }));
+    expect(onDownloadResponsePackage).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/下载成功/)).not.toBeInTheDocument();
   });
 
   it('renders every question group and submits answers as an aligned array', async () => {

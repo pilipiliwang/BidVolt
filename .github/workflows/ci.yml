@@ -38,5 +38,11 @@ jobs:
       - name: Unit and integration tests
         run: npm run test
 
+      - name: Local Office bridge tests
+        run: node --test infra/onlyoffice/bridge/*.test.mjs infra/onlyoffice/fonts/fonts.test.mjs
+
+      - name: Office download proxy tests
+        run: npx vitest run --config scripts/office-download-vitest.config.ts --configLoader runner
+
       - name: Production build
         run: npm run build

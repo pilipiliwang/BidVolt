@@ -270,7 +270,7 @@ export function ProjectWorkflowFrame({
             <strong title={projectTitle}>{projectTitle ?? '当前项目'}</strong>
           </p>
         </div>
-        <ProjectFlowTrack stages={buildProjectFlowStages(facts)} />
+        <ProjectFlowTrack showDetails={false} stages={buildProjectFlowStages(facts)} />
       </header>
       {children}
     </div>
@@ -358,10 +358,12 @@ export function ProjectEntryChoice({
 export function ProjectTaskExecutionPanel({
   onBackToMaterials,
   onOpenTasks,
+  onPreviewLocalPackage,
   task,
 }: {
   onBackToMaterials?: () => void;
   onOpenTasks: () => void;
+  onPreviewLocalPackage?: () => void;
   task: ProjectWorkflowTaskSummary;
 }) {
   const percent = normalizeTaskPercent(task.percent);
@@ -421,6 +423,11 @@ export function ProjectTaskExecutionPanel({
         )}
         <p>{task.message}</p>
         <div className="project-task-execution__actions">
+          {onPreviewLocalPackage ? (
+            <button className="project-task-execution__open" onClick={onPreviewLocalPackage} type="button">
+              查看本地成果
+            </button>
+          ) : null}
           {failed && onBackToMaterials ? (
             <button className="project-task-execution__back" onClick={onBackToMaterials} type="button">
               返回材料准备

@@ -6,9 +6,15 @@ import {
   FileCheck2,
 } from 'lucide-react';
 
-import { AppLink, deliverableEditorPath } from '../../app/router';
-import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets';
+import { AppLink, deliverableEditorPath, type DeliverableRouteId } from '../../app/router';
+import type {
+  EnterpriseAssetCategoryFolder,
+  EnterpriseAssetPreview,
+} from '../../features/enterprise-assets';
+import type { AgentRunViewModel } from '../../shared/task-events';
+import type { ReviewFinding } from '../review/types';
 import type { ProjectSummary } from './project-view-model';
+import { ProjectGenerationWorkspace } from './ProjectGenerationWorkspace';
 import {
   ProjectOutcomeReviewPanel,
   type ProjectOutcomeReviewViewModel,
@@ -36,6 +42,9 @@ import {
 import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
+  localOfficeEnabled?: boolean;
+  agentRun?: AgentRunViewModel;
+  answeringAgentAskId?: string | null;
   deliverables?: ProjectDeliverableView[];
   deliverablesRequest?: DeliverablesRequestView;
   enterpriseCategories?: EnterpriseAssetCategoryFolder[];
@@ -46,15 +55,47 @@ type ProjectOverviewPageProps = {
   onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
   onAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
-  onAssistantSend?: (value: string) => void | Promise<void>;
+  onAssistantSend?: (value: string, mode?: 'queue' | 'steer') => {
+    queued?: boolean;
+    reply?: string | null;
+  } | Promise<{
+    queued?: boolean;
+    reply?: string | null;
+  } | void> | void;
+  onAnswerAgentInteraction?: (
+    askId: string,
+    answers: string[],
+  ) => {
+    queued?: boolean;
+    reply?: string | null;
+  } | Promise<{
+    queued?: boolean;
+    reply?: string | null;
+  } | void> | void;
   onOpenImprovementSuggestions?: () => void;
   onStartWorkflow?: () => void;
   onOpenTasks: () => void;
+  onDownloadAllResults?: () => void | Promise<void>;
   onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
+  onLoadDeliverableContent?: (
+    deliverable: ProjectDeliverableView,
+  ) => {
+    model?: unknown;
+    version_no?: number | string;
+  } | Promise<{
+    model?: unknown;
+    version_no?: number | string;
+  } | void> | void;
+  onLoadResourcePreview?: (
+    fileId: string,
+    fileName: string,
+  ) => EnterpriseAssetPreview | Promise<EnterpriseAssetPreview>;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
   projectId: string;
   outcomeReview?: ProjectOutcomeReviewViewModel;
+  reviewFindings?: readonly ReviewFinding[];
+  sendingAgentMessage?: boolean;
   taskSummary?: ProjectWorkflowTaskSummary;
   versionOptions?: ProjectOverviewVersionOption[];
   workflowFacts?: ProjectWorkflowFacts;
@@ -78,19 +119,19 @@ export type ProjectTaskStatus =
   | 'failed';
 
 export type ProjectDeliverableView = {
-  id: 'business' | 'technical' | 'quote';
+  id: 'business' | 'internal' | 'technical' | 'quote';
   lift: string;
   missing?: number;
   pages?: number;
   score: string;
   title: string;
-  tone: 'business' | 'technical' | 'quote';
+  tone: 'business' | 'internal' | 'technical' | 'quote';
   versionId?: string;
   words: string;
 };
 
 export type ProjectOverviewVersionOption = {
-  deliverableId: ProjectDeliverableView['id'];
+  deliverableId: DeliverableRouteId;
   isCurrent?: boolean;
   title: string;
   versionId: string;
@@ -102,6 +143,9 @@ export type ProjectOverviewView = {
 };
 
 export function ProjectOverviewPage({
+  localOfficeEnabled = true,
+  agentRun,
+  answeringAgentAskId,
   deliverables,
   deliverablesRequest,
   enterpriseCategories = [],
@@ -113,14 +157,20 @@ export function ProjectOverviewPage({
   onAddFiles,
   onAssistantAddFiles,
   onAssistantSend,
+  onAnswerAgentInteraction,
   onOpenImprovementSuggestions,
   onStartWorkflow,
   onOpenTasks,
+  onDownloadAllResults,
   onSelectVersion,
+  onLoadDeliverableContent,
+  onLoadResourcePreview,
   overview,
   project: projectOverride,
   projectId,
   outcomeReview,
+  reviewFindings,
+  sendingAgentMessage,
   taskSummary,
   versionOptions,
   workflowFacts,
@@ -164,6 +214,42 @@ export function ProjectOverviewPage({
     || workflowPhase === 'failed'
     ? fallbackWorkflowTask(workflowPhase)
     : undefined);
+
+  if (agentRun) {
+    const generationWorkspace = (
+      <ProjectGenerationWorkspace
+        localOfficeEnabled={localOfficeEnabled}
+        agentRun={agentRun}
+        answeringAskId={answeringAgentAskId}
+        deliverables={visibleDeliverables ?? []}
+        enterpriseCategories={enterpriseCategories}
+        enterpriseMaterials={enterpriseMaterials}
+        findings={reviewFindings}
+        materials={materials}
+        onAddEnterpriseFiles={onAddEnterpriseFiles}
+        onAnswerInteraction={onAnswerAgentInteraction}
+        onAssistantAddFiles={onAssistantAddFiles}
+        onAssistantSend={onAssistantSend}
+        onDownloadAllResults={onDownloadAllResults}
+        onDownloadDeliverable={onDownloadDeliverable}
+        onLoadDeliverableContent={onLoadDeliverableContent}
+        onLoadResourcePreview={onLoadResourcePreview}
+        outcomeReview={outcomeReview ?? emptyOutcomeReview}
+        resultsReady={workflowFacts
+          ? Boolean(workflowFacts.hasDeliverables && visibleDeliverables?.length)
+          : Boolean(visibleDeliverables?.length)}
+        sendingAgentMessage={sendingAgentMessage}
+        task={workflowTask ?? taskSummaryFromAgentRun(agentRun)}
+        versionOptions={versionOptions}
+      />
+    );
+    return workflowFacts ? (
+      <ProjectWorkflowFrame facts={workflowFacts} projectTitle={project.title}>
+        {generationWorkspace}
+      </ProjectWorkflowFrame>
+    ) : generationWorkspace;
+  }
+
   const workbench = (
     <ProjectWorkbench
       enterpriseCategories={enterpriseCategories}
@@ -176,7 +262,9 @@ export function ProjectOverviewPage({
       onRefreshEnterpriseMaterials={onRefreshEnterpriseMaterials}
       onAddFiles={onAddFiles}
       onAssistantAddFiles={onAssistantAddFiles}
-      onAssistantSend={onAssistantSend}
+      onAssistantSend={onAssistantSend
+        ? async (value) => { await onAssistantSend(value); }
+        : undefined}
       workspaceNavigation={!workflowFacts || showWorkflowResults
         ? <ProjectWorkspaceTabs activeTab="overview" projectId={projectId} />
         : undefined}
@@ -238,7 +326,9 @@ export function ProjectOverviewPage({
             reviewReady={outcomeReview?.state === 'ready'}
           />
           <div className="bv-deliverable-grid">
-          {visibleDeliverables?.map((item) => (
+          {visibleDeliverables?.filter(
+            (item): item is ProjectDeliverableView & { id: DeliverableRouteId } => item.id !== 'internal',
+          ).map((item) => (
             <article className="bv-deliverable-card" key={item.id}>
               <span className="bv-deliverable-card__status">{item.versionId ? `V${item.versionId}` : '尚无版本'}</span>
               <ResultCover title={item.title} tone={item.tone} />
@@ -502,4 +592,32 @@ function normalizeTaskPercent(percent: number | null) {
   if (percent === null) return null;
   if (!Number.isFinite(percent)) return null;
   return Math.max(0, Math.min(100, Math.round(percent)));
+}
+
+const emptyOutcomeReview: ProjectOutcomeReviewViewModel = {
+  canOpenTaskProgress: false,
+  description: '后端尚未返回评审结果。',
+  state: 'waiting-results',
+  title: '评分待同步',
+};
+
+function taskSummaryFromAgentRun(run: AgentRunViewModel): ProjectWorkflowTaskSummary {
+  const hasOpenInteraction = run.questions.some((interaction) => !interaction.answered);
+  const status = hasOpenInteraction
+    ? 'waiting_user'
+    : run.completion === 'complete'
+      ? 'succeeded'
+      : run.completion === 'failed'
+        || run.completion === 'cancelled'
+        || run.completion === 'incomplete'
+        ? 'failed'
+        : run.status === 'queued'
+          ? 'queued'
+          : 'running';
+  return {
+    message: run.message,
+    percent: run.percent,
+    status,
+    title: run.phase || 'BidVolt 成果生成',
+  };
 }

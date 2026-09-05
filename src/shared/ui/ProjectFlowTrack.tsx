@@ -26,6 +26,7 @@ export interface ProjectFlowTrackProps {
   /** Every status is supplied by the caller; this component does not infer project progress. */
   stages: Record<ProjectFlowStageId, ProjectFlowStageState>;
   className?: string;
+  showDetails?: boolean;
 }
 
 interface StageDefinition {
@@ -56,7 +57,7 @@ function StageMarker({ index, status }: {
   return <span aria-hidden="true">{index + 1}</span>;
 }
 
-export function ProjectFlowTrack({ className = '', stages }: ProjectFlowTrackProps) {
+export function ProjectFlowTrack({ className = '', showDetails = true, stages }: ProjectFlowTrackProps) {
   return (
     <nav
       aria-label="项目流程"
@@ -68,6 +69,7 @@ export function ProjectFlowTrack({ className = '', stages }: ProjectFlowTrackPro
           return (
             <li
               aria-current={stage.status === 'current' ? 'step' : undefined}
+              aria-label={`${label}：${stage.statusLabel ?? statusLabels[stage.status]}`}
               className={`project-flow-track__stage project-flow-track__stage--${stage.status} project-flow-track__stage--${stage.activity ?? 'manual'}`}
               key={id}
             >
@@ -76,17 +78,19 @@ export function ProjectFlowTrack({ className = '', stages }: ProjectFlowTrackPro
               </span>
               <span className="project-flow-track__content">
                 <strong>{label}</strong>
-                <span className="project-flow-track__meta">
-                  <span className="project-flow-track__status">
-                    {stage.statusLabel ?? statusLabels[stage.status]}
+                {showDetails ? (
+                  <span className="project-flow-track__meta">
+                    <span className="project-flow-track__status">
+                      {stage.statusLabel ?? statusLabels[stage.status]}
+                    </span>
+                    {stage.description ? (
+                      <>
+                        <i aria-hidden="true">·</i>
+                        <small>{stage.description}</small>
+                      </>
+                    ) : null}
                   </span>
-                  {stage.description ? (
-                    <>
-                      <i aria-hidden="true">·</i>
-                      <small>{stage.description}</small>
-                    </>
-                  ) : null}
-                </span>
+                ) : null}
               </span>
               {index < stageDefinitions.length - 1 ? (
                 <span

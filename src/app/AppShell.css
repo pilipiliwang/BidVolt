@@ -5,7 +5,8 @@
 
 .account-menu--sidebar {
   display: grid;
-  width: 220px;
+  width: 100%;
+  min-width: 0;
   place-items: center;
 }
 
@@ -115,6 +116,111 @@
   margin-top: 24px;
 }
 
+/* The list is a reading surface, unlike the full-width document workspace.
+   Cap its measure on wide monitors and keep the header aligned with the table. */
+.ui0802-shell--project-list {
+  --workbench-gutter: clamp(1.25rem, 2.2vw, 2.5rem);
+  --workbench-max-width: 115rem;
+}
+
+.ui0802-shell.ui0802-shell--project-list .topbar,
+.ui0802-shell.ui0802-shell--project-list .page-content {
+  width: 100%;
+  max-width: var(--workbench-max-width);
+  margin-inline: auto;
+  padding-inline: var(--workbench-gutter);
+}
+
+.ui0802-shell.ui0802-shell--project-list .topbar {
+  min-height: 88px;
+  padding-block: 20px 16px;
+}
+
+.ui0802-shell--project-list .topbar__heading h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, calc(1.25rem + 0.4vw), 1.875rem);
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+.ui0802-shell.ui0802-shell--project-list .page-content {
+  padding-top: 8px;
+  padding-bottom: 28px;
+}
+
+.ui0802-shell--project-list .page-diagnostics {
+  margin-top: 20px;
+}
+
+.ui0802-shell .mobile-nav__header .brand {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: normal;
+}
+
+.ui0802-shell .mobile-nav__header .brand strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.ui0802-shell .mobile-nav__header .icon-button {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .ui0802-shell.ui0802-shell--project-list .topbar {
+    min-height: 72px;
+    padding-block: 12px;
+  }
+
+  .ui0802-shell.ui0802-shell--project-list .page-content {
+    padding-top: 20px;
+  }
+
+  .ui0802-shell--project-list .topbar__heading {
+    margin-left: auto;
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .ui0802-shell--project-list {
+    --workbench-gutter: 1rem;
+  }
+
+  /* Keep the actual page title available beside the navigation trigger. */
+  .ui0802-shell--project-list .mobile-topbar .brand {
+    display: none;
+  }
+
+  .ui0802-shell.ui0802-shell--project-list .topbar__heading {
+    display: grid;
+    min-width: 0;
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  .ui0802-shell--project-list .topbar__heading h1 {
+    font-size: 1.5rem;
+  }
+
+  .ui0802-shell.ui0802-shell--project-list .page-content {
+    padding-top: 16px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 1025px) {
+  .ui0802-shell:not(.ui0802-shell--project) .desktop-sidebar {
+    padding-top: 16px;
+    padding-bottom: 12px;
+  }
+
+  .ui0802-shell:not(.ui0802-shell--project) .primary-nav {
+    margin-top: 18px;
+  }
+}
+
 /* Overview/materials own their workflow header and stay within one viewport.
    The workflow itself receives the remaining space while diagnostics remain a
    separate bottom row, so neither needs a viewport-offset calculation. */
@@ -135,6 +241,7 @@
   display: flex;
   height: 100%;
   min-height: 0;
+  padding-top: 0;
   flex-direction: column;
   overflow: hidden;
 }

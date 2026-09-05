@@ -4,6 +4,7 @@ import { BackendApiError } from '../shared/backend-api';
 import type { PublicTaskEvent } from '../shared/task-events';
 import { isCurrentDeliverableVersionFromTask } from './deliverable-versions';
 import {
+  agentRunFallbackFromGenerationTask,
   findLatestActiveBidGenerateTask,
   findLatestGenerationTask,
   findLatestAgentPipelineTask,
@@ -37,6 +38,26 @@ const task = (taskId: string, status: PublicTaskEvent['status']): PublicTaskEven
 });
 
 describe('project resource state', () => {
+  it('builds an empty-context workspace fallback from a real generation task', () => {
+    const source = {
+      ...task('legacy-generation-12', 'running'),
+      percent: 58,
+      public_message: '正在编制技术文件',
+      task_type: 'bid_generate',
+    };
+
+    expect(agentRunFallbackFromGenerationTask(source)).toMatchObject({
+      completion: 'active',
+      conversation: [],
+      message: '正在编制技术文件',
+      percent: 58,
+      projectId: 'project-1',
+      questions: [],
+      status: 'running',
+      taskId: 'legacy-generation-12',
+    });
+  });
+
   it('keeps low-frequency GET convergence while the active SSE stream is live', () => {
     expect(resolveTaskPollingInterval({
       hasActiveBidGenerateTask: true,

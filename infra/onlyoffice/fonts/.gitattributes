@@ -1,0 +1,2 @@
+licenses/*.txt -text -whitespace
+*.sh text eol=lf

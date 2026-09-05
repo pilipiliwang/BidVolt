@@ -5,7 +5,6 @@ import {
   FileText,
   Link2,
   LoaderCircle,
-  ShieldCheck,
   Trash2,
   UploadCloud,
 } from 'lucide-react';
@@ -38,6 +37,10 @@ type UploadCardProps = {
   title: string;
   onUploadItemsChange?: (items: LocalUploadItem[]) => void;
 };
+
+function normalizeUploadFileName(fileName: string) {
+  return fileName.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase();
+}
 
 type PersistedUploadItem = { id: string; name: string };
 
@@ -86,6 +89,7 @@ function MaterialDeleteDialog({
 }
 
 type EnhancedProjectMaterialUploadProps = ProjectMaterialUploadProps & {
+  generationActions?: ReactNode;
   existingBidFileNames?: string[];
   mode?: 'generation' | 'legacy';
   onExistingBidUpload?: (files: File[]) => Promise<void> | void;
@@ -158,6 +162,23 @@ function UploadCard({
     onUploadItemsChange?.(localUploadItems);
   }, [localUploadItems, onUploadItemsChange]);
 
+  const persistedFileNameKey = persistedFiles
+    .map((item) => normalizeUploadFileName(item.name))
+    .sort()
+    .join('\u0000');
+
+  useEffect(() => {
+    if (!persistedFileNameKey) return;
+    const persistedNames = new Set(persistedFileNameKey.split('\u0000'));
+    const hasPersistedEcho = localUploadItems.some((item) => (
+      item.status === 'success' && persistedNames.has(normalizeUploadFileName(item.name))
+    ));
+    if (!hasPersistedEcho) return;
+    setLocalUploadItems((current) => current.filter((item) => (
+      item.status !== 'success' || !persistedNames.has(normalizeUploadFileName(item.name))
+    )));
+  }, [localUploadItems, persistedFileNameKey]);
+
   const submitFiles = async (files: FileList | null) => {
     if (!files?.length || isUploading) return;
     const selectedFiles = Array.from(files);
@@ -210,9 +231,11 @@ function UploadCard({
     void submitFiles(event.dataTransfer.files);
   };
 
-  const persistedNamesSet = new Set(persistedFiles.map((item) => item.name));
+  const persistedNamesSet = new Set(persistedFiles.map((item) => normalizeUploadFileName(item.name)));
   const visibleLocalUploadItems = showImmediateStatus
-    ? localUploadItems.filter((item) => item.status !== 'success' || !persistedNamesSet.has(item.name))
+    ? localUploadItems.filter((item) => (
+        item.status !== 'success' || !persistedNamesSet.has(normalizeUploadFileName(item.name))
+      ))
     : [];
   const locallySelectedNames = new Set(visibleLocalUploadItems.map((item) => item.name));
   const normalizedPersistedFiles = persistedFiles.length > 0
@@ -511,19 +534,19 @@ function TenderNoticeUrlImporter({
       aria-label="粘贴招标公告地址"
       className={`project-tender-url-import${standalone ? ' project-tender-url-import--card' : ''}`}
     >
-      <div className="project-tender-url-import__heading">
+      {standalone ? <div className="project-tender-url-import__heading">
         <div>
           {standalone ? <h2>粘贴招标公告地址 <em className="is-optional">可选</em></h2> : <strong>粘贴招标公告网址</strong>}
           <small>适用于可公开访问的招标公告网页，系统将在服务端下载附件并开始解析。</small>
         </div>
-      </div>
+      </div> : null}
       <form className="project-tender-url-import__form" noValidate onSubmit={handleSubmit}>
         <label className="project-material-visually-hidden" htmlFor={inputId}>招标公告网址</label>
         <div className="project-tender-url-import__control">
           <Link2 aria-hidden="true" size={16} />
           <input
             id={inputId}
-            aria-describedby={helperId}
+            aria-describedby={hasValue ? helperId : undefined}
             aria-invalid={hasValue && !isUrlValid ? true : undefined}
             autoComplete="url"
             disabled={isLoading}
@@ -549,7 +572,7 @@ function TenderNoticeUrlImporter({
           {isLoading ? '正在导入…' : '导入并解析'}
         </button>
       </form>
-      {!(state.type === 'success' || (!hasValue && importedFiles.length > 0)) ? <p
+      {hasValue && state.type !== 'success' ? <p
         className={`project-tender-url-import__security${
           isUrlValid
             ? ' project-tender-url-import__security--valid'
@@ -562,14 +585,10 @@ function TenderNoticeUrlImporter({
       >
         {isUrlValid
           ? <CheckCircle2 aria-hidden="true" size={14} />
-          : hasValue
-            ? <AlertCircle aria-hidden="true" size={14} />
-            : <ShieldCheck aria-hidden="true" size={14} />}
+          : <AlertCircle aria-hidden="true" size={14} />}
         {isUrlValid
           ? '网址格式正确，可提交服务端检查并导入。'
-          : hasValue
-            ? liveValidation.error
-            : '请输入以 http:// 或 https:// 开头的公开招标公告链接。'}
+          : liveValidation.error}
       </p> : null}
       {state.type !== 'idle' && (
         <p
@@ -665,9 +684,9 @@ function GenerationMaterialList({
     persistedItems: PersistedUploadItem[],
     localItems: LocalUploadItem[],
   ) => {
-    const persistedNames = new Set(persistedItems.map((item) => item.name));
+    const persistedNames = new Set(persistedItems.map((item) => normalizeUploadFileName(item.name)));
     const visibleLocalItems = localItems.filter((item) => (
-      item.status !== 'success' || !persistedNames.has(item.name)
+      item.status !== 'success' || !persistedNames.has(normalizeUploadFileName(item.name))
     ));
     const itemCount = persistedItems.length + visibleLocalItems.length;
 
@@ -679,7 +698,7 @@ function GenerationMaterialList({
             {visibleLocalItems.map((item) => (
               <li key={item.id}>
                 <FileText aria-hidden="true" size={17} />
-                <span>{item.name}</span>
+                <span title={item.name}>{item.name}</span>
                 <span
                   aria-label={`${item.name}${item.status === 'uploading' ? '上传中' : item.status === 'success' ? '上传成功' : '上传失败'}`}
                   className={`project-upload-card__selected-status project-upload-card__selected-status--${item.status}`}
@@ -696,7 +715,7 @@ function GenerationMaterialList({
             {persistedItems.map((file) => (
               <li key={file.id}>
                 <FileText aria-hidden="true" size={17} />
-                <span>{file.name}</span>
+                <span title={file.name}>{file.name}</span>
                 <CheckCircle2 aria-label="已上传" className="project-generation-material-list__success" size={16} />
                 {onRemoveFile ? (
                   <button
@@ -741,6 +760,7 @@ function toFiles(files: FileList | null): File[] {
 }
 
 export function ProjectMaterialUpload({
+  generationActions,
   projectId,
   projectName,
   onUpload,
@@ -829,6 +849,9 @@ export function ProjectMaterialUpload({
             tenderFiles={[...tenderFiles, ...urlImportedFiles]}
             tenderUploadItems={tenderUploadItems}
           />
+          {generationActions ? (
+            <div className="project-generation-setup__actions">{generationActions}</div>
+          ) : null}
         </div>
       </section>
     );

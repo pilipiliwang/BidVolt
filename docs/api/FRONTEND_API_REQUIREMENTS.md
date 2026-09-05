@@ -807,6 +807,128 @@ Word 已有选区时点击“AI针对性修改”直接填入并聚焦输入框�
 
 附件文件仍先通过项目材料上传接口写入当前项目，再在消息中引用 material_id；项目助手接口不接受第二套文件上传入口。
 
+### FE-ASSISTANT-004 统一公开任务动态
+
+- 方法与路径：GET /projects/{project_id}/agent-run/{task_id}/events
+- 状态：待新增；现有 SSE conversation、questions 和任务状态接口的统一读取契约
+- 页面动作：按真实先后顺序展示运行日志、Agent 输出、用户消息、待处理内容、文件事件、阶段变化与完成结果。
+
+响应必须提供全任务单调递增的 `sequence`，并至少包含 `event_id`、`occurred_at`、`source`、`kind`、
+`payload`、可选 `interaction_id`、`message_id`、`artifact_id` 和 `requires_response`。`source` 至少支持
+`agent | user | system`；`kind` 应允许未来扩展，前端对未知类型降级成普通公开内容，不能直接丢弃。
+
+所有内容必须是可向项目成员公开的业务信息。不得返回模型思维链、工具原始参数、服务器调试输出、内部路径、
+访问凭据或未脱敏第三方响应。连续日志的合并折叠仅发生在前端视图层，接口仍保留可分页追溯的原始公开事件。
+
+现有问答接口返回的 `question | action` 也需要进入同一 sequence；否则刷新后无法可靠还原它与 SSE 日志、
+用户消息之间的先后关系。
+
+### FE-ASSISTANT-005 查询排队消息
+
+- 方法与路径：GET /projects/{project_id}/agent-run/{task_id}/chat/queue
+- 状态：待新增
+- 页面动作：刷新后恢复输入框上方尚未执行的排队消息。
+
+每项至少返回 `message_id`、`content`、`mode`、`status`、`position`、`created_at` 和可选
+`client_message_id`。状态至少包括 `queued | executing | consumed | cancelled | failed`。普通发送默认
+进入 `queue`；消息实际提交后还应以同一 `message_id` 进入统一任务动态，避免队列条和对话重复生成两条记录。
+
+### FE-ASSISTANT-006 调整已排队消息方向
+
+- 方法与路径：POST /projects/{project_id}/agent-run/{task_id}/chat/queue/{message_id}/steer
+- 状态：待新增
+- 页面动作：点击排队消息的“调整方向”。
+
+只允许尚未执行的消息转为当前任务方向调整；成功响应返回更新后的消息状态。消息已开始执行时返回 409，前端刷新
+队列并保留可理解的状态提示，不能创建一条内容相同的新消息来冒充调整成功。
+
+### FE-ASSISTANT-007 删除排队消息
+
+- 方法与路径：DELETE /projects/{project_id}/agent-run/{task_id}/chat/queue/{message_id}
+- 状态：待新增
+- 页面动作：删除尚未执行的排队消息。
+
+服务端必须校验项目、任务、企业及操作者归属。消息已开始执行时返回 409；删除成功后通过队列快照或统一事件流
+确认，不允许仅在浏览器隐藏后仍继续执行。
+
+### FE-ASSISTANT-008 消息快速受理与幂等回执
+
+- 方法与路径：POST /projects/{project_id}/agent-run/{task_id}/chat
+- 状态：现有接口需调整，不能阻塞到 Agent 实际消费消息后才返回
+- 页面动作：用户发送后立即恢复输入框，并在时间线或排队区显示受理结果。
+
+请求新增稳定的 `client_message_id` 和 `idempotency_key`。服务端完成鉴权、校验和入队后应立即返回 `202`，响应至少
+包含 `message_id`、`client_message_id`、`mode`、`status=queued`、`position` 和 `created_at`；不得等待当前 Agent
+节点结束或等待模型回复。重复提交同一幂等键必须返回同一条消息。最终执行、失败或取消状态通过统一事件流和
+FE-ASSISTANT-005 队列快照更新。前端会设置有限的受理超时并解除“发送中”，但超时不代表服务端一定未受理，
+因此重试必须复用原幂等键，避免重复指令。
+
+## 14A. 标书成果目录与文件级预览
+
+### FE-RESULT-FILES-001 查询成果文件目录
+
+- 方法与路径：GET /projects/{project_id}/result-files
+- 状态：待新增；当前 deliverables 接口只能表达三类聚合成果，不能表达文件夹内多个文件
+- 页面动作：更新左侧商务、技术、价格、内部管理四个成果文件夹。
+
+响应至少包含 `catalog_revision`、`task_id`、`sync_state`、`categories[]` 和 `files[]`。
+`sync_state` 至少区分 `loading | ready | error`，不能用“存在任意一个文件”代替整个目录已同步。
+`categories[]` 必须按四个分类返回 `category`、`status`、`file_count` 和可选错误摘要，让前端
+如实显示每个文件夹的 `pending | generating | ready | failed`，不得由任务整体成功推断空文件夹也“已生成”。
+文件字段至少包括：
+
+- `file_id` 或稳定 `artifact_id`
+- `category`: `business | technical | price | internal`
+- `name`、`mime_type`、`size_bytes`
+- `status`: `generating | ready | failed`
+- `source_task_id`、`created_at`、`updated_at`
+- 可选 `deliverable_id`、`version_no`
+- `capabilities`: `preview | edit | download | compare`
+
+前端固定维护四个文件夹，只按后端 category 更新文件，不能根据文件名猜分类。重新请求目录时按全局稳定 ID 和
+`catalog_revision` 做 keyed diff；同一 `file_id` 改变 category 时必须从旧文件夹移除。目录响应应是权威快照，
+或显式返回 `removed_file_ids`，以便处理删除；不能只追加而使已删文件在刷新后复活。新文件不得自动打断用户正在
+查看或编辑的文件。
+
+SSE/PublicTaskEvent 还应提供 `result_catalog_changed`、`catalog_revision` 和可选 `changed_categories`。事件只负责
+通知目录失效，最终文件树以目录快照为准。现有正式链路还需补充 `internal` 成果类型。
+
+### FE-RESULT-FILES-002 获取文件级预览能力
+
+- 方法与路径：GET /projects/{project_id}/result-files/{file_id}/preview
+- 状态：待新增
+- 页面动作：在不中断 Agent 上下文的中间 Office 工作区打开文件。
+
+响应必须返回文件版本、只读/可编辑能力、`content_revision` 以及显式 `renderer`
+(`structured | office_session | iframe | download_only`)，不能只凭扩展名选择渲染器。同时返回与 MIME 匹配的预览模型、
+短期安全预览地址或文档会话信息。Word 至少需要标题目录、
+内容块或书签锚点、页信息；Excel 至少需要稳定 Sheet ID、名称、顺序、隐藏状态、单元格、公式、样式、合并区域、
+行列尺寸和冻结区域。不支持在线编辑的格式明确返回只读能力，不能仅凭扩展名开放编辑。
+
+若采用 OnlyOffice、Collabora 等原生文档服务，继续遵循 FE-EDITOR-001～003 的会话、权限、回调隔离、版本冲突和
+审计要求。只有原始 DOCX/XLSX 下载地址不足以实现接近 Office/WPS 的分页、公式和安全保存体验。
+
+### FE-RESULT-FILES-003 文件或选区作为 Agent 上下文
+
+- 方法与路径：沿用 Agent chat/assistant message 接口，新增结构化 `context_refs`
+- 状态：待新增
+- 页面动作：在 Word 章节、文字选区、Excel Sheet 或单元格区域中向 Agent 发出要求。
+
+引用至少包含 `file_id`、`version_id`，并按类型提供 `block_id/heading_id/page_no/text_range` 或
+`sheet_id/cell_range`。可带短小选区快照供用户核对，但服务端必须按稳定锚点重新读取有权限的当前版本；不能信任
+浏览器提交的大段正文。Agent 返回的文件、章节和单元格引用也应采用同一结构，前端可点击反向定位。
+
+### FE-RESULT-FILES-004 查询文件版本并打开指定版本
+
+- 方法与路径：GET /projects/{project_id}/result-files/{file_id}/versions；GET /projects/{project_id}/result-files/{file_id}/versions/{version_id}/preview
+- 状态：待新增；当前 deliverable versions 只能表达三类聚合成果版本
+- 页面动作：在成果文件旁切换当前版和历史版，并在同一 Office 工作区中打开指定版本。
+
+版本列表至少返回 `version_id`、`version_no`、`is_current`、`source_task_id`、`created_at`、`created_by`、
+`change_summary`、`content_revision` 和 `capabilities`。列表按新到旧排序，并提供稳定游标；历史版本默认只读，只有
+后端明确授予编辑会话的工作版本才可编辑。预览响应必须同时校验 `file_id + version_id + project_id + enterprise_id`，
+不能因为文件后来移动分类而打开另一文件。创建新版本后更新目录的 `catalog_revision`，旧版本继续可读且不得覆盖。
+
 ## 15. 无需业务接口的前端交互
 
 以下操作不需要新增业务接口：

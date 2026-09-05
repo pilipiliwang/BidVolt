@@ -53,4 +53,30 @@ describe('ProjectFlowTrack', () => {
     expect(screen.getAllByText(/未开始/)).toHaveLength(4);
     expect(screen.queryByText('资料已入库')).not.toBeInTheDocument();
   });
+
+  it('omits all visible remarks in compact mode but preserves accessible stage state', () => {
+    render(<ProjectFlowTrack showDetails={false} stages={stages} />);
+
+    const flow = screen.getByRole('navigation', { name: '项目流程' });
+    const items = within(flow).getAllByRole('listitem');
+    expect(items).toHaveLength(4);
+    expect(flow.querySelector('.project-flow-track__meta')).not.toBeInTheDocument();
+    expect([...flow.querySelectorAll('.project-flow-track__content')].map((item) => item.textContent)).toEqual([
+      '上传企业资料', '上传材料', '标书制作/审核', '成果生成',
+    ]);
+    expect(items[0]).toHaveAccessibleName('上传企业资料：已完成');
+    expect(items[0]).toHaveClass('project-flow-track__stage--completed');
+    expect(items[1]).toHaveAccessibleName('上传材料：解析中');
+    expect(items[1]).toHaveAttribute('aria-current', 'step');
+    expect(items[2]).toHaveAccessibleName('标书制作/审核：未开始');
+    expect(items[3]).toHaveAccessibleName('成果生成：存在异常');
+    expect(items[3]).toHaveClass('project-flow-track__stage--error');
+    expect(flow).not.toHaveTextContent('已完成');
+    expect(flow).not.toHaveTextContent('解析中');
+    expect(flow).not.toHaveTextContent('资料已入库');
+    expect(flow).not.toHaveTextContent('生成任务执行失败');
+    expect(items[0].querySelector('.project-flow-track__connector')).toHaveClass(
+      'project-flow-track__connector--completed',
+    );
+  });
 });

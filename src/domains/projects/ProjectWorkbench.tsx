@@ -1,11 +1,9 @@
 import {
-  AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   FileArchive,
   FileChartColumn,
-  FileSpreadsheet,
   FileText,
   Folder,
   LoaderCircle,
@@ -24,15 +22,24 @@ import {
   type ReactNode,
 } from 'react';
 
-import { buildEnterpriseAssetFolders } from '../../features/enterprise-assets/category-folders';
+import { buildEnterpriseWorkspaceFolders } from '../../features/enterprise-assets/category-folders';
+import { EnterpriseAssetPreview } from '../../features/enterprise-assets/components/EnterpriseAssetPreview';
+import type { EnterpriseAssetPreview as EnterprisePreviewData } from '../../features/enterprise-assets/types';
 import type { EnterpriseAssetCategoryFolder } from '../../features/enterprise-assets/types';
 import { PRODUCT_NAME } from '../../shared/product-brand';
 import './project-workbench.css';
+import './project-resource-simplified.css';
 
 export type WorkspaceMaterial = {
   id: string;
+  /** Backend file id used to load the actual preview; may differ from the asset id. */
+  fileId?: string;
   name: string;
   categoryId?: string | null;
+  /** Persisted backend classification only; never derive this from the filename. */
+  kind?: string;
+  /** Persisted backend project role only. */
+  purpose?: string;
   status?: string;
   tone?: 'blue' | 'green' | 'orange' | 'red';
 };
@@ -59,6 +66,7 @@ const ENTERPRISE_MATERIALS_REFRESH_INTERVAL_MS = 2_000;
 const ENTERPRISE_UPLOAD_PROCESSING_NOTICE_MS = 60_000;
 
 type ProjectSourceRailProps = {
+  onSelectEnterpriseFile?: (file: WorkspaceMaterial) => void;
   enterpriseCategories?: readonly EnterpriseAssetCategoryFolder[];
   enterpriseMaterials: WorkspaceMaterial[];
   enterpriseUploadFeedback?: EnterpriseUploadFeedback;
@@ -69,6 +77,7 @@ type ProjectSourceRailProps = {
 };
 
 export function ProjectSourceRail({
+  onSelectEnterpriseFile,
   enterpriseCategories = [],
   enterpriseMaterials,
   enterpriseUploadFeedback,
@@ -80,20 +89,12 @@ export function ProjectSourceRail({
   const folderContentId = useId();
   const uploadFeedbackId = useId();
   const enterpriseFileInputRef = useRef<HTMLInputElement>(null);
-  const folders = buildEnterpriseAssetFolders(enterpriseCategories, enterpriseMaterials, {
-    allLabel: '全部资料',
-    separateSourceArchives: true,
-  });
+  const folders = buildEnterpriseWorkspaceFolders(enterpriseCategories, enterpriseMaterials);
   const folderGroups = [
     {
-      id: 'system',
-      label: '系统视图',
-      folders: folders.filter((folder) => folder.kind === 'all' || folder.kind === 'source'),
-    },
-    {
       id: 'business',
-      label: '业务分类',
-      folders: folders.filter((folder) => folder.kind !== 'all' && folder.kind !== 'source'),
+      label: '',
+      folders,
     },
   ];
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
@@ -232,12 +233,13 @@ export function ProjectSourceRail({
       </header>
 
       <nav aria-label="企业资料分类文件夹" className="bv-source-rail__folders">
+        {folders.length === 0 ? <p className="bv-source-rail__empty">企业资料库暂无可展示资料</p> : null}
         {folderGroups.map((group) => (
           <div
             className={`bv-source-rail__folder-group bv-source-rail__folder-group--${group.id}`}
             key={group.id}
           >
-            <span className="bv-source-rail__folder-group-label">{group.label}</span>
+            {group.folders.length > 0 && group.label ? <span className="bv-source-rail__folder-group-label">{group.label}</span> : null}
             {group.folders.map((folder, index) => {
               const isExpanded = resolvedOpenFolderId === folder.id;
               const contentId = `${folderContentId}-${group.id}-folder-${index}`;
@@ -259,7 +261,7 @@ export function ProjectSourceRail({
                   </button>
                   {isExpanded ? (
                     folder.items.length > 0 ? (
-                      <MaterialList id={contentId} label={`${folder.label}文件`} materials={folder.items} />
+                      <MaterialList id={contentId} label={`${folder.label}文件`} materials={folder.items} onSelect={onSelectEnterpriseFile} />
                     ) : (
                       <p className="bv-source-rail__empty" id={contentId} role="status">
                         {folder.kind === 'all'
@@ -341,6 +343,7 @@ export function ProjectSourceRail({
 }
 
 function MaterialList({
+  onSelect,
   id,
   label,
   materials,
@@ -348,44 +351,25 @@ function MaterialList({
   id: string;
   label: string;
   materials: readonly WorkspaceMaterial[];
+  onSelect?: (file: WorkspaceMaterial) => void;
 }) {
   return (
     <ul aria-label={label} className="bv-source-rail__files" id={id}>
       {materials.map((material) => (
         <li key={material.id}>
-          <MaterialIcon tone={material.tone} />
-          <span
+          <FileText aria-hidden="true" className="bv-source-rail__file-icon" size={17} />
+          <button
             aria-label={material.name}
             className="bv-source-rail__filename"
             data-name={material.name}
-            title={material.name}
+            title={material.status ? `${material.name} · ${material.status}` : material.name}
+            type="button"
+            disabled={!onSelect}
+            onClick={() => onSelect?.(material)}
           />
-          <MaterialStatusIndicator material={material} />
         </li>
       ))}
     </ul>
-  );
-}
-
-function MaterialStatusIndicator({ material }: { material: WorkspaceMaterial }) {
-  const status = material.status ?? '状态未提供';
-  const tone = material.tone ?? 'blue';
-  const Icon = tone === 'green'
-    ? CheckCircle2
-    : tone === 'orange'
-      ? AlertCircle
-      : tone === 'red'
-        ? XCircle
-        : LoaderCircle;
-  return (
-    <span
-      aria-label={`资料状态：${status}`}
-      className={`bv-source-status-icon bv-source-status-icon--${tone}`}
-      role="img"
-      title={`资料状态：${status}`}
-    >
-      <Icon aria-hidden="true" size={15} />
-    </span>
   );
 }
 
@@ -420,16 +404,9 @@ function ReadonlyUploadControl({ label, title }: { label: string; title: string 
   );
 }
 
-function MaterialIcon({ tone = 'blue' }: { tone?: WorkspaceMaterial['tone'] }) {
-  const Icon = tone === 'green' ? FileSpreadsheet : tone === 'orange' ? FileArchive : FileText;
-  return (
-    <span className={`bv-source-file-icon bv-source-file-icon--${tone}`} aria-hidden="true">
-      <Icon size={14} />
-    </span>
-  );
-}
-
 type ProjectWorkbenchProps = {
+  onLoadEnterprisePreview?: (fileId: string, fileName: string) => Promise<EnterprisePreviewData>;
+  onDownloadEnterpriseFile?: (fileId: string, fileName: string) => void | Promise<void>;
   assistantDraft?: string;
   assistantFocusRequest?: number;
   children: ReactNode;
@@ -455,6 +432,8 @@ type ProjectWorkbenchProps = {
 };
 
 export function ProjectWorkbench({
+  onLoadEnterprisePreview,
+  onDownloadEnterpriseFile,
   assistantDraft,
   assistantFocusRequest,
   heightMode = 'fill',
@@ -476,9 +455,24 @@ export function ProjectWorkbench({
   showChat = true,
   workspaceNavigation,
 }: ProjectWorkbenchProps) {
+  const [selectedEnterpriseFile, setSelectedEnterpriseFile] = useState<WorkspaceMaterial | null>(null);
+  const [uploadPanelExpanded, setUploadPanelExpanded] = useState(false);
+  useEffect(() => setSelectedEnterpriseFile(null), [enterpriseLibraryKey]);
+  const content = onLoadEnterprisePreview ? <div className={`bv-material-preview-layout${selectedEnterpriseFile ? ' is-previewing' : ''}${uploadPanelExpanded ? ' is-upload-expanded' : ''}`}>
+    <div hidden={!!selectedEnterpriseFile && !uploadPanelExpanded} className="bv-project-workspace__original-content">
+      {selectedEnterpriseFile ? <button className="bv-material-preview-layout__collapse" type="button" onClick={() => setUploadPanelExpanded(false)}>收起上传材料 <ChevronRight size={16} aria-hidden="true" /></button> : null}
+      {children}
+    </div>{selectedEnterpriseFile ? <section className="bv-enterprise-preview" aria-label="企业资料预览">
+    <header><strong>{selectedEnterpriseFile.name}</strong><button type="button" onClick={() => setSelectedEnterpriseFile(null)}>返回上传材料</button></header>
+    <EnterpriseAssetPreview key={selectedEnterpriseFile.id} fileId={selectedEnterpriseFile.fileId}
+      fileName={selectedEnterpriseFile.name} onLoadPreview={onLoadEnterprisePreview} onDownloadFile={onDownloadEnterpriseFile} />
+  </section> : null}
+    {selectedEnterpriseFile && !uploadPanelExpanded ? <button className="bv-material-preview-layout__rail" aria-label="展开上传材料" aria-expanded={false} type="button" onClick={() => setUploadPanelExpanded(true)}><ChevronRight size={18} aria-hidden="true" /><span>上传材料</span></button> : null}
+  </div> : children;
   return (
     <div className={`bv-project-workspace bv-project-workspace--${heightMode}${rightRail ? '' : ' bv-project-workspace--without-right'}${showChat ? '' : ' bv-project-workspace--without-chat'}`}>
       <ProjectSourceRail
+        onSelectEnterpriseFile={onLoadEnterprisePreview ? (file) => { setSelectedEnterpriseFile(file); setUploadPanelExpanded(false); } : undefined}
         key={enterpriseLibraryKey}
         enterpriseCategories={enterpriseCategories}
         enterpriseMaterials={enterpriseMaterials}
@@ -491,8 +485,8 @@ export function ProjectWorkbench({
       <main className={`bv-project-workspace__main${workspaceNavigation ? ' bv-project-workspace__main--with-navigation' : ''}`}>
         {workspaceNavigation}
         {workspaceNavigation ? (
-          <div className="bv-project-workspace__content">{children}</div>
-        ) : children}
+          <div className="bv-project-workspace__content">{content}</div>
+        ) : content}
       </main>
       {rightRail ? <aside className="bv-project-workspace__right">{rightRail}</aside> : null}
       {showChat ? (
@@ -661,7 +655,7 @@ export function ResultCover({
   tone,
 }: {
   title: string;
-  tone: 'business' | 'technical' | 'quote';
+  tone: 'business' | 'internal' | 'technical' | 'quote';
 }) {
   return (
     <div className={`bv-result-cover bv-result-cover--${tone}`} aria-hidden="true">

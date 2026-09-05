@@ -1,0 +1,57 @@
+services:
+  document-server:
+    # Pinned after local verification (ONLYOFFICE Docs 9.4.0-129).
+    image: onlyoffice/documentserver@sha256:3ab6ebc7c605e5a32b7ae3ff19daed4925090245acc8100ce2230bd766c88212
+    container_name: bidvolt-onlyoffice
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: "${ONLYOFFICE_JWT_SECRET:-bidvolt-local-only-change-me}"
+      JWT_HEADER: AuthorizationJwt
+      JWT_IN_BODY: "true"
+    ports:
+      - "${ONLYOFFICE_PORT:-8080}:80"
+    volumes:
+      - document_data:/var/www/onlyoffice/Data
+      - document_logs:/var/log/onlyoffice
+      - ./fonts:/usr/share/fonts/truetype/bidvolt:ro
+      - ./fonts/64-bidvolt-cjk.conf:/etc/fonts/conf.d/64-bidvolt-cjk.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
+  editor-bridge:
+    image: node:22-alpine
+    container_name: bidvolt-onlyoffice-bridge
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "/app/server.mjs"]
+    environment:
+      PORT: "8081"
+      PUBLIC_BRIDGE_URL: "http://localhost:${ONLYOFFICE_BRIDGE_PORT:-8081}"
+      INTERNAL_BRIDGE_URL: "http://editor-bridge:8081"
+      INTERNAL_DOCUMENT_SERVER_URL: "http://document-server"
+      PUBLIC_DOCUMENT_SERVER_URL: "http://localhost:${ONLYOFFICE_PORT:-8080}"
+      ONLYOFFICE_JWT_SECRET: "${ONLYOFFICE_JWT_SECRET:-bidvolt-local-only-change-me}"
+      SOURCE_ROOT: /workspace/.local-artifacts
+      DATA_ROOT: /data
+      # Explicit substitutions in editable copies only; OFL fonts are pinned in fonts/manifest.json.
+      BIDVOLT_OFFICE_FONT_SUBSTITUTIONS_JSON: >-
+        {"SimSun":"Source Han Serif CN","宋体":"Source Han Serif CN","NSimSun":"Source Han Serif CN","新宋体":"Source Han Serif CN","SimHei":"Source Han Sans CN","黑体":"Source Han Sans CN","Microsoft YaHei":"Source Han Sans CN","微软雅黑":"Source Han Sans CN","FangSong":"Zhuque Fangsong (technical preview)","仿宋":"Zhuque Fangsong (technical preview)","FangSong_GB2312":"Zhuque Fangsong (technical preview)","仿宋_GB2312":"Zhuque Fangsong (technical preview)","KaiTi":"LXGW WenKai","楷体":"LXGW WenKai","KaiTi_GB2312":"LXGW WenKai","楷体_GB2312":"LXGW WenKai","Calibri":"Liberation Sans","Calibri Light":"Liberation Sans","Tahoma":"Liberation Sans"}
+    ports:
+      - "${ONLYOFFICE_BRIDGE_PORT:-8081}:8081"
+    volumes:
+      - ./bridge:/app:ro
+      - ../../.local-artifacts:/workspace/.local-artifacts:ro
+      - editor_versions:/data
+    depends_on:
+      document-server:
+        condition: service_healthy
+
+volumes:
+  document_data:
+  document_logs:
+  editor_versions:

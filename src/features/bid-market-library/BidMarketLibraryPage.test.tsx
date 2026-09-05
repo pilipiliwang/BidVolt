@@ -16,14 +16,17 @@ describe('BidMarketLibraryPage', () => {
   it('filters prop-provided content and previews the selected item', async () => {
     const user = userEvent.setup();
     render(<BidMarketLibraryPage items={items} state="ready" />);
-    expect(screen.getAllByText('电网投标政策解读')).toHaveLength(3);
+    expect(screen.getAllByText('电网投标政策解读')).toHaveLength(1);
     await user.click(screen.getByRole('button', { name: /公众号视频/ }));
-    expect(screen.getAllByText('技术标案例讲解')).toHaveLength(3);
+    expect(screen.getAllByText('技术标案例讲解')).toHaveLength(1);
     expect(screen.queryByText('投标文档指南')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '预览技术标案例讲解' }));
-    expect(screen.getByText('技术标案例讲解', { selector: '.bid-market-library__preview-summary h3' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '打开预览' }));
-    expect(screen.getByRole('dialog', { name: '技术标案例讲解预览' })).toHaveTextContent('暂无可预览内容');
+    expect(screen.getByText('技术标案例讲解', { selector: '.bid-market-library__inline-preview-heading h2' }))
+      .toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '关闭资料预览' }));
+    expect(screen.queryByText('技术标案例讲解', { selector: '.bid-market-library__inline-preview-heading h2' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /资料预览/ })).not.toBeInTheDocument();
   });
 
   it('searches and paginates without adding fallback data', async () => {
@@ -31,34 +34,43 @@ describe('BidMarketLibraryPage', () => {
     render(<BidMarketLibraryPage items={items} pageSize={1} state="ready" />);
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '下一页' }));
-    expect(screen.getAllByText('技术标案例讲解')).toHaveLength(3);
+    expect(screen.getAllByText('技术标案例讲解')).toHaveLength(1);
     await user.type(screen.getByRole('textbox', { name: '搜索行情库' }), '文档');
-    expect(screen.getAllByText('投标文档指南')).toHaveLength(3);
+    expect(screen.getAllByText('投标文档指南')).toHaveLength(1);
     expect(screen.getByText('1 / 1')).toBeInTheDocument();
   });
 
-  it('keeps the full unavailable layout and exposes both disabled backend submission modes', async () => {
+  it('仅向管理员显示上传入口，且切换提交方式时使用固定内容区域', async () => {
     const user = userEvent.setup();
-    render(<BidMarketLibraryPage items={[]} state="unavailable" />);
+    const view = render(<BidMarketLibraryPage items={[]} state="unavailable" />);
     expect(screen.getByText('行情库服务暂未接入')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '上传资料' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '资料标题' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '所属分类' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '录入时间' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '操作' })).toBeInTheDocument();
+
+    view.rerender(<BidMarketLibraryPage canManage items={[]} state="unavailable" />);
     const uploadButton = screen.getByRole('button', { name: '上传资料' });
     expect(uploadButton).toBeEnabled();
-    expect(screen.getByRole('columnheader', { name: '标题' })).toBeInTheDocument();
-    expect(screen.queryByText('示例行情')).not.toBeInTheDocument();
     await user.click(uploadButton);
     const dialog = screen.getByRole('dialog', { name: '上传行情资料' });
     expect(within(dialog).getByRole('combobox', { name: '资料分类' })).toHaveValue('wechat-article');
-    expect(within(dialog).getByText('后端网址解析入库接口待接入，当前可体验表单但不能提交。')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: '导入并解析' })).toBeDisabled();
+    const modePanel = dialog.querySelector('.bid-market-upload__mode-panel');
+    expect(modePanel).toBeInTheDocument();
+    await user.type(within(dialog).getByRole('textbox', { name: '文章或视频地址' }), 'https://example.com/article');
+    expect(within(dialog).getByRole('button', { name: '导入并解析' })).toBeEnabled();
     await user.click(within(dialog).getByRole('button', { name: '上传文件' }));
-    expect(within(dialog).getByText('后端文件存储接口待接入，当前可体验表单但不能提交。')).toBeInTheDocument();
+    expect(dialog.querySelector('.bid-market-upload__mode-panel')).toBe(modePanel);
     expect(within(dialog).getByRole('button', { name: '确认上传' })).toBeDisabled();
+    expect(within(dialog).queryByText(/后端.*接口待接入/)).not.toBeInTheDocument();
   });
 
   it('submits selected files and fixed category through the provided upload handler', async () => {
     const user = userEvent.setup();
     const onUploadFiles = vi.fn().mockResolvedValue({ message: '后端已受理' });
-    render(<BidMarketLibraryPage items={[]} onUploadFiles={onUploadFiles} state="ready" />);
+    render(<BidMarketLibraryPage canManage items={[]} onUploadFiles={onUploadFiles} state="ready" />);
     await user.click(screen.getByRole('button', { name: '上传资料' }));
     const dialog = screen.getByRole('dialog', { name: '上传行情资料' });
     await user.click(within(dialog).getByRole('button', { name: '上传文件' }));
@@ -73,7 +85,7 @@ describe('BidMarketLibraryPage', () => {
   it('validates and submits an HTTP URL with the selected category', async () => {
     const user = userEvent.setup();
     const onImportUrl = vi.fn().mockResolvedValue({ message: '解析任务已创建' });
-    render(<BidMarketLibraryPage items={[]} onImportUrl={onImportUrl} state="ready" />);
+    render(<BidMarketLibraryPage canManage items={[]} onImportUrl={onImportUrl} state="ready" />);
     await user.click(screen.getByRole('button', { name: '上传资料' }));
     const dialog = screen.getByRole('dialog', { name: '上传行情资料' });
     await user.selectOptions(within(dialog).getByRole('combobox', { name: '资料分类' }), 'wechat-video');
@@ -89,7 +101,7 @@ describe('BidMarketLibraryPage', () => {
   it('rejects unsafe URL protocols before calling the backend handler', async () => {
     const user = userEvent.setup();
     const onImportUrl = vi.fn();
-    render(<BidMarketLibraryPage items={[]} onImportUrl={onImportUrl} state="ready" />);
+    render(<BidMarketLibraryPage canManage items={[]} onImportUrl={onImportUrl} state="ready" />);
     await user.click(screen.getByRole('button', { name: '上传资料' }));
     const dialog = screen.getByRole('dialog', { name: '上传行情资料' });
     await user.type(within(dialog).getByRole('textbox', { name: '文章或视频地址' }), 'javascript:alert(1)');
@@ -101,10 +113,10 @@ describe('BidMarketLibraryPage', () => {
   it('clearly identifies mock data without changing its interaction behavior', () => {
     render(<BidMarketLibraryPage dataSource="mock" items={items} state="ready" />);
     expect(screen.getByText(/当前为 Mock 演示数据/)).toBeInTheDocument();
-    expect(screen.getAllByText('电网投标政策解读')).toHaveLength(3);
+    expect(screen.getAllByText('电网投标政策解读')).toHaveLength(1);
   });
 
-  it('blocks unsafe preview URLs and restores focus when the dialog closes', async () => {
+  it('在右侧预览区拦截不安全的预览地址', async () => {
     const user = userEvent.setup();
     const unsafeItem: BidMarketContent = {
       ...items[0],
@@ -115,19 +127,25 @@ describe('BidMarketLibraryPage', () => {
     };
     render(<BidMarketLibraryPage items={[unsafeItem]} state="ready" />);
 
-    const trigger = screen.getByRole('button', { name: '打开预览' });
-    await user.click(trigger);
-    const dialog = screen.getByRole('dialog', { name: '不安全地址资料预览' });
-    expect(within(dialog).queryByTitle('不安全地址资料内容')).not.toBeInTheDocument();
-    expect(within(dialog).getByText('服务端返回的预览地址无效。')).toBeInTheDocument();
-    const closeButton = within(dialog).getByRole('button', { name: '关闭资料预览' });
-    expect(closeButton).toHaveFocus();
-    await user.tab();
-    expect(closeButton).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '预览不安全地址资料' }));
+    expect(screen.queryByTitle('不安全地址资料内容')).not.toBeInTheDocument();
+    expect(screen.getByText('预览地址无效。')).toBeInTheDocument();
+  });
 
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog', { name: '不安全地址资料预览' })).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
+  it('管理员可以看到删除操作，普通账号看不到', async () => {
+    const user = userEvent.setup();
+    const onDeleteContent = vi.fn().mockResolvedValue(undefined);
+    const view = render(<BidMarketLibraryPage items={items} state="ready" />);
+    expect(screen.queryByRole('button', { name: '删除电网投标政策解读' })).not.toBeInTheDocument();
+
+    view.rerender(
+      <BidMarketLibraryPage canManage items={items} onDeleteContent={onDeleteContent} state="ready" />,
+    );
+    await user.click(screen.getByRole('button', { name: '删除电网投标政策解读' }));
+    const dialog = screen.getByRole('dialog', { name: '删除行情资料' });
+    expect(within(dialog).getByText(/电网投标政策解读/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
+    expect(onDeleteContent).toHaveBeenCalledWith('a1');
   });
 
   it('renders loading and error states without content cards', () => {

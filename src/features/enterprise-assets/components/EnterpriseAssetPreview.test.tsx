@@ -5,6 +5,60 @@ import { describe, expect, it, vi } from 'vitest';
 import { EnterpriseAssetPreview } from './EnterpriseAssetPreview';
 
 describe('EnterpriseAssetPreview', () => {
+  it('shows the missing-content reason instead of an empty HTML frame and keeps the original downloadable', async () => {
+    const user = userEvent.setup();
+    const onLoadPreview = vi.fn().mockResolvedValue({
+      kind: 'html' as const,
+      blob: new Blob(['<app-root></app-root><script src="app.js"></script>']),
+      mimeType: 'text/html',
+      unavailableReason: '该 HTML 仅保存了动态网页入口，正文需要原网站的脚本和接口加载。请在原网站将页面另存为完整网页，或导出 PDF 后上传。',
+    });
+    const onDownloadFile = vi.fn();
+    render(<EnterpriseAssetPreview fileId="portal-shell" fileName="portal.html" onLoadPreview={onLoadPreview} onDownloadFile={onDownloadFile} />);
+
+    expect(await screen.findByText('HTML 未包含可直接预览的内容')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('正文需要原网站的脚本和接口加载');
+    expect(screen.queryByTitle('portal.html HTML 预览')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '下载原文件' }));
+    expect(onDownloadFile).toHaveBeenCalledWith('portal-shell', 'portal.html');
+  });
+
+  it('renders HTML in a script-disabled frame and releases the old URL on replacement and unmount', async () => {
+    const createObjectURL = vi.fn()
+      .mockReturnValueOnce('blob:http://localhost/first-html')
+      .mockReturnValueOnce('blob:http://localhost/second-html');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = revokeObjectURL;
+    });
+    const onLoadPreview = vi.fn().mockResolvedValue({
+      kind: 'html' as const,
+      blob: new Blob(['<h1>采购公告</h1><script>window.parent.alert(1)</script>'], { type: 'application/octet-stream' }),
+      mimeType: 'text/html; charset=gbk',
+    });
+    const { rerender, unmount } = render(
+      <EnterpriseAssetPreview fileId="first-html" fileName="portal.html" onLoadPreview={onLoadPreview} />,
+    );
+    try {
+      const frame = await screen.findByTitle('portal.html HTML 预览');
+      expect(frame).toHaveAttribute('src', 'blob:http://localhost/first-html');
+      expect(frame).toHaveAttribute('sandbox', '');
+      expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
+      expect(createObjectURL.mock.calls[0][0]).toHaveProperty('type', 'text/html; charset=gbk');
+      expect(screen.queryByLabelText('解析文本预览')).not.toBeInTheDocument();
+
+      rerender(<EnterpriseAssetPreview fileId="second-html" fileName="notice.htm" onLoadPreview={onLoadPreview} />);
+      expect(await screen.findByTitle('notice.htm HTML 预览')).toHaveAttribute('src', 'blob:http://localhost/second-html');
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/first-html');
+      unmount();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/second-html');
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders parsed backend blocks and downloads the same source file', async () => {
     const user = userEvent.setup();
     const onLoadPreview = vi.fn().mockResolvedValue({

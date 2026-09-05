@@ -1,0 +1,7 @@
+.file-download-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.file-download-button:disabled { cursor: not-allowed; opacity: .65; }
+.file-download-button[aria-busy='true'] { cursor: progress; }
+.file-download-button .lucide-loader-circle { animation: file-download-spin 900ms linear infinite; }
+.file-download-error { max-width: 260px; color: #b24634; font-size: 12px; overflow-wrap: anywhere; }
+@keyframes file-download-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .file-download-button .lucide-loader-circle { animation: none; } }

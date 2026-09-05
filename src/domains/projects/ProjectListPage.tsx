@@ -369,8 +369,8 @@ export function ProjectListPage({
       <section className="ui0802-project-table-card" aria-label="投标项目列表">
         {error ? <p className="ui0802-project-form-error" role="alert">{error}</p> : null}
         {visibleProjects.length ? (
-          <div className="ui0802-project-table-scroll">
-            <table className="ui0802-project-table">
+          <div className="ui0802-project-table-scroll" role="region" aria-label="项目列表滚动区域" tabIndex={0}>
+            <table className="ui0802-project-table" aria-label="投标项目">
               <thead>
                 <tr>
                   <th scope="col">项目名称</th>
@@ -385,22 +385,26 @@ export function ProjectListPage({
               <tbody>
                 {visibleProjects.map((project) => (
                   <tr key={project.id}>
-                    <td>
-                      <span className="ui0802-project-title">{project.title}</span>
-                      <span className="ui0802-project-buyer">{project.buyer}</span>
+                    <td data-label="项目名称">
+                      <div className="ui0802-project-cell-value">
+                        <span className="ui0802-project-title" title={project.title}>{project.title}</span>
+                        <span className="ui0802-project-buyer" title={project.buyer}>{project.buyer}</span>
+                      </div>
                     </td>
-                    <td>{project.code}</td>
-                    <td>
-                      <time>{project.deadline}</time>
-                      <span className="ui0802-deadline-hint">（{project.deadlineHint}）</span>
+                    <td data-label="招标编号"><div className="ui0802-project-cell-value ui0802-project-code">{project.code}</div></td>
+                    <td data-label="截止时间">
+                      <div className="ui0802-project-cell-value">
+                        <time>{project.deadline}</time>
+                        <span className="ui0802-deadline-hint">（{project.deadlineHint}）</span>
+                      </div>
                     </td>
-                    <td><span className="ui0802-execution-status">{project.executionStatus}</span></td>
-                    <td>{project.score}</td>
-                    <td>{project.updatedAt}</td>
-                    <td>
-                      <div className="ui0802-row-actions">
+                    <td data-label="执行状态"><div className="ui0802-project-cell-value"><span className="ui0802-execution-status">{project.executionStatus}</span></div></td>
+                    <td data-label="评审得分"><div className="ui0802-project-cell-value">{project.score}</div></td>
+                    <td data-label="最近更新时间"><div className="ui0802-project-cell-value">{project.updatedAt}</div></td>
+                    <td data-label="操作">
+                      <div className="ui0802-project-cell-value ui0802-row-actions">
                         <AppLink
-                          to={project.stage === '方案编制' || hasRememberedGenerateWorkflow(project.id)
+                          to={hasRememberedGenerateWorkflow(project.id)
                             ? `/projects/${encodeURIComponent(project.id)}/materials?workflow=generate`
                             : `/projects/${encodeURIComponent(project.id)}/overview`}
                           aria-label={`进入${project.title}工作台`}

@@ -25,6 +25,13 @@ type EnterpriseAssetFolderOptions = {
 
 const archiveExtensions = new Set(['7z', 'rar', 'zip']);
 
+/** Both project stages use backend categories, without moving files by extension. */
+export function buildEnterpriseWorkspaceFolders<T extends CategoryAssignedItem>(
+  categories: readonly EnterpriseAssetCategoryFolder[], items: readonly T[],
+) {
+  return buildEnterpriseAssetFolders(categories, items).filter(folder => folder.kind !== 'all');
+}
+
 export function isEnterpriseSourceArchive(item: CategoryAssignedItem) {
   const extension = item.name.split('.').at(-1)?.trim().toLocaleLowerCase();
   return extension ? archiveExtensions.has(extension) : false;

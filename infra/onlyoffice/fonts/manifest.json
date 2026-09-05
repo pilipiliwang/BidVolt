@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "fonts": [
+    {
+      "file": "SourceHanSerifCN-Regular.otf",
+      "family": "Source Han Serif CN",
+      "version": "2.003R",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-serif/2.003R/SubsetOTF/CN/SourceHanSerifCN-Regular.otf",
+      "sha256": "3754ea669c530e2473354f8f6d9f79680a44d7e26ec7d00eeabee4a7e0753c5d",
+      "license": "SourceHanSerif-OFL.txt"
+    },
+    {
+      "file": "SourceHanSerifCN-Bold.otf",
+      "family": "Source Han Serif CN",
+      "version": "2.003R",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-serif/2.003R/SubsetOTF/CN/SourceHanSerifCN-Bold.otf",
+      "sha256": "4ee555ae58b3d22f6a95c2c494f2c36b7cccfc1d2224635f6461a03756f0e3c1",
+      "license": "SourceHanSerif-OFL.txt"
+    },
+    {
+      "file": "SourceHanSansCN-Regular.otf",
+      "family": "Source Han Sans CN",
+      "version": "2.005R",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-sans/2.005R/SubsetOTF/CN/SourceHanSansCN-Regular.otf",
+      "sha256": "e2bc8a2e7f37474b774fff8db758681ece40bb6947a90d571bce9dd60671a8e4",
+      "license": "SourceHanSans-OFL.txt"
+    },
+    {
+      "file": "SourceHanSansCN-Bold.otf",
+      "family": "Source Han Sans CN",
+      "version": "2.005R",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-sans/2.005R/SubsetOTF/CN/SourceHanSansCN-Bold.otf",
+      "sha256": "62383707c086a32f3afd5e293f34c7eff64c7fea31f579fdc6cbe34d920519a6",
+      "license": "SourceHanSans-OFL.txt"
+    },
+    {
+      "file": "LXGWWenKai-Regular.ttf",
+      "family": "LXGW WenKai",
+      "version": "v1.522",
+      "url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
+      "sha256": "39ad71264b588165b469e35e6afb162a378dacd1f95348160240ba9038ac3009",
+      "license": "LXGWWenKai-OFL.txt"
+    },
+    {
+      "file": "ZhuqueFangsong-Regular.ttf",
+      "family": "Zhuque Fangsong (technical preview)",
+      "version": "v0.212",
+      "prerelease": true,
+      "url": "https://github.com/TrionesType/zhuque/releases/download/v0.212/ZhuqueFangsong-v0.212.zip",
+      "archive": {
+        "file": "ZhuqueFangsong-v0.212.zip",
+        "entry": "ZhuqueFangsong-Regular.ttf",
+        "sha256": "bb8b661a7643d2296a72d9d10530a00949419c4e527fb61783f73c2ba1a8c062"
+      },
+      "sha256": "558c62730844fe54ba220146ed62f859d4e2880188d92d985f8921c6e3743bc4",
+      "license": "ZhuqueFangsong-OFL.txt"
+    }
+  ],
+  "licenses": [
+    {
+      "file": "SourceHanSerif-OFL.txt",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-serif/2.003R/LICENSE.txt",
+      "sha256": "9ff5bb567e1b92c801fc1069e5fbf992ff8efccacb9db94e5959a5b3ba9bb903"
+    },
+    {
+      "file": "SourceHanSans-OFL.txt",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-sans/2.005R/LICENSE.txt",
+      "sha256": "fcac737e761ec63dbfbdce11030a1780161920d80315edba9c8beff1c2bac5a2"
+    },
+    {
+      "file": "LXGWWenKai-OFL.txt",
+      "url": "https://raw.githubusercontent.com/lxgw/LxgwWenKai/v1.522/OFL.txt",
+      "sha256": "c38b1994a5e48ac30ac7d1da7d0409fd8fd8127dfe28a13d6e787d5b1ef34a5e"
+    },
+    {
+      "file": "ZhuqueFangsong-OFL.txt",
+      "url": "https://raw.githubusercontent.com/TrionesType/zhuque/v0.212/LICENSE.txt",
+      "sha256": "66cc01ad4df62fca6936431a426104cb32a52ce8da49de9a7d643e02d7659043"
+    }
+  ]
+}

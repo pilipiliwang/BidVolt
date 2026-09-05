@@ -12,6 +12,7 @@ import {
   PlayCircle,
   RefreshCw,
   Search,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react';
@@ -41,6 +42,7 @@ const kindMeta: Record<BidMarketContentKind, { label: string; Icon: typeof BookO
 };
 
 export function BidMarketLibraryPage({
+  canManage = false,
   state,
   items,
   dataSource = 'api',
@@ -48,6 +50,7 @@ export function BidMarketLibraryPage({
   unavailableMessage,
   pageSize = 8,
   onRefresh,
+  onDeleteContent,
   onImportUrl,
   onUploadFiles,
 }: BidMarketLibraryProps) {
@@ -55,9 +58,10 @@ export function BidMarketLibraryPage({
   const [categoryId, setCategoryId] = useState<BidMarketCategoryId | 'all'>('all');
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string>();
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<BidMarketContent>();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
-  const previewTriggerRef = useRef<HTMLButtonElement>(null);
   const uploadTriggerRef = useRef<HTMLButtonElement>(null);
   const categories = BID_MARKET_CATEGORIES;
 
@@ -72,7 +76,7 @@ export function BidMarketLibraryPage({
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visibleItems = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const selected = visibleItems.find((item) => item.id === selectedId) ?? visibleItems[0];
+  const selected = visibleItems.find((item) => item.id === selectedId);
   const unavailable = state === 'unavailable';
 
   useEffect(() => {
@@ -84,8 +88,8 @@ export function BidMarketLibraryPage({
   }, [page, pageCount]);
 
   useEffect(() => {
-    if (!selected) setPreviewOpen(false);
-  }, [selected]);
+    if (selectedId && !selected) setSelectedId(undefined);
+  }, [selected, selectedId]);
 
   return (
     <section className="bid-market-library">
@@ -101,7 +105,7 @@ export function BidMarketLibraryPage({
             </span>
           ) : null}
         </div>
-        <div className="bid-market-library__actions">
+        {canManage ? <div className="bid-market-library__actions">
           <button
             className="bid-market-library__upload"
             ref={uploadTriggerRef}
@@ -111,7 +115,7 @@ export function BidMarketLibraryPage({
             <Upload aria-hidden="true" size={17} />
             上传资料
           </button>
-        </div>
+        </div> : null}
       </header>
 
       <div className="bid-market-library__filters">
@@ -180,16 +184,23 @@ export function BidMarketLibraryPage({
         </div>
       ) : null}
 
-      <div className="bid-market-library__workspace">
-        <section aria-label="投标行情资料列表" className="bid-market-library__results">
+      <div className={`bid-market-library__workspace${selected ? ' is-previewing' : ''}`}>
+        <section
+          aria-label="投标行情资料列表"
+          className="bid-market-library__results"
+          onClick={() => setSelectedId(undefined)}
+        >
           {state === 'loading' ? (
             <LibraryState icon={LoaderCircle} title="正在加载投标行情资料…" loading />
           ) : (
             <ContentTable
+              canManage={canManage}
               items={state === 'ready' ? visibleItems : []}
               selectedId={selected?.id}
               state={state}
-              onSelect={setSelectedId}
+              onDeleteContent={onDeleteContent}
+              onRequestDelete={setPendingDelete}
+              onSelect={(id) => setSelectedId(id)}
             />
           )}
           <footer className="bid-market-library__pagination">
@@ -216,34 +227,20 @@ export function BidMarketLibraryPage({
           </footer>
         </section>
 
-        <aside className="bid-market-library__preview-pane">
+        {selected ? <aside className="bid-market-library__preview-pane">
           <header>
             <span>资料预览</span>
-            <small>{selected ? contentTypeLabel(selected) : '未选择'}</small>
+            <div>
+              <small>{contentTypeLabel(selected)}</small>
+              <button aria-label="关闭资料预览" type="button" onClick={() => setSelectedId(undefined)}>
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
           </header>
-          {selected ? (
-            <PreviewSummary
-              item={selected}
-              triggerRef={previewTriggerRef}
-              onOpen={() => setPreviewOpen(true)}
-            />
-          ) : (
-            <LibraryState
-              icon={FileText}
-              title="请选择资料"
-              description="选择左侧表格中的资料后，可在这里查看摘要。"
-            />
-          )}
-        </aside>
+          <InlinePreview item={selected} />
+        </aside> : null}
       </div>
 
-      {previewOpen && selected ? (
-        <PreviewDialog
-          item={selected}
-          returnFocusRef={previewTriggerRef}
-          onClose={() => setPreviewOpen(false)}
-        />
-      ) : null}
       {uploadOpen ? (
         <UploadDialog
           categories={categories}
@@ -253,17 +250,49 @@ export function BidMarketLibraryPage({
           onUploadFiles={onUploadFiles}
         />
       ) : null}
+      {pendingDelete ? (
+        <DeleteContentDialog
+          busy={deleting}
+          error={deleteError}
+          item={pendingDelete}
+          onClose={() => {
+            if (!deleting) {
+              setPendingDelete(undefined);
+              setDeleteError('');
+            }
+          }}
+          onConfirm={async () => {
+            if (!onDeleteContent || deleting) return;
+            setDeleting(true);
+            setDeleteError('');
+            try {
+              await onDeleteContent(pendingDelete.id);
+              setPendingDelete(undefined);
+            } catch (error) {
+              setDeleteError(error instanceof Error ? error.message : '删除失败，请重试。');
+            } finally {
+              setDeleting(false);
+            }
+          }}
+        />
+      ) : null}
     </section>
   );
 }
 
 function ContentTable({
+  canManage,
   items,
+  onDeleteContent,
+  onRequestDelete,
   selectedId,
   state,
   onSelect,
 }: {
+  canManage: boolean;
   items: BidMarketContent[];
+  onDeleteContent?: BidMarketLibraryProps['onDeleteContent'];
+  onRequestDelete: (item: BidMarketContent) => void;
   selectedId?: string;
   state: BidMarketLibraryProps['state'];
   onSelect: (id: string) => void;
@@ -273,16 +302,14 @@ function ContentTable({
       <table>
         <thead>
           <tr>
-            <th>标题</th>
-            <th>资料类型</th>
+            <th>资料标题</th>
             <th>所属分类</th>
-            <th>更新时间</th>
+            <th>录入时间</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           {items.length > 0 ? items.map((item) => {
-            const meta = kindMeta[item.kind];
             return (
               <tr
                 className={selectedId === item.id ? 'is-selected' : ''}
@@ -290,37 +317,50 @@ function ContentTable({
               >
                 <td>
                   <button
-                    aria-label={`选择${item.title}`}
+                    aria-label={`预览${item.title}`}
                     className="bid-market-library__title-button"
                     type="button"
-                    onClick={() => onSelect(item.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelect(item.id);
+                    }}
                   >
                     {item.title}
                   </button>
-                  <small>{item.source || '来源未提供'}</small>
-                </td>
-                <td>
-                  <span className={`bid-market-kind bid-market-kind--${item.kind}`}>
-                    <meta.Icon aria-hidden="true" size={15} />
-                    {contentTypeLabel(item)}
-                  </span>
                 </td>
                 <td>{item.categoryLabel}</td>
-                <td>{contentUpdatedAt(item)}</td>
-                <td>
+                <td>{contentCreatedAt(item)}</td>
+                <td className="bid-market-library__manage-cell">
                   <button
-                    aria-label={`预览${item.title}`}
+                    aria-label={`预览${item.title}内容`}
+                    className="bid-market-library__preview-action"
                     type="button"
-                    onClick={() => onSelect(item.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelect(item.id);
+                    }}
                   >
                     预览
                   </button>
+                  {canManage ? (
+                  <button
+                    aria-label={`删除${item.title}`}
+                    disabled={!onDeleteContent}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRequestDelete(item);
+                    }}
+                  >
+                    <Trash2 aria-hidden="true" size={17} />
+                  </button>
+                  ) : null}
                 </td>
               </tr>
             );
           }) : (
             <tr className="bid-market-library__empty-row">
-              <td colSpan={5}>
+              <td colSpan={4}>
                 {state === 'ready'
                   ? '暂无匹配资料，请调整搜索词或分类条件。'
                   : '暂无可展示资料，页面将在取得真实数据后更新。'}
@@ -333,41 +373,67 @@ function ContentTable({
   );
 }
 
-function PreviewSummary({
+function DeleteContentDialog({
+  busy,
+  error,
   item,
-  triggerRef,
-  onOpen,
+  onClose,
+  onConfirm,
 }: {
+  busy: boolean;
+  error: string;
   item: BidMarketContent;
-  triggerRef: RefObject<HTMLButtonElement | null>;
-  onOpen: () => void;
+  onClose: () => void;
+  onConfirm: () => Promise<void> | void;
 }) {
-  const Icon = kindMeta[item.kind].Icon;
-  const thumbnailUrl = safeResourceUrl(item.thumbnailUrl);
+  const dialogRef = useRef<HTMLElement>(null);
+  useModal(dialogRef, onClose, !busy);
   return (
-    <div className="bid-market-library__preview-summary">
-      {thumbnailUrl ? (
-        <img alt="" src={thumbnailUrl} />
-      ) : (
-        <div className={`bid-market-library__preview-cover bid-market-library__preview-cover--${item.kind}`}>
-          <span className={`bid-market-card__icon bid-market-card__icon--${item.kind}`}>
-            <Icon aria-hidden="true" size={28} />
-          </span>
-          <small>{item.categoryLabel}</small>
-          <strong>{item.title}</strong>
+    <div className="bid-market-dialog-layer">
+      <button aria-label="关闭删除确认" className="bid-market-dialog__backdrop" disabled={busy} type="button" onClick={onClose} />
+      <section aria-label="删除行情资料" aria-modal="true" className="bid-market-dialog bid-market-delete" ref={dialogRef} role="dialog">
+        <header>
+          <div><span>删除资料</span><h2>确认删除这条资料？</h2></div>
+          <button aria-label="关闭删除确认" disabled={busy} type="button" onClick={onClose}><X aria-hidden="true" size={19} /></button>
+        </header>
+        <div className="bid-market-delete__content">
+          <p>“{item.title}”删除后将不再出现在投标行情库中。</p>
+          {error ? <p className="is-error" role="alert">{error}</p> : null}
+          <div>
+            <button disabled={busy} type="button" onClick={onClose}>取消</button>
+            <button className="is-danger" disabled={busy} type="button" onClick={() => void onConfirm()}>{busy ? '正在删除…' : '确认删除'}</button>
+          </div>
         </div>
-      )}
-      <h3>{item.title}</h3>
-      <p>{item.summary || '暂无摘要'}</p>
-      <dl>
-        <div><dt>资料类型</dt><dd>{contentTypeLabel(item)}</dd></div>
-        <div><dt>所属分类</dt><dd>{item.categoryLabel}</dd></div>
-        <div><dt>来源</dt><dd>{item.source || '未提供'}</dd></div>
-        <div><dt>更新时间</dt><dd>{contentUpdatedAt(item)}</dd></div>
-      </dl>
-      <button className="is-primary" ref={triggerRef} type="button" onClick={onOpen}>
-        打开预览
-      </button>
+      </section>
+    </div>
+  );
+}
+
+function InlinePreview({ item }: { item: BidMarketContent }) {
+  const meta = kindMeta[item.kind];
+  const thumbnailUrl = safeResourceUrl(item.thumbnailUrl);
+  const previewUrl = safeResourceUrl(item.previewUrl);
+  return (
+    <div className="bid-market-library__inline-preview">
+      <div className="bid-market-library__inline-preview-heading">
+        <small>{item.categoryLabel}</small>
+        <h2>{item.title}</h2>
+      </div>
+      <div className="bid-market-library__inline-preview-content">
+        {item.kind === 'video' && previewUrl ? <video controls src={previewUrl} /> : null}
+        {item.kind !== 'video' && previewUrl ? (
+          <iframe referrerPolicy="no-referrer" sandbox="" src={previewUrl} title={`${item.title}内容`} />
+        ) : null}
+        {!previewUrl && item.body ? <p>{item.body}</p> : null}
+        {!previewUrl && !item.body && thumbnailUrl ? <img alt="" src={thumbnailUrl} /> : null}
+        {!previewUrl && !item.body && !thumbnailUrl ? (
+          <LibraryState
+            icon={meta.Icon}
+            title="暂无可预览内容"
+            description={item.previewUrl ? '预览地址无效。' : (item.summary || '该资料暂未提供预览内容。')}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -388,72 +454,6 @@ function LibraryState({
       <Icon aria-hidden="true" size={30} />
       <strong>{title}</strong>
       {description ? <p>{description}</p> : null}
-    </div>
-  );
-}
-
-function PreviewDialog({
-  item,
-  returnFocusRef,
-  onClose,
-}: {
-  item: BidMarketContent;
-  returnFocusRef: RefObject<HTMLButtonElement | null>;
-  onClose: () => void;
-}) {
-  const meta = kindMeta[item.kind];
-  const previewUrl = safeResourceUrl(item.previewUrl);
-  const dialogRef = useRef<HTMLElement>(null);
-  useModal(dialogRef, onClose, true, returnFocusRef);
-
-  return (
-    <div className="bid-market-dialog-layer">
-      <button
-        aria-label="关闭资料预览"
-        className="bid-market-dialog__backdrop"
-        type="button"
-        onClick={onClose}
-      />
-      <section
-        aria-label={`${item.title}预览`}
-        aria-modal="true"
-        className="bid-market-dialog"
-        ref={dialogRef}
-        role="dialog"
-      >
-        <header>
-          <div>
-            <span>{contentTypeLabel(item)} · {item.categoryLabel}</span>
-            <h2>{item.title}</h2>
-          </div>
-          <button autoFocus aria-label="关闭资料预览" type="button" onClick={onClose}>
-            <X aria-hidden="true" size={19} />
-          </button>
-        </header>
-        <div className="bid-market-dialog__content">
-          {item.kind === 'video' && previewUrl ? (
-            <video controls src={previewUrl} />
-          ) : null}
-          {item.kind !== 'video' && previewUrl ? (
-            <iframe
-              referrerPolicy="no-referrer"
-              sandbox=""
-              src={previewUrl}
-              title={`${item.title}内容`}
-            />
-          ) : null}
-          {!previewUrl && item.body ? <p>{item.body}</p> : null}
-          {!previewUrl && !item.body ? (
-            <LibraryState
-              icon={meta.Icon}
-              title="暂无可预览内容"
-              description={item.previewUrl
-                ? '服务端返回的预览地址无效。'
-                : '服务端尚未返回该资料的预览内容。'}
-            />
-          ) : null}
-        </div>
-      </section>
     </div>
   );
 }
@@ -493,7 +493,7 @@ function UploadDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy || submissionUnavailable) return;
+    if (busy) return;
 
     const normalizedUrl = mode === 'url' ? validImportUrl(url) : undefined;
     if (mode === 'url' && !normalizedUrl) {
@@ -502,6 +502,12 @@ function UploadDialog({
       return;
     }
     if (mode === 'file' && files.length === 0) return;
+
+    if (submissionUnavailable) {
+      setStatus('error');
+      setMessage(mode === 'url' ? '导入服务暂不可用，请稍后重试。' : '上传服务暂不可用，请稍后重试。');
+      return;
+    }
 
     setStatus('loading');
     setMessage('');
@@ -589,6 +595,7 @@ function UploadDialog({
             </button>
           </div>
 
+          <div className="bid-market-upload__mode-panel">
           {mode === 'url' ? (
             <label className="bid-market-upload__url">
               <span>文章或视频地址</span>
@@ -629,12 +636,7 @@ function UploadDialog({
               />
             </label>
           )}
-
-          {submissionUnavailable ? (
-            <p role="status">
-              后端{mode === 'url' ? '网址解析入库' : '文件存储'}接口待接入，当前可体验表单但不能提交。
-            </p>
-          ) : null}
+          </div>
           {message ? (
             <p
               className={status === 'error' ? 'is-error' : ''}
@@ -647,7 +649,6 @@ function UploadDialog({
             className="is-primary"
             disabled={
               busy
-              || submissionUnavailable
               || (mode === 'url' ? !url.trim() : files.length === 0)
             }
             type="submit"
@@ -673,8 +674,8 @@ function contentTypeLabel(item: BidMarketContent) {
   return item.typeLabel?.trim() || item.fileType?.trim() || kindMeta[item.kind].label;
 }
 
-function contentUpdatedAt(item: BidMarketContent) {
-  return item.updatedAt?.trim() || item.publishedAt?.trim() || '—';
+function contentCreatedAt(item: BidMarketContent) {
+  return item.createdAt?.trim() || item.updatedAt?.trim() || item.publishedAt?.trim() || '—';
 }
 
 function safeResourceUrl(value?: string) {

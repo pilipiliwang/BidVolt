@@ -1,4 +1,5 @@
 import type { PublicTaskEvent } from '../../shared/task-events';
+import type { EnterpriseAssetPreview } from '../enterprise-assets/types';
 import type { ProjectReviewSidebarViewModel } from '../../domains/projects/ProjectReviewSidebar';
 import type {
   EnterpriseMaterialsRefreshHandler,
@@ -103,6 +104,8 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   initialWorkflowMode?: 'choose' | 'generate';
   onAddEnterpriseFiles?: EnterpriseUploadHandler;
   onRefreshEnterpriseMaterials?: EnterpriseMaterialsRefreshHandler;
+  onLoadEnterprisePreview?: (fileId: string, fileName: string) => Promise<EnterpriseAssetPreview>;
+  onDownloadEnterpriseFile?: (fileId: string, fileName: string) => void | Promise<void>;
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onCompletedBidUpload?: (projectId: string, files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string) => void | Promise<void>;
@@ -115,6 +118,7 @@ export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
   reviewSidebar?: ProjectReviewSidebarViewModel;
   snapshots: ProjectSnapshot[];
   taskSummary?: ProjectWorkflowTaskSummary;
+  generationTaskId?: string;
   taskStatus?: PublicTaskEvent['status'];
   onOpenTasks?: () => void;
   onConfirmRequirement?: (projectId: string, requirementId: string) => Promise<void> | void;

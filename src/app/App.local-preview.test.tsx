@@ -105,11 +105,10 @@ describe('App local read-only preview', () => {
     expect(await screen.findByRole('heading', { name: '成果生成正在执行' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '等待标书成果生成完成' })).not.toBeInTheDocument();
     expect(screen.queryByRole('list', { name: '模拟评标六项指标' })).not.toBeInTheDocument();
-    const taskProgress = screen.getByRole('progressbar', { name: '成果生成任务进度' });
+    const taskProgress = screen.getByRole('progressbar', { name: '成果生成进度' });
     expect(taskProgress).toHaveAttribute('aria-valuenow', '0');
-    const taskPanel = taskProgress.closest<HTMLElement>('[data-task-status]');
-    expect(taskPanel).not.toBeNull();
-    expect(within(taskPanel!).getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
+    expect(screen.getAllByRole('progressbar', { name: '成果生成进度' })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: 'BidVolt 输入' })).toBeInTheDocument();
 
     previewNavigation = screen.getByRole('navigation', { name: '预览页面快速导航' });
     await user.click(within(previewNavigation).getByRole('link', { name: '招标材料' }));
@@ -147,9 +146,9 @@ describe('App local read-only preview', () => {
 
     expect(await screen.findByRole('heading', { name: '投标行情库' })).toBeInTheDocument();
     expect(screen.getByText(/当前为 Mock 演示数据/)).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '标题' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '资料标题' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /公众号文章/ })).toBeInTheDocument();
-    expect(screen.getAllByText('电网投标政策重点解读')).toHaveLength(3);
+    expect(screen.getAllByText('电网投标政策重点解读')).toHaveLength(1);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode backend",
     "dev:backend": "vite --mode backend",
     "dev:local-preview": "vite --mode local-preview",
     "build": "tsc --noEmit -p tsconfig.app.json --incremental false && tsc --noEmit -p tsconfig.node.json --incremental false && vite build --configLoader runner",
@@ -14,7 +14,7 @@
     "api:check:live": "node scripts/check-live-openapi.mjs",
     "test": "vitest run --configLoader runner",
     "test:watch": "vitest --configLoader runner",
-    "preview": "vite preview",
+    "preview": "vite preview --mode backend",
     "preview:backend": "vite preview --mode backend"
   },
   "dependencies": {

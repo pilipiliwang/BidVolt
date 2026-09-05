@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -117,15 +117,20 @@ describe('project workflow', () => {
     );
 
     const workflow = screen.getByRole('navigation', { name: '项目流程' });
-    expect(workflow).toHaveTextContent('企业资料库为空，可先补充资料');
-    expect(workflow).toHaveTextContent('上传招标材料或导入公告网址');
-    expect(workflow).not.toHaveTextContent('成果版本已返回');
+    expect(workflow.querySelector('.project-flow-track__meta')).not.toBeInTheDocument();
+    expect([...workflow.querySelectorAll('.project-flow-track__content')].map((item) => item.textContent)).toEqual([
+      '上传企业资料', '上传材料', '标书制作/审核', '成果生成',
+    ]);
+    expect(within(workflow).getByRole('listitem', { name: '上传企业资料：未完成' }))
+      .toHaveClass('project-flow-track__stage--pending');
+    expect(within(workflow).getByRole('listitem', { name: '上传材料：待上传' }))
+      .toHaveAttribute('aria-current', 'step');
     expect(screen.getByRole('link', { name: '返回' })).toHaveAttribute('href', '/projects');
     expect(screen.getByText('华北电网设备采购')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '选择本次投标任务' })).toBeInTheDocument();
   });
 
-  it('maps received counts into the material-preparation workflow', () => {
+  it('keeps material-preparation state accessible without showing status remarks', () => {
     render(
       <ProjectWorkflowFrame facts={{ currentTenderMaterialCount: 6, enterpriseMaterialCount: 12, hasDeliverables: false }}>
         <section aria-label="材料准备区">材料确认后发起任务</section>
@@ -133,10 +138,13 @@ describe('project workflow', () => {
     );
 
     const workflow = screen.getByRole('navigation', { name: '项目流程' });
-    expect(workflow).toHaveTextContent('已同步 12 项企业资料');
-    expect(workflow).toHaveTextContent('待确认');
-    expect(workflow).toHaveTextContent('已接收 6 项招标材料，请确认');
-    expect(workflow).toHaveTextContent('材料确认后开始制作');
+    expect(workflow.querySelector('.project-flow-track__meta')).not.toBeInTheDocument();
+    expect(within(workflow).getByRole('listitem', { name: '上传企业资料：已完成' }))
+      .toHaveClass('project-flow-track__stage--completed');
+    expect(within(workflow).getByRole('listitem', { name: '上传材料：待确认' }))
+      .toHaveAttribute('aria-current', 'step');
+    expect(workflow).not.toHaveTextContent('待确认');
+    expect(workflow).not.toHaveTextContent('已接收 6 项招标材料，请确认');
     expect(screen.getByRole('region', { name: '材料准备区' })).toBeInTheDocument();
   });
 
@@ -160,7 +168,10 @@ describe('project workflow', () => {
     );
 
     const workflow = screen.getByRole('navigation', { name: '项目流程' });
-    expect(workflow).toHaveTextContent('正在读取评分办法并生成技术响应 · 63%');
+    expect(within(workflow).getByRole('listitem', { name: '标书制作/审核：执行中' }))
+      .toHaveAttribute('aria-current', 'step');
+    expect(workflow).not.toHaveTextContent('正在读取评分办法并生成技术响应');
+    expect(screen.getByText('正在读取评分办法并生成技术响应')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: '成果生成任务进度' })).toHaveAttribute('aria-valuenow', '63');
     expect(screen.getByRole('button', { name: '查看任务进度' })).toBeInTheDocument();
   });
@@ -240,7 +251,15 @@ describe('project workflow', () => {
     );
 
     const workflow = screen.getByRole('navigation', { name: '项目流程' });
-    expect(workflow).toHaveTextContent('成果版本已返回');
+    expect(workflow.querySelector('.project-flow-track__meta')).not.toBeInTheDocument();
+    const stages = within(workflow).getAllByRole('listitem');
+    expect(stages).toHaveLength(4);
+    for (const stage of stages) {
+      expect(stage).toHaveAccessibleName(/：已完成$/);
+      expect(stage).toHaveClass('project-flow-track__stage--completed');
+      expect(stage).not.toHaveAttribute('aria-current');
+    }
+    expect(workflow).not.toHaveTextContent('成果版本已返回');
     expect(screen.getByRole('region', { name: '成果优化流程' })).toHaveTextContent('成果已生成模拟评标审核修改新版本复评');
     expect(screen.getByText(/评分已返回，可查看提升建议/)).toBeInTheDocument();
   });

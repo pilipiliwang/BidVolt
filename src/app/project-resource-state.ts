@@ -90,6 +90,54 @@ export function shouldUseAgentRunForGenerationTask(
 }
 
 /**
+ * Builds a truthful, read-only workspace state from the public task event when
+ * the richer Agent detail is unavailable or belongs to a different task.
+ * Conversation and interaction arrays stay empty instead of borrowing history
+ * from another run.
+ */
+export function agentRunFallbackFromGenerationTask(
+  task: PublicTaskEvent,
+): AgentRunViewModel {
+  const status: AgentRunViewModel['status'] = task.status === 'queued'
+    ? 'queued'
+    : task.status === 'succeeded'
+      ? 'succeeded'
+      : task.status === 'failed'
+        ? 'failed'
+        : task.status === 'cancelled'
+          ? 'cancelled'
+          : task.status === 'unknown'
+            ? 'unknown'
+            : 'running';
+  const completion: AgentRunViewModel['completion'] = task.status === 'succeeded'
+    ? 'unknown_terminal'
+    : task.status === 'failed'
+      ? 'failed'
+      : task.status === 'cancelled'
+        ? 'cancelled'
+        : task.status === 'unknown'
+          ? 'unknown_terminal'
+          : 'active';
+  return {
+    actionList: [],
+    completion,
+    conversation: [],
+    errorMessage: task.error_code ? task.public_message : null,
+    message: task.public_message,
+    outcome: null,
+    percent: task.percent,
+    phase: task.phase,
+    projectId: task.project_id,
+    questions: [],
+    reason: null,
+    sessionId: null,
+    status,
+    streamState: 'idle',
+    taskId: task.task_id,
+  };
+}
+
+/**
  * Keeps the task returned by POST /agent/start visible while the eventually
  * consistent task list still contains only older runs. The caller must pass
  * the explicit pending receipt id; an arbitrary historical Agent detail must

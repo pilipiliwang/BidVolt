@@ -8,6 +8,14 @@ export function rememberGenerateWorkflow(projectId: string) {
   }
 }
 
+export function clearRememberedGenerateWorkflow(projectId: string) {
+  try {
+    window.localStorage.removeItem(`${WORKFLOW_MODE_KEY_PREFIX}${projectId}`);
+  } catch {
+    // A stale preference is harmless when browser storage is unavailable.
+  }
+}
+
 export function hasRememberedGenerateWorkflow(projectId: string) {
   try {
     return window.localStorage.getItem(`${WORKFLOW_MODE_KEY_PREFIX}${projectId}`) === 'generate';

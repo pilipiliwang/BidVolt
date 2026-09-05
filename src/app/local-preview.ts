@@ -17,6 +17,7 @@ export const LOCAL_PREVIEW_PROJECT_ID = 'local-preview';
 export const localPreviewSession: AppSession = {
   enterpriseId: 'local-preview-enterprise',
   enterpriseName: '本地预览企业（非真实数据）',
+  permissions: [],
   userId: 'local-preview-user',
   user: {
     displayName: '本地预览访客',

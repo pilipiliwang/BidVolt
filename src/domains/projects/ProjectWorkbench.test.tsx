@@ -58,6 +58,27 @@ const enterpriseCategories: EnterpriseAssetCategoryFolder[] = [
 ];
 
 describe('ProjectWorkbench', () => {
+  it('previews the source file and preserves the upload form when returning', async () => {
+    const onLoadEnterprisePreview = vi.fn().mockResolvedValue({ kind: 'text', blocks: [{ id: '1', text: '原件正文' }] });
+    render(<ProjectWorkbench enterpriseCategories={enterpriseCategories}
+      enterpriseMaterials={[{ ...enterpriseMaterials[0], fileId: 'source-2133' }]}
+      onLoadEnterprisePreview={onLoadEnterprisePreview} showChat={false}>
+      <input aria-label="上传网址" defaultValue="" />
+    </ProjectWorkbench>);
+    fireEvent.change(screen.getByRole('textbox', { name: '上传网址' }), { target: { value: 'https://example.com/tender' } });
+    fireEvent.click(screen.getByRole('button', { name: '企业证照，1项' }));
+    fireEvent.click(screen.getByRole('button', { name: '企业营业执照.pdf' }));
+    expect(await screen.findByText('原件正文')).toBeInTheDocument();
+    expect(onLoadEnterprisePreview).toHaveBeenCalledWith('source-2133', '企业营业执照.pdf');
+    expect(screen.queryByRole('textbox', { name: '上传网址' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '展开上传材料' }));
+    expect(screen.getByRole('region', { name: '企业资料预览' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '上传网址' })).toHaveValue('https://example.com/tender');
+    fireEvent.click(screen.getByRole('button', { name: '收起上传材料' }));
+    expect(screen.queryByRole('textbox', { name: '上传网址' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '返回上传材料' }));
+    expect(screen.getByRole('textbox', { name: '上传网址' })).toHaveValue('https://example.com/tender');
+  });
   it('keeps the viewport-filling layout by default for editor pages', () => {
     render(
       <ProjectWorkbench
@@ -132,16 +153,9 @@ describe('ProjectSourceRail', () => {
     expect(within(rail).getByRole('heading', { level: 2, name: /企业资料/ })).toBeInTheDocument();
     expect(within(rail).queryByRole('tablist')).not.toBeInTheDocument();
     expect(within(rail).queryByRole('tab')).not.toBeInTheDocument();
-    expect(within(rail).getByText('系统视图')).toBeInTheDocument();
-    expect(within(rail).getByText('业务分类')).toBeInTheDocument();
-    expect(within(rail).getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-    expect(within(rail).getByRole('button', { name: '源文件，0项' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
+    expect(within(rail).queryByText('系统视图')).not.toBeInTheDocument();
+    expect(within(rail).queryByText('业务分类')).not.toBeInTheDocument();
+    expect(within(rail).queryByRole('button', { name: '全部资料，3项' })).not.toBeInTheDocument();
     expect(within(rail).getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -167,7 +181,7 @@ describe('ProjectSourceRail', () => {
     expect(within(rail).getByRole('button', { name: '企业资料上传不可用' })).toBeDisabled();
   });
 
-  it('separates source archives from backend business folders like the enterprise library', async () => {
+  it('keeps archives in their backend category like the results sidebar', async () => {
     const user = userEvent.setup();
     const sourceArchive: WorkspaceMaterial = {
       categoryId: 'license',
@@ -183,25 +197,15 @@ describe('ProjectSourceRail', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: '全部资料，4项' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-    expect(screen.getByRole('button', { name: '源文件，1项' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-    expect(screen.getByRole('button', { name: '企业证照，1项' })).toHaveAttribute(
+    expect(screen.queryByRole('button', { name: '源文件，1项' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '企业证照，2项' })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
     expect(screen.queryByLabelText('企业资料原件.zip')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '源文件，1项' }));
+    await user.click(screen.getByRole('button', { name: '企业证照，2项' }));
     expect(screen.getByLabelText('企业资料原件.zip')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: '企业证照，1项' }));
-    expect(screen.queryByLabelText('企业资料原件.zip')).not.toBeInTheDocument();
     expect(screen.getByLabelText('企业营业执照.pdf')).toBeInTheDocument();
   });
 
@@ -214,7 +218,7 @@ describe('ProjectSourceRail', () => {
       />,
     );
 
-    const allFolder = screen.getByRole('button', { name: '全部资料，3项' });
+    const allFolder = screen.getByRole('button', { name: '企业业绩，1项' });
     const licenseFolder = screen.getByRole('button', { name: '企业证照，1项' });
     expect(allFolder).toHaveAttribute('aria-expanded', 'false');
     expect(licenseFolder).toHaveAttribute('aria-expanded', 'false');
@@ -264,7 +268,7 @@ describe('ProjectSourceRail', () => {
       </ProjectWorkbench>,
     );
 
-    expect(screen.getByRole('button', { name: '全部资料，3项' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '企业业绩，1项' })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
@@ -334,7 +338,7 @@ describe('ProjectSourceRail', () => {
     expect(screen.queryByLabelText('上传企业资料并同步资料库')).not.toBeInTheDocument();
   });
 
-  it('keeps backend material status available without repeating it as a text column', async () => {
+  it('uses the same quiet file appearance as results, keeping status only in the hover title', async () => {
     const user = userEvent.setup();
     render(
       <ProjectSourceRail
@@ -346,9 +350,10 @@ describe('ProjectSourceRail', () => {
     await user.click(screen.getByRole('button', { name: '未分类资料，1项' }));
 
     expect(screen.queryByText('待确认')).not.toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '资料状态：待确认' })).toHaveClass(
-      'bv-source-status-icon--orange',
-    );
+    expect(screen.queryByRole('img', { name: '资料状态：待确认' })).not.toBeInTheDocument();
+    const files = screen.getByRole('list', { name: '未分类资料文件' });
+    expect(files.querySelector('.bv-source-rail__file-icon')).toBeInTheDocument();
+    expect(files.querySelector('button')).toHaveAttribute('title', expect.stringContaining('待确认'));
   });
 
   it('shows enterprise upload pending and failure states without an unhandled rejection', async () => {
@@ -599,8 +604,7 @@ describe('ProjectSourceRail', () => {
   it('shows a dedicated empty state for enterprise data', () => {
     render(<ProjectSourceRail enterpriseMaterials={[]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '全部资料，0项' }));
-    expect(screen.getByRole('status')).toHaveTextContent('企业资料库暂无可展示资料');
+    expect(screen.getByText('企业资料库暂无可展示资料')).toBeInTheDocument();
   });
 });
 

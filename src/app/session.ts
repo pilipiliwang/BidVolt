@@ -1,6 +1,7 @@
 export type AppSession = {
   enterpriseId: string;
   enterpriseName: string;
+  permissions: string[];
   userId: string;
   user: {
     displayName: string;

@@ -1,6 +1,8 @@
 import react from '@vitejs/plugin-react';
 import { loadEnv } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
+import { localPackagePlugin } from './scripts/local-package-plugin.ts';
+import { officeDownloadPlugin } from './scripts/office-download-plugin.ts';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', 'VITE_');
@@ -14,12 +16,15 @@ export default defineConfig(({ mode }) => {
     : undefined;
 
   return {
-    plugins: [react()],
+    plugins: [react(), localPackagePlugin(), officeDownloadPlugin(env.VITE_ONLYOFFICE_BRIDGE_URL)],
     build: {
       outDir: env.VITE_BUILD_OUT_DIR || 'dist',
     },
     server: {
       port: 4173,
+      fs: {
+        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.local-artifacts/**'],
+      },
       proxy,
       watch: {
         ignored: ['**/.worktrees/**'],
@@ -33,7 +38,7 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       css: true,
-      exclude: [...configDefaults.exclude, '**/.worktrees/**'],
+      exclude: [...configDefaults.exclude, '**/.worktrees/**', '**/outputs/**', '**/infra/**', '**/.local-artifacts/**'],
       coverage: {
         reporter: ['text', 'html'],
       },

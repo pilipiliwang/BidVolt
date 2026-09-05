@@ -85,7 +85,7 @@ const conversationKindLabels: Record<string, string> = {
 
 function phaseLabel(phase: string) {
   const labels: Record<string, string> = {
-    agent_pipeline: 'Agent 主会话',
+    agent_pipeline: 'BidVolt 主会话',
     assembly: '成果成文',
     package_response: '响应文件打包',
     question_gate: '资料确认',
@@ -183,7 +183,7 @@ function AgentQuestionCard({
       </ol>
 
       {!question.answered && question.legacy ? (
-        <p className="agent-question__legacy">历史问卡没有可提交编号，请通过下方会话输入回答。</p>
+        <p className="agent-question__legacy">该历史待处理内容缺少可提交编号，请通过下方输入框回复 BidVolt。</p>
       ) : null}
 
       {!question.answered && !question.legacy && onAnswer ? (
@@ -253,7 +253,7 @@ function AgentConversation({
       {run.conversation.length > visibleMessages.length ? (
         <p className="agent-conversation__limit">仅展示最近 {visibleMessages.length} 条；完整记录随成果包交付。</p>
       ) : null}
-      <ol aria-label="Agent 主会话实时消息">
+      <ol aria-label="BidVolt 主会话实时消息">
         {visibleMessages.length === 0 ? (
           <li className="agent-conversation__empty">暂无会话消息，连接后将在这里实时显示。</li>
         ) : visibleMessages.map((item) => (
@@ -343,7 +343,7 @@ export function AgentRunPanel({
           ) : (
             <div className="agent-run-summary__progress-row">
               <div
-                aria-label="Agent 成果生成进度"
+                aria-label="BidVolt 成果生成进度"
                 aria-valuemax={100}
                 aria-valuemin={0}
                 aria-valuenow={run.percent}
@@ -360,7 +360,12 @@ export function AgentRunPanel({
             <button
               className="agent-run-summary__download"
               disabled={downloadingPackage}
-              onClick={() => void onDownloadResponsePackage()}
+              onClick={() => {
+                void Promise.resolve().then(() => onDownloadResponsePackage()).catch(() => {
+                  // App owns download feedback. Consume the DOM event's promise
+                  // rejection without replacing that feedback with fake success.
+                });
+              }}
               type="button"
             >
               <Download aria-hidden="true" size={16} />

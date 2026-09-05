@@ -107,7 +107,8 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.getByRole('heading', { name: /上传招标材料.*必填/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /上传补充材料.*可选/ })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '选择本次投标任务' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
+    expect(screen.getByText('请先上传招标材料，解析完成后即可生成标书')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /确认材料，生成标书/ })).toBeDisabled();
   });
 
   it('keeps confirmation disabled while tender materials are still parsing', () => {
@@ -131,7 +132,8 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText('正在解析招标材料')).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar', { name: '招标材料解析进度' }))
       .not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
+    expect(screen.getByText('招标材料正在解析，解析完成后即可生成标书')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /确认材料，生成标书/ })).toBeDisabled();
     expect(screen.queryByRole('button', { name: '返回任务选择' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('项目助手输入')).not.toBeInTheDocument();
     expect(screen.queryByText('本次任务文件')).not.toBeInTheDocument();
@@ -159,7 +161,7 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText('正在下载并解析招标公告')).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar', { name: '招标公告导入进度' }))
       .not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /确认材料并开始生成标书/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /确认材料，生成标书/ })).toBeDisabled();
     expect(screen.queryByText('请先上传招标材料，或粘贴招标公告网址并完成解析。'))
       .not.toBeInTheDocument();
   });
@@ -190,7 +192,8 @@ describe('ProjectMaterialsPage', () => {
     );
 
     expect(screen.queryByText('招标材料解析完成')).not.toBeInTheDocument();
-    const startButton = screen.getByRole('button', { name: /确认材料并开始生成标书/ });
+    expect(screen.getByText('招标材料已解析完成，可以开始生成标书')).toBeInTheDocument();
+    const startButton = screen.getByRole('button', { name: /确认材料，生成标书/ });
     expect(startButton).toBeEnabled();
     await user.click(startButton);
     expect(onStartTask).toHaveBeenCalledWith('53', 'generate');
@@ -222,14 +225,17 @@ describe('ProjectMaterialsPage', () => {
     );
 
     const flowTrack = screen.getByRole('navigation', { name: '项目流程' });
-    expect(within(flowTrack).getByText('待确认')).toBeInTheDocument();
-    const startButton = screen.getByRole('button', { name: /确认材料并开始生成标书/ });
+    expect(within(flowTrack).getByRole('listitem', { name: '上传材料：待确认' }))
+      .toHaveAttribute('aria-current', 'step');
+    const startButton = screen.getByRole('button', { name: /确认材料，生成标书/ });
     await user.click(startButton);
 
     expect(onStartTask).toHaveBeenCalledWith('53', 'generate');
     expect(await screen.findByRole('alert')).toHaveTextContent('任务队列暂不可用');
-    expect(within(flowTrack).getByText('待确认')).toBeInTheDocument();
-    expect(within(flowTrack).queryByText('已确认 2 项招标材料')).not.toBeInTheDocument();
+    expect(within(flowTrack).getByRole('listitem', { name: '上传材料：待确认' }))
+      .toHaveAttribute('aria-current', 'step');
+    expect(within(flowTrack).queryByRole('listitem', { name: '上传材料：已完成' })).not.toBeInTheDocument();
+    expect(flowTrack.querySelector('.project-flow-track__meta')).not.toBeInTheDocument();
     expect(startButton).toBeEnabled();
   });
 

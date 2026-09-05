@@ -75,7 +75,7 @@ function phaseLabel(phase: string) {
   const labels: Record<string, string> = {
     bid_generate: '成果生成',
     bid_review: '成果校核',
-    agent_pipeline: 'Agent 成果生成',
+    agent_pipeline: 'BidVolt 成果生成',
     tender_parse: '招标材料解析',
   };
   return labels[phase] ?? phase;

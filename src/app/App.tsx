@@ -26,11 +26,14 @@ import { ProjectListPage } from '../domains/projects/ProjectListPage';
 import {
   ProjectOverviewPage,
   type DeliverablesRequestView,
+  type ProjectDeliverableView,
   type ProjectOverviewView,
   type ProjectTaskStatus,
 } from '../domains/projects/ProjectOverviewPage';
 import type { ProjectSummary } from '../domains/projects/project-view-model';
-import { rememberGenerateWorkflow } from '../domains/projects/project-workflow-mode';
+import {
+  rememberGenerateWorkflow,
+} from '../domains/projects/project-workflow-mode';
 import { buildProjectOutcomeReviewViewModel } from '../domains/projects/ProjectOutcomeReviewPanel';
 import { buildProjectReviewSidebarViewModel } from '../domains/projects/ProjectReviewSidebar';
 import type {
@@ -50,6 +53,7 @@ import {
   type EnterpriseAssetPreview,
   type EnterpriseAssetCategoryFolder,
 } from '../features/enterprise-assets';
+import { loadHtmlAssetPreview } from '../features/enterprise-assets/html-preview';
 import {
   BID_MARKET_MOCK_ITEMS,
   BidMarketLibraryPage,
@@ -119,6 +123,7 @@ import { mergeProjectPage, upsertProjectSummary } from './project-state';
 import {
   findLatestActiveBidGenerateTask,
   findLatestGenerationTask,
+  agentRunFallbackFromGenerationTask,
   findCurrentProjectSubmissionTask,
   hasTaskEnteredTerminalState,
   isActiveTaskStatus,
@@ -140,6 +145,13 @@ import { buildEnterpriseUploadRecords } from './enterprise-upload-records';
 import { createEditorSaveGate } from './editor-save-gate';
 import { buildPageApiActivity } from './page-api-activity';
 import { pageApiCatalog } from './page-api-catalog';
+import {
+  documentUpdatedLifecycleMessage,
+  enterpriseUploadLifecycleMessage,
+  sendBidVoltLifecycleMessage,
+  waitForEnterpriseUploadLifecycle,
+  type EnterpriseUploadLifecycleTarget,
+} from './bidvolt-lifecycle';
 import { tenderNoticeImportErrorMessage } from './backend-capability-errors';
 import {
   initialBackendReachabilityState,
@@ -292,7 +304,7 @@ const projectResourceLabels: Record<ProjectResourceKey, string> = {
   snapshots: '项目快照',
   tenderNotices: '招标公告导入记录',
   tasks: '任务进度',
-  agent: 'Agent 主会话',
+  agent: 'BidVolt 主会话',
   deliverables: '成果版本',
   review: '评审结果',
   score: '最新评分',
@@ -340,7 +352,9 @@ export function App() {
   const [answeringAgentAskId, setAnsweringAgentAskId] = useState<string | null>(null);
   const [downloadingResponsePackage, setDownloadingResponsePackage] = useState(false);
   const [resumingAgentRun, setResumingAgentRun] = useState(false);
-  const [sendingAgentMessage, setSendingAgentMessage] = useState(false);
+  const [pendingAgentMessageCount, setPendingAgentMessageCount] = useState(0);
+  const [agentStreamRefresh, setAgentStreamRefresh] = useState(0);
+  const sendingAgentMessage = pendingAgentMessageCount > 0;
   const [taskStreamConnection, setTaskStreamConnection] = useState<TaskStreamConnection>({
     key: null,
     status: 'idle',
@@ -357,6 +371,7 @@ export function App() {
   const [backendRequestEvents, setBackendRequestEvents] = useState<Record<string, BackendApiRequestEvent>>({});
   const editorLoadKeyRef = useRef('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
+  const projectDataRef = useRef<Record<string, ProjectData>>({});
   const editorSaveGateRef = useRef(createEditorSaveGate());
   const tenantGuardRef = useRef(createTenantGenerationGuard());
   const projectListRequestRef = useRef(0);
@@ -374,12 +389,15 @@ export function App() {
   const enterpriseCategoryRecordsRef = useRef<EnterpriseCategory[]>([]);
   const enterpriseAssetDetailRequestRef = useRef(new Map<string, Promise<EnterpriseAsset | void>>());
   const enterpriseOverviewRequestRef = useRef(0);
+  const responsePackageRequestRef = useRef(new Map<string, Promise<void>>());
+  const agentStreamOpenRef = useRef<{ projectId: string; taskId: string } | null>(null);
   const localPreviewPayloadRef = useRef<LocalPreviewPayload | null>(null);
   const localPreviewLoadRef = useRef(false);
   const apiRouteStartedAtRef = useRef(Date.now());
   const routeProjectIdRef = useRef(routeProjectId);
   routeProjectIdRef.current = routeProjectId;
   activeEditorRef.current = editor;
+  projectDataRef.current = projectData;
 
   const clearTenantDomainState = useCallback(() => {
     const empty = createEmptyTenantDomainState();
@@ -398,8 +416,10 @@ export function App() {
     setTaskDrawerProjectId(empty.taskDrawerProjectId);
     setAnsweringAgentAskId(null);
     setDownloadingResponsePackage(false);
+    responsePackageRequestRef.current.clear();
+    agentStreamOpenRef.current = null;
     setResumingAgentRun(false);
-    setSendingAgentMessage(false);
+    setPendingAgentMessageCount(0);
     setTaskStreamConnection({ key: null, status: 'idle' });
     setSnapshotDetail(empty.snapshotDetail);
     setEditor(empty.editor);
@@ -475,13 +495,23 @@ export function App() {
     generation = tenantGuardRef.current.capture(),
   ) => {
     const profile = me ?? await backendApi.auth.me();
+    const developerAdminEmails = import.meta.env.DEV
+      ? (import.meta.env.VITE_DEV_ADMIN_EMAILS ?? '')
+        .split(',')
+        .map((email: string) => email.trim().toLocaleLowerCase())
+        .filter(Boolean)
+      : [];
+    const permissions = developerAdminEmails.includes(profile.email.trim().toLocaleLowerCase())
+      ? Array.from(new Set([...profile.permissions, 'admin.user']))
+      : profile.permissions;
     const nextSession: AppSession = {
       enterpriseId: String(profile.enterprise_id),
       enterpriseName: profile.enterprise_name || '企业名称未提供',
+      permissions,
       userId: String(profile.user_id),
       user: {
         displayName: profile.email || `用户 #${profile.user_id}`,
-        role: profile.permissions.includes('admin.user') ? '企业管理员' : '投标用户',
+        role: permissions.includes('admin.user') ? '企业管理员' : '投标用户',
       },
     };
     const established = tenantGuardRef.current.commit(generation, () => {
@@ -809,6 +839,7 @@ export function App() {
               projectId,
               questions: agentResult.value.questions,
               conversation: previousRun?.conversation,
+              previousRun,
               streamState: previousRun?.streamState ?? 'idle',
             });
           }
@@ -1086,7 +1117,9 @@ export function App() {
     const taskId = routeAgentTaskId;
     const tenantGeneration = tenantGuardRef.current.capture();
     const controller = new AbortController();
-    let lastSeq = Math.max(0, ...(routeAgentRun?.conversation.map((message) => message.seq) ?? [0]));
+    const subscription = { projectId, taskId };
+    agentStreamOpenRef.current = subscription;
+    let lastSeq = Math.max(0, ...(projectDataRef.current[projectId]?.agentRun?.conversation.map((message) => message.seq) ?? [0]));
 
     setProjectData((current) => {
       const existing = current[projectId];
@@ -1121,6 +1154,7 @@ export function App() {
         });
       },
     }).then((end) => {
+      if (agentStreamOpenRef.current === subscription) agentStreamOpenRef.current = null;
       if (controller.signal.aborted || !tenantGuardRef.current.isCurrent(tenantGeneration)) return;
       setProjectData((current) => {
         const existing = current[projectId];
@@ -1143,6 +1177,7 @@ export function App() {
       taskSnapshotRequestRef.current.delete(projectId);
       void loadProject(projectId);
     }).catch(() => {
+      if (agentStreamOpenRef.current === subscription) agentStreamOpenRef.current = null;
       if (controller.signal.aborted || !tenantGuardRef.current.isCurrent(tenantGeneration)) return;
       setProjectData((current) => {
         const existing = current[projectId];
@@ -1157,8 +1192,12 @@ export function App() {
       });
     });
 
-    return () => controller.abort();
+    return () => {
+      if (agentStreamOpenRef.current === subscription) agentStreamOpenRef.current = null;
+      controller.abort();
+    };
   }, [
+    agentStreamRefresh,
     authState,
     loadProject,
     localPreviewActive,
@@ -1202,6 +1241,7 @@ export function App() {
                 projectId,
                 questions,
                 conversation: existing.agentRun.conversation,
+                previousRun: existing.agentRun,
                 streamState: existing.agentRun.streamState,
               }),
             },
@@ -1222,7 +1262,7 @@ export function App() {
             ...current,
             [projectId]: {
               ...current[projectId],
-              agent: readableError(error, 'Agent 主会话状态刷新失败'),
+              agent: readableError(error, 'BidVolt 主会话状态刷新失败'),
             },
           }));
         }
@@ -1656,6 +1696,15 @@ export function App() {
     });
   };
 
+  const notifyBidVoltLifecycle = (projectId: string, message: string) => {
+    const taskId = projectDataRef.current[projectId]?.agentRun?.taskId;
+    return sendBidVoltLifecycleMessage(backendApi.agent, {
+      message,
+      projectId,
+      ...(taskId ? { taskId } : {}),
+    });
+  };
+
   const handleEnterpriseUpload = async (files: File[]) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('上传企业资料');
     const generation = tenantGuardRef.current.capture();
@@ -1688,13 +1737,53 @@ export function App() {
     };
   };
 
-  const handleEnterpriseUploadFromWorkspace = async (files: File[]): Promise<EnterpriseUploadResult | void> => {
+  const handleEnterpriseUploadFromWorkspace = async (
+    projectId: string,
+    files: File[],
+  ): Promise<EnterpriseUploadResult | void> => {
+    const lifecycleGeneration = tenantGuardRef.current.capture();
+    const baselineAssetIds = enterpriseAssets.map((asset) => asset.id);
     const result = await handleEnterpriseUpload(files);
     if (!result) return undefined;
     const acceptedRecords = result.records.filter((record) => record.status === 'accepted');
     if (acceptedRecords.length === 0) throw new Error(result.message);
     const newRecords = acceptedRecords.filter((record) => record.duplicate !== true);
     const allAcceptedRecordsAreDuplicates = newRecords.length === 0;
+    if (newRecords.length > 0) {
+      const assetIds = newRecords.flatMap((record) => record.assetId ? [record.assetId] : []);
+      const target: EnterpriseUploadLifecycleTarget = {
+        assetIds,
+        baselineAssetIds,
+        expectedNewAssetCount: assetIds.length > 0
+          ? assetIds.length
+          : newRecords.reduce((count, record) => (
+              count + Math.max(1, record.expanded?.imported ?? 0)
+            ), 0),
+        uploadedFileNames: newRecords.map((record) => record.fileName),
+      };
+      void waitForEnterpriseUploadLifecycle({
+        isCurrent: () => tenantGuardRef.current.isCurrent(lifecycleGeneration),
+        loadAssets: backendApi.enterprise.listAssets,
+        target,
+      }).then(async (resolution) => {
+        if (!resolution || !tenantGuardRef.current.isCurrent(lifecycleGeneration)) return;
+        await loadEnterprise().catch(() => undefined);
+        if (!tenantGuardRef.current.isCurrent(lifecycleGeneration)) return;
+        try {
+          await notifyBidVoltLifecycle(
+            projectId,
+            enterpriseUploadLifecycleMessage(target, resolution),
+          );
+        } catch (error) {
+          if (tenantGuardRef.current.isCurrent(lifecycleGeneration)) {
+            setStatusMessage({
+              tone: 'info',
+              text: `企业资料已完成处理，但 BidVolt 上下文通知失败；请在对话框中补充说明。${readableError(error, '')}`,
+            });
+          }
+        }
+      });
+    }
     return {
       assetIds: newRecords.flatMap((record) => record.assetId ? [record.assetId] : []),
       expectedNewAssetCount: newRecords.length,
@@ -1759,7 +1848,10 @@ export function App() {
         mimeType: blob.type === 'application/pdf' ? blob.type : 'application/pdf',
       };
     }
-    if (['doc', 'docx', 'xls', 'xlsx', 'csv', 'ppt', 'pptx', 'txt', 'md', 'html', 'htm', 'ofd'].includes(extension)) {
+    if (extension === 'html' || extension === 'htm') {
+      return loadHtmlAssetPreview(fileId, backendApi.files.download);
+    }
+    if (['doc', 'docx', 'xls', 'xlsx', 'csv', 'ppt', 'pptx', 'txt', 'md', 'ofd'].includes(extension)) {
       const blocks = await backendApi.files.blocksAll(fileId);
       return {
         kind: 'text',
@@ -1778,6 +1870,22 @@ export function App() {
       message: '当前格式暂不支持在线预览，请下载原文件查看。',
     };
   }, []);
+
+  const loadProjectResourcePreview = useCallback(async (
+    fileId: string,
+    fileName: string,
+  ): Promise<EnterpriseAssetPreview> => {
+    const extension = fileName.split('.').at(-1)?.toLocaleLowerCase() ?? '';
+    if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(extension)) {
+      const blob = await backendApi.files.download(fileId);
+      return {
+        blob,
+        kind: 'office',
+        mimeType: blob.type || 'application/octet-stream',
+      };
+    }
+    return loadEnterpriseAssetPreview(fileId, fileName);
+  }, [loadEnterpriseAssetPreview]);
 
   const downloadEnterpriseAssetFile = useCallback(async (fileId: string, fileName: string) => {
     const blob = await backendApi.files.download(fileId);
@@ -1894,7 +2002,17 @@ export function App() {
     const generation = tenantGuardRef.current.capture();
     await backendApi.files.remove(fileId);
     if (!tenantGuardRef.current.isCurrent(generation)) return;
-    await refreshProjectMaterials(projectId);
+    setProjectData((current) => {
+      const existing = current[projectId];
+      if (!existing) return current;
+      return {
+        ...current,
+        [projectId]: {
+          ...existing,
+          materials: existing.materials.filter((material) => String(material.id) !== String(fileId)),
+        },
+      };
+    });
   };
 
   const handleConfirmRequirement = async (projectId: string, requirementId: string) => {
@@ -2009,6 +2127,7 @@ export function App() {
         };
       });
       if (mode === 'generate') {
+        rememberGenerateWorkflow(projectId);
         pendingGenerationEditorNavigationRef.current = {
           hasReachedOverview: false,
           projectId,
@@ -2034,32 +2153,39 @@ export function App() {
 
   const handleAssistantSend = async (projectId: string, value: string) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('发送项目助手消息');
+    if (projectData[projectId]?.agentRun) {
+      return handleSendAgentMessage(projectId, value, 'queue');
+    }
     const generation = tenantGuardRef.current.capture();
+    setPendingAgentMessageCount((current) => current + 1);
     try {
-      const currentAgentRun = projectData[projectId]?.agentRun;
-      const response = currentAgentRun
-        ? await backendApi.agent.chat(projectId, currentAgentRun.taskId, { message: value, mode: 'queue' })
-        : await backendApi.agent.preChat(projectId, value);
+      const response = await backendApi.agent.preChat(projectId, value);
+      if (!tenantGuardRef.current.isCurrent(generation)) {
+        throw new DOMException('会话已切换，已忽略旧企业的消息回复。', 'AbortError');
+      }
       tenantGuardRef.current.commit(generation, () => {
         setStatusMessage({
           tone: 'info',
-          text: response.reply || response.message || (currentAgentRun
-            ? '消息已排队发送给 Agent 主会话。'
-            : '任务前对话已完成，并会作为后续 Agent 任务上下文。'),
+          text: response.reply || response.message || '任务前对话已完成，并会作为后续 BidVolt 任务上下文。',
         });
       });
+      return response;
     } catch (error) {
       if (tenantGuardRef.current.isCurrent(generation)) {
         setError(error, '项目助手请求失败');
-        throw error;
       }
+      throw error;
+    } finally {
+      tenantGuardRef.current.commit(generation, () => {
+        setPendingAgentMessageCount((current) => Math.max(0, current - 1));
+      });
     }
   };
 
   const handleAnswerAgentQuestion = async (projectId: string, askId: string, answers: string[]) => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('回答 Agent 问题');
+    if (localPreviewActive) throw blockLocalPreviewWrite('回答 BidVolt 问题');
     const run = projectData[projectId]?.agentRun;
-    if (!run) throw new Error('当前项目没有可回答的 Agent 主会话。');
+    if (!run) throw new Error('当前项目没有可回答的 BidVolt 主会话。');
     const generation = tenantGuardRef.current.capture();
     setAnsweringAgentAskId(askId);
     try {
@@ -2081,6 +2207,7 @@ export function App() {
                 projectId,
                 questions,
                 conversation: existing.agentRun.conversation,
+                previousRun: existing.agentRun,
                 streamState: existing.agentRun.streamState,
               }),
             },
@@ -2088,12 +2215,12 @@ export function App() {
         });
         setStatusMessage({
           tone: 'info',
-          text: response.reply || (response.queued ? '回答已排队回传 Agent 主会话。' : '回答已提交。'),
+          text: response.reply || (response.queued ? '回答已排队回传 BidVolt 主会话。' : '回答已提交。'),
         });
       });
       return response;
     } catch (error) {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'Agent 问卡回答失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'BidVolt 提问回答失败');
       throw error;
     } finally {
       tenantGuardRef.current.commit(generation, () => setAnsweringAgentAskId(null));
@@ -2105,46 +2232,89 @@ export function App() {
     message: string,
     mode: 'queue' | 'steer',
   ) => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('发送 Agent 主会话消息');
+    if (localPreviewActive) throw blockLocalPreviewWrite('发送 BidVolt 主会话消息');
     const run = projectData[projectId]?.agentRun;
-    if (!run) throw new Error('当前项目没有可对话的 Agent 主会话。');
+    if (!run) throw new Error('当前项目没有可对话的 BidVolt 主会话。');
     const generation = tenantGuardRef.current.capture();
-    setSendingAgentMessage(true);
+    const refreshClosedStream = () => {
+      if (!tenantGuardRef.current.isCurrent(generation)
+        || routeProjectIdRef.current !== projectId
+        || projectDataRef.current[projectId]?.agentRun?.taskId !== run.taskId) return;
+      const open = agentStreamOpenRef.current;
+      if (open?.projectId !== projectId || open.taskId !== run.taskId) {
+        setAgentStreamRefresh((current) => current + 1);
+      }
+    };
+    // A completed task's SSE already ended. Continuing the same session does
+    // not change its task id, so effect dependencies alone cannot reopen it.
+    refreshClosedStream();
+    setPendingAgentMessageCount((current) => current + 1);
     try {
       const response = await backendApi.agent.chat(projectId, run.taskId, { message, mode });
+      if (!tenantGuardRef.current.isCurrent(generation)) {
+        throw new DOMException('会话已切换，已忽略旧企业的消息回复。', 'AbortError');
+      }
       tenantGuardRef.current.commit(generation, () => {
         setStatusMessage({
-          tone: 'info',
-          text: response.reply || response.message || '消息已发送给 Agent 主会话。',
+          tone: response.returncode !== undefined && response.returncode !== 0 ? 'error' : 'info',
+          text: response.returncode !== undefined && response.returncode !== 0
+            ? response.message || 'BidVolt 未能完成请求，请查看对话记录。'
+            : response.reply?.trim()
+              ? '已收到 BidVolt 回复。'
+              : response.message || (response.queued ? '消息已由后端排队，等待处理。' : '消息已发送给 BidVolt 主会话。'),
         });
       });
       return response;
     } catch (error) {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'Agent 主会话消息发送失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'BidVolt 主会话消息发送失败');
       throw error;
     } finally {
-      tenantGuardRef.current.commit(generation, () => setSendingAgentMessage(false));
+      // The first reopened stream may have observed the old terminal status
+      // before /chat started working. Fetch any new sequence records after the
+      // response settles, including when transport receipt was uncertain.
+      refreshClosedStream();
+      // Requests may overlap (for example a document-save notification and a
+      // chat message). Finishing one must not clear another request's busy state.
+      tenantGuardRef.current.commit(generation, () => {
+        setPendingAgentMessageCount((current) => Math.max(0, current - 1));
+      });
     }
   };
 
-  const handleDownloadResponsePackage = async (projectId: string) => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('下载最终响应文件包');
+  const handleDownloadResponsePackage = (projectId: string): Promise<void> => {
+    if (localPreviewActive) return Promise.reject(blockLocalPreviewWrite('下载最终响应文件包'));
     const generation = tenantGuardRef.current.capture();
+    const key = `${generation}:${projectId}`;
+    const existing = responsePackageRequestRef.current.get(key);
+    if (existing) return existing;
     setDownloadingResponsePackage(true);
-    try {
+    // Lock synchronously for every entry point, including repeated clicks in
+    // the same render. All callers observe the same real download outcome.
+    const request = Promise.resolve().then(async () => {
+      if (!tenantGuardRef.current.isCurrent(generation)) {
+        throw new DOMException('会话已切换，已取消旧企业的下载。', 'AbortError');
+      }
       const blob = await backendApi.agent.responsePackage(projectId);
-      tenantGuardRef.current.commit(generation, () => {
-        downloadBlob(blob, `项目-${projectId}-最终响应文件包.zip`);
-      });
-    } catch (error) {
+      if (!tenantGuardRef.current.isCurrent(generation)) {
+        throw new DOMException('会话已切换，已忽略旧企业的下载。', 'AbortError');
+      }
+      downloadBlob(blob, `项目-${projectId}-最终响应文件包.zip`);
+    }).catch((error: unknown) => {
       if (tenantGuardRef.current.isCurrent(generation)) setError(error, '最终响应文件包下载失败');
-    } finally {
-      tenantGuardRef.current.commit(generation, () => setDownloadingResponsePackage(false));
-    }
+      throw error;
+    }).finally(() => {
+      if (responsePackageRequestRef.current.get(key) !== request) return;
+      responsePackageRequestRef.current.delete(key);
+      tenantGuardRef.current.commit(generation, () => {
+        setDownloadingResponsePackage(responsePackageRequestRef.current.size > 0);
+      });
+    });
+    responsePackageRequestRef.current.set(key, request);
+    return request;
   };
 
   const handleResumeAgentRun = async (projectId: string, taskId: string) => {
-    if (localPreviewActive) throw blockLocalPreviewWrite('继续 Agent 主会话');
+    if (localPreviewActive) throw blockLocalPreviewWrite('继续 BidVolt 主会话');
     const numericTaskId = Number(taskId);
     if (!Number.isInteger(numericTaskId) || numericTaskId <= 0) throw new Error('续跑任务编号无效。');
     const generation = tenantGuardRef.current.capture();
@@ -2180,7 +2350,7 @@ export function App() {
       taskSnapshotRequestRef.current.delete(projectId);
       await loadProject(projectId);
     } catch (error) {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'Agent 主会话续跑失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'BidVolt 主会话续跑失败');
     } finally {
       tenantGuardRef.current.commit(generation, () => setResumingAgentRun(false));
     }
@@ -2530,15 +2700,33 @@ export function App() {
       if (!tenantGuardRef.current.isCurrent(generation)) return;
       activeEditorRef.current = null;
       setEditor(null);
+      let refreshFailure = '';
       try {
         await loadProject(payload.projectId);
       } catch (error) {
         if (tenantGuardRef.current.isCurrent(generation)) {
-          setStatusMessage({
-            tone: 'error',
-            text: `成果已保存为 V${completed.version_no}，但项目数据刷新失败；请刷新页面。${readableError(error, '')}`,
-          });
+          refreshFailure = `项目数据刷新失败，请刷新页面。${readableError(error, '')}`;
         }
+      }
+      let notificationFailure = '';
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        try {
+          await notifyBidVoltLifecycle(
+            payload.projectId,
+            documentUpdatedLifecycleMessage(activeEditor.deliverable.title, completed.version_no),
+          );
+        } catch (error) {
+          notificationFailure = `BidVolt 上下文通知失败，请在对话框中补充说明。${readableError(error, '')}`;
+        }
+      }
+      if (tenantGuardRef.current.isCurrent(generation)) {
+        const failures = [refreshFailure, notificationFailure].filter(Boolean).join('；');
+        setStatusMessage({
+          tone: failures ? 'error' : 'info',
+          text: failures
+            ? `成果已保存为 V${completed.version_no}；${failures}`
+            : `成果已保存为 V${completed.version_no}，并已通知 BidVolt 使用最新版本。`,
+        });
       }
       navigate(deliverableEditorPath(payload.projectId, payload.deliverableId, String(completed.version_no)), { replace: true });
     });
@@ -2546,12 +2734,14 @@ export function App() {
 
   const downloadDeliverable = async (
     projectId: string,
-    routeId: DeliverableRouteId,
+    routeId: ProjectDeliverableView['id'],
     requestedVersion?: string | number,
   ) => {
     if (localPreviewActive) throw blockLocalPreviewWrite('下载成果文件');
     const generation = tenantGuardRef.current.capture();
-    const deliverable = projectData[projectId]?.deliverables.find((item) => routeIdForDeliverable(item) === routeId);
+    const deliverable = projectData[projectId]?.deliverables.find(
+      (item) => viewIdForDeliverable(item) === routeId,
+    );
     if (!deliverable?.current_version_no) throw new Error('当前成果没有可下载版本。');
     const version = requestedVersion === undefined
       ? deliverable.current_version_no
@@ -2660,6 +2850,10 @@ export function App() {
     latestGenerationTask,
     activeData?.agentRun,
   ) ? activeData?.agentRun : undefined;
+  const generationWorkspaceRun = selectedAgentRun
+    ?? (latestGenerationTask
+      ? agentRunFallbackFromGenerationTask(latestGenerationTask)
+      : undefined);
   const hasDeliverableVersions = hasDeliverableVersionForGenerationTask(
     activeData,
     latestGenerationTask,
@@ -2722,7 +2916,7 @@ export function App() {
       )
     : [];
   const deliverableVersionIds = Object.fromEntries((deliverableCards ?? [])
-    .filter((item) => item.versionId)
+    .filter((item) => item.id !== 'internal' && item.versionId)
     .map((item) => [item.id, item.versionId])) as Partial<Record<DeliverableRouteId, string>>;
   const currentResourceErrorCount = routeProjectId
     ? Object.keys(projectResourceErrors[routeProjectId] ?? {}).length
@@ -2873,6 +3067,7 @@ export function App() {
       ) : null}
       {route.name === 'bid-market-library' ? (
         <BidMarketLibraryPage
+          canManage={session.permissions.includes('admin.user')}
           dataSource={bidMarketDemoActive ? 'mock' : 'api'}
           items={bidMarketDemoActive ? BID_MARKET_MOCK_ITEMS : []}
           state={bidMarketDemoActive ? 'ready' : 'unavailable'}
@@ -2881,13 +3076,16 @@ export function App() {
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
         <ProjectOverviewPage
+          localOfficeEnabled={!localPreviewActive}
+          agentRun={generationWorkspaceRun}
+          answeringAgentAskId={answeringAgentAskId}
           deliverables={deliverableCards}
           deliverablesRequest={deliverablesRequest}
           enterpriseCategories={enterpriseCategories}
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(route.projectId, files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -2900,8 +3098,14 @@ export function App() {
             setError(error, '补充资料上传失败');
             throw error;
           })}
-          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onAssistantSend={selectedAgentRun
+            ? (value, mode = 'queue') => handleSendAgentMessage(route.projectId, value, mode)
+            : undefined}
+          onAnswerAgentInteraction={selectedAgentRun
+            ? (askId, answers) => handleAnswerAgentQuestion(route.projectId, askId, answers)
+            : undefined}
           onDownloadDeliverable={(item) => void downloadDeliverable(route.projectId, item.id, item.versionId).catch((error) => setError(error, '成果下载失败'))}
+          onDownloadAllResults={() => handleDownloadResponsePackage(route.projectId)}
           onOpenImprovementSuggestions={() => navigate(`/projects/${encodeURIComponent(route.projectId)}/review`)}
           onStartWorkflow={() => {
             rememberGenerateWorkflow(route.projectId);
@@ -2913,10 +3117,49 @@ export function App() {
             option.deliverableId,
             option.versionId,
           ))}
+          onLoadDeliverableContent={async (item) => {
+            if (!item.versionId) throw new Error('该成果尚无可预览版本。');
+            if (localPreviewActive) {
+              if (item.id === 'internal') throw new Error('本地预览包中的内部管理文件应从文件目录打开。');
+              const previewEditor = localPreviewPayloadRef.current?.getLocalPreviewEditor(
+                item.id,
+                item.versionId,
+              );
+              if (!previewEditor) throw new Error('本地预览内容不可用。');
+              return previewEditor.content;
+            }
+            const backendDeliverable = activeData?.deliverables.find(
+              (candidate) => viewIdForDeliverable(candidate) === item.id,
+            );
+            const versionNo = Number(item.versionId);
+            if (!backendDeliverable || !Number.isInteger(versionNo) || versionNo <= 0) {
+              throw new Error('成果文件标识或版本号缺失。');
+            }
+            return backendApi.deliverables.getVersion(
+              backendDeliverable.deliverable_id,
+              versionNo,
+            );
+          }}
+          onLoadResourcePreview={async (fileId, fileName) => {
+            if (!fileId.startsWith('enterprise:')) {
+              return loadProjectResourcePreview(fileId, fileName);
+            }
+            const assetId = fileId.slice('enterprise:'.length);
+            const cachedAsset = enterpriseAssets.find((asset) => asset.id === assetId);
+            const detailedAsset = cachedAsset?.sourceFileId
+              ? cachedAsset
+              : await loadEnterpriseAssetDetail(assetId);
+            const sourceFileId = detailedAsset?.sourceFileId
+              ?? detailedAsset?.revisions.find((revision) => revision.isCurrent)?.fileId;
+            if (!sourceFileId) throw new Error('后端未返回该企业资料的原始文件标识。');
+            return loadProjectResourcePreview(sourceFileId, fileName);
+          }}
           overview={activeData?.overview}
           outcomeReview={projectOutcomeReview}
           project={activeProject}
           projectId={route.projectId}
+          reviewFindings={activeData?.reviewRun.findings ?? []}
+          sendingAgentMessage={sendingAgentMessage}
           taskSummary={generationTaskSummary}
           versionOptions={deliverableVersionOptions}
           workflowFacts={projectWorkflowFacts}
@@ -2924,6 +3167,8 @@ export function App() {
       ) : null}
       {route.name === 'project-materials' && activeProject ? (
         <ProjectMaterialsPage
+          onLoadEnterprisePreview={localPreviewActive ? undefined : loadEnterpriseAssetPreview}
+          onDownloadEnterpriseFile={localPreviewActive ? undefined : downloadEnterpriseAssetFile}
           enterpriseCategories={enterpriseCategories}
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
@@ -2932,13 +3177,13 @@ export function App() {
             ? 'generate'
             : 'choose'}
           materials={activeMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(route.projectId, files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
           onRefreshEnterpriseMaterials={loadEnterprise}
           onAssistantAddFiles={(files) => handleProjectSupplementalUpload(route.projectId, files)}
-          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onAssistantSend={async (value) => { await handleAssistantSend(route.projectId, value); }}
           onCompletedBidUpload={(projectId, files) => handleCompletedBidUpload(projectId, files).catch((error) => {
             setError(error, '已完成标书上传失败');
             throw error;
@@ -2967,20 +3212,21 @@ export function App() {
           reviewSidebar={projectReviewSidebar}
           snapshots={activeData?.snapshots ?? []}
           taskSummary={generationTaskSummary}
+          generationTaskId={latestGenerationTask?.task_id ?? selectedAgentRun?.taskId}
           taskStatus={latestSubmissionTask?.status}
           workflowFacts={projectWorkflowFacts}
         />
       ) : null}
       {route.name === 'review-center' && activeProject ? (
         <ReviewCenter
-          deliverableEditTargets={(deliverableCards ?? []).flatMap((item) => item.versionId
+          deliverableEditTargets={(deliverableCards ?? []).flatMap((item) => item.id !== 'internal' && item.versionId
             ? [{ id: item.id, title: item.title, versionId: item.versionId }]
             : [])}
           enterpriseCategories={enterpriseCategories}
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(route.projectId, files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -2993,7 +3239,7 @@ export function App() {
             setError(error, '补充资料上传失败');
             throw error;
           })}
-          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onAssistantSend={async (value) => { await handleAssistantSend(route.projectId, value); }}
           onConfirmFinding={(findingId, action) => handleConfirmReviewFinding(route.projectId, findingId, action)}
           onConfirmFindings={(findingIds, action) => handleConfirmReviewFindings(route.projectId, findingIds, action)}
           onReEvaluate={(findingIds) => handleReEvaluateReviewFindings(route.projectId, findingIds)}
@@ -3019,7 +3265,7 @@ export function App() {
           enterpriseLibraryKey={session.enterpriseId}
           enterpriseMaterials={workspaceEnterprise}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(route.projectId, files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -3042,7 +3288,7 @@ export function App() {
           onAiSuggest={localPreviewActive
             ? undefined
             : (basis) => handleAiQuoteSuggestion(route.projectId, basis)}
-          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onAssistantSend={async (value) => { await handleAssistantSend(route.projectId, value); }}
           samples={activeData?.quoteSamples ?? []}
         />
       ) : null}
@@ -3062,7 +3308,7 @@ export function App() {
           isBackendConnected={!localPreviewActive}
           isReadOnly={Boolean(editor.readOnlyReason)}
           materials={workspaceMaterials}
-          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(files).catch((error) => {
+          onAddEnterpriseFiles={(files) => handleEnterpriseUploadFromWorkspace(route.projectId, files).catch((error) => {
             setError(error, '企业资料上传失败');
             throw error;
           })}
@@ -3075,7 +3321,7 @@ export function App() {
             setError(error, '补充资料上传失败');
             throw error;
           })}
-          onAssistantSend={(value) => handleAssistantSend(route.projectId, value)}
+          onAssistantSend={async (value) => { await handleAssistantSend(route.projectId, value); }}
           onDownload={localPreviewActive
             ? undefined
             : () => downloadDeliverable(route.projectId, route.deliverableId, editor.content.version_no)}
@@ -3148,7 +3394,12 @@ function toIsoOrNull(value: string) {
 }
 
 function routeIdForDeliverable(deliverable: Deliverable): DeliverableRouteId | undefined {
-  return ({ 1: 'business', 2: 'technical', 3: 'quote' } as const)[deliverable.deliverable_type];
+  const id = viewIdForDeliverable(deliverable);
+  return id === 'internal' ? undefined : id;
+}
+
+function viewIdForDeliverable(deliverable: Deliverable): ProjectDeliverableView['id'] | undefined {
+  return ({ 1: 'business', 2: 'technical', 3: 'quote', 4: 'internal' } as const)[deliverable.deliverable_type];
 }
 
 function deliverableTypeLabel(id: DeliverableRouteId) {
@@ -3160,8 +3411,11 @@ function toWorkspaceMaterials(materials: ProjectMaterial[]): WorkspaceMaterial[]
     failed: '解析失败', needs_confirmation: '待确认', parsed: '已识别', parsing: '解析中', queued: '待解析', unknown: '解析状态未提供',
   };
   return materials.map((material) => ({
+    fileId: material.id,
     id: material.id,
+    kind: material.kind,
     name: material.name,
+    purpose: material.purpose,
     status: statuses[material.parseStatus],
     tone: material.kind === 'quote_template' ? 'red' : 'blue',
   }));
@@ -3176,6 +3430,9 @@ function toWorkspaceEnterpriseMaterials(assets: EnterpriseAsset[]): WorkspaceMat
   };
   return assets.map((asset) => ({
     categoryId: asset.categoryId,
+    fileId: asset.sourceFileId
+      ?? asset.revisions.find((revision) => revision.isCurrent)?.fileId
+      ?? `enterprise:${asset.id}`,
     id: `enterprise:${asset.id}`,
     name: asset.name,
     status: statuses[asset.status],
@@ -3217,7 +3474,7 @@ function readHistorySamples(payload: unknown) {
 }
 
 function taskPhaseLabel(phase: string) {
-  return ({ agent_pipeline: 'Agent 成果生成', bid_review: '成果校核', bid_generate: '成果编制', tender_parse: '材料解析' } as Record<string, string>)[phase] ?? '智能任务';
+  return ({ agent_pipeline: 'BidVolt 成果生成', bid_review: '成果校核', bid_generate: '成果编制', tender_parse: '材料解析' } as Record<string, string>)[phase] ?? '智能任务';
 }
 
 function agentRunTaskSummary(run: AgentRunViewModel) {

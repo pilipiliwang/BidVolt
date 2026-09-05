@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { parseAgentRunStreamEvent } from './backend-api/agent-stream';
 import {
   applyAgentStreamEnd,
   agentRunToPublicTaskEvent,
@@ -14,6 +15,48 @@ import {
 } from './task-events';
 
 describe('Agent run view state', () => {
+  it('captures an action-list boundary at stream end and preserves it across later chat and repeated end events', () => {
+    const active = createAgentRunViewModel({ task_id: 1773, status: 2 }, { projectId: 53,
+      conversation: [{ seq: 10, kind: 'hermes', content: '成果生成完成。' }],
+    });
+    const ended = applyAgentStreamEnd(active, { status: 3, outcome: 'complete', action_list: ['请盖章'] });
+    expect(ended.actionListAfterSequence).toBe(10);
+    const chatting = mergeAgentStreamMessage(ended, { seq: 15, kind: 'hermes', content: '后续聊天回复。' });
+    expect(chatting.actionListAfterSequence).toBe(10);
+    expect(applyAgentStreamEnd(chatting, { status: 3, outcome: 'complete' }).actionListAfterSequence).toBe(10);
+    expect(applyAgentStreamEnd(chatting, { status: 3, outcome: 'complete', action_list: ['请盖章'] }).actionListAfterSequence).toBe(10);
+    expect(applyAgentStreamEnd(chatting, { status: 3, outcome: 'complete', action_list: ['新提示'] }).actionListAfterSequence).toBe(15);
+  });
+
+  it('preserves an unchanged action-list anchor on same-task status refreshes only', () => {
+    const source = { task_id: 1773, status: 3, result: { action_list: ['请盖章'] } };
+    const initial = createAgentRunViewModel(source, { projectId: 53,
+      conversation: [{ seq: 10, kind: 'hermes', content: '完成' }],
+    });
+    const conversation = [...initial.conversation, { seq: 15, kind: 'hermes', content: '后续回复' }];
+    const refreshed = createAgentRunViewModel(source, { projectId: 53, conversation, previousRun: initial });
+    expect(refreshed.actionListAfterSequence).toBe(10);
+    const changed = createAgentRunViewModel({ ...source, result: { action_list: ['新提示'] } }, {
+      projectId: 53, conversation, previousRun: refreshed,
+    });
+    expect(changed.actionListAfterSequence).toBe(15);
+    const otherTask = createAgentRunViewModel({ ...source, task_id: 1774 }, {
+      projectId: 53, conversation: [{ seq: 2, kind: 'hermes', content: '新任务' }], previousRun: refreshed,
+    });
+    expect(otherTask.actionListAfterSequence).toBe(2);
+  });
+
+  it('waits for loaded history before fixing an action-list sequence and ignores invalid sequences', () => {
+    const source = { task_id: 1773, status: 3, result: { action_list: ['请盖章'] } };
+    const unloaded = createAgentRunViewModel(source, { projectId: 53 });
+    expect(unloaded.actionListAfterSequence).toBeNull();
+    const loaded = createAgentRunViewModel(source, { projectId: 53, previousRun: unloaded,
+      conversation: [{ seq: Number.NaN, kind: 'hermes', content: 'bad' }, { seq: 12, kind: 'hermes', content: '完成' }],
+    });
+    expect(loaded.actionListAfterSequence).toBe(12);
+    expect(createAgentRunViewModel({ task_id: 1773 }, { projectId: 53, previousRun: loaded }).actionListAfterSequence).toBeNull();
+  });
+
   it('keeps the Agent numeric status contract separate from legacy retrying tasks', () => {
     expect(normalizeAgentRunStatus(1)).toBe('queued');
     expect(normalizeAgentRunStatus(2)).toBe('running');
@@ -107,13 +150,14 @@ describe('Agent run view state', () => {
       { legacy: true, items: [{ q: '联系人是谁？' }] },
     ]);
 
-    expect(questions).toHaveLength(2);
+    expect(questions).toHaveLength(3);
     expect(questions[0]).toMatchObject({
       answer: ['XX银行', '123456'],
       answered: true,
       askId: '13',
     });
-    expect(questions[1]).toMatchObject({ askId: 'legacy-3', legacy: true });
+    expect(questions[1]).toMatchObject({ askId: '14', kind: 'action', legacy: false });
+    expect(questions[2]).toMatchObject({ askId: 'legacy-3', legacy: true });
   });
 
   it('reports open and expired question windows without disabling late answers', () => {
@@ -151,6 +195,54 @@ describe('Agent run view state', () => {
       { seq: 2, kind: 'hermes', content: '已更新内容' },
       { seq: 3, kind: 'tool', content: '委派分析任务' },
     ]);
+  });
+
+  it('preserves whitespace-only SSE fragments while filtering empty and invalid records', () => {
+    const messages = mergeAgentConversationMessages(
+      [{ seq: 1, kind: 'hermes', content: 'Review' }],
+      [
+        { seq: 5, kind: 'hermes', content: 'print("ok")' },
+        { seq: 3, kind: 'hermes', content: 'completed.' },
+        { seq: 2, kind: 'hermes', content: ' ' },
+        { seq: 4, kind: 'hermes', content: '\n\t    ' },
+        { seq: 6, kind: 'hermes', content: '' },
+        { seq: Number.NaN, kind: 'hermes', content: 'invalid' },
+      ],
+    );
+
+    expect(messages.map((message) => message.seq)).toEqual([1, 2, 3, 4, 5]);
+    expect(messages.map((message) => message.content).join(''))
+      .toBe('Review completed.\n\t    print("ok")');
+  });
+
+  it('keeps parsed stream whitespace through live merge, replay, polling, and completion', () => {
+    const source = ['Review', ' ', 'completed.', '\n\n', '```python\n', '    ', 'print("ok")\n```'];
+    let run = createAgentRunViewModel({ task_id: 1773, status: 2 }, { projectId: 53 });
+
+    const events = source.map((content, index) => parseAgentRunStreamEvent('message', JSON.stringify({
+      seq: index + 1,
+      kind: 'hermes',
+      content,
+    })));
+    for (const event of events) {
+      if (event.type !== 'message') throw new Error('Expected a message event');
+      run = mergeAgentStreamMessage(run, event);
+    }
+    const replay = events[1];
+    if (replay.type !== 'message') throw new Error('Expected a message event');
+    run = mergeAgentStreamMessage(run, replay);
+    run = createAgentRunViewModel({ task_id: 1773, status: 2 }, {
+      projectId: 53,
+      conversation: run.conversation,
+      streamState: run.streamState,
+    });
+    run = applyAgentStreamEnd(run, { status: 3, outcome: 'complete' });
+
+    expect(run.conversation.map((message) => message.content)).toEqual(source);
+    expect(run.conversation.map((message) => message.content).join('')).toBe(source.join(''));
+    expect(run.conversation).toHaveLength(source.length);
+    expect(run.completion).toBe('complete');
+    expect(run.streamState).toBe('ended');
   });
 
   it('applies message and end events immediately while preserving backend outcome semantics', () => {

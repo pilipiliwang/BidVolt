@@ -34,7 +34,7 @@ const protocolError = (message: string, cause?: unknown) =>
 
 const nullableString = (value: unknown, field: string): string | null => {
   if (value === undefined || value === null) return null;
-  if (typeof value !== 'string') throw protocolError(`Agent 会话流 ${field} 无效`);
+  if (typeof value !== 'string') throw protocolError(`BidVolt 会话流 ${field} 无效`);
   return value;
 };
 
@@ -49,19 +49,19 @@ export function parseAgentRunStreamEvent(eventName: string, data: string): Agent
   try {
     payload = JSON.parse(data) as unknown;
   } catch (error) {
-    throw protocolError('Agent 会话流 data 不是有效 JSON', error);
+    throw protocolError('BidVolt 会话流 data 不是有效 JSON', error);
   }
-  if (!isRecord(payload)) throw protocolError('Agent 会话流 data 必须是对象');
+  if (!isRecord(payload)) throw protocolError('BidVolt 会话流 data 必须是对象');
 
   if (eventName === 'message') {
     if (!Number.isInteger(payload.seq) || (payload.seq as number) < 0) {
-      throw protocolError('Agent 会话流 message.seq 无效');
+      throw protocolError('BidVolt 会话流 message.seq 无效');
     }
     if (typeof payload.kind !== 'string' || !payload.kind) {
-      throw protocolError('Agent 会话流 message.kind 无效');
+      throw protocolError('BidVolt 会话流 message.kind 无效');
     }
     if (typeof payload.content !== 'string') {
-      throw protocolError('Agent 会话流 message.content 无效');
+      throw protocolError('BidVolt 会话流 message.content 无效');
     }
     return Object.freeze({
       type: 'message',
@@ -73,14 +73,14 @@ export function parseAgentRunStreamEvent(eventName: string, data: string): Agent
 
   if (eventName === 'end') {
     if (!Number.isInteger(payload.status)) {
-      throw protocolError('Agent 会话流 end.status 无效');
+      throw protocolError('BidVolt 会话流 end.status 无效');
     }
     const actionList = payload.action_list ?? [];
     if (!Array.isArray(actionList) || !actionList.every((item) => typeof item === 'string')) {
-      throw protocolError('Agent 会话流 end.action_list 无效');
+      throw protocolError('BidVolt 会话流 end.action_list 无效');
     }
     const error = payload.error ?? null;
-    if (!jsonValue(error)) throw protocolError('Agent 会话流 end.error 无效');
+    if (!jsonValue(error)) throw protocolError('BidVolt 会话流 end.error 无效');
     return Object.freeze({
       type: 'end',
       status: payload.status as number,
@@ -92,12 +92,12 @@ export function parseAgentRunStreamEvent(eventName: string, data: string): Agent
     });
   }
 
-  throw protocolError(`Agent 会话流包含不支持的事件：${eventName || '(empty)'}`);
+  throw protocolError(`BidVolt 会话流包含不支持的事件：${eventName || '(empty)'}`);
 }
 
 const abortError = (signal: AbortSignal) => {
   if (signal.reason instanceof Error) return signal.reason;
-  return new DOMException('Agent 会话订阅已取消', 'AbortError');
+  return new DOMException('BidVolt 会话订阅已取消', 'AbortError');
 };
 
 const findFrameBoundary = (buffer: string) => {
@@ -115,16 +115,16 @@ const parseFrame = (frame: string) => {
     const rawValue = separator < 0 ? '' : rawLine.slice(separator + 1);
     const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue;
     if (field === 'event') {
-      if (eventName) throw protocolError('Agent 会话流单帧包含多个 event 字段');
+      if (eventName) throw protocolError('BidVolt 会话流单帧包含多个 event 字段');
       eventName = value;
     } else if (field === 'data') {
       dataLines.push(value);
     } else {
-      throw protocolError(`Agent 会话流包含不支持的字段：${field}`);
+      throw protocolError(`BidVolt 会话流包含不支持的字段：${field}`);
     }
   }
   if (!eventName || dataLines.length === 0) {
-    throw protocolError('Agent 会话流帧缺少 event 或 data');
+    throw protocolError('BidVolt 会话流帧缺少 event 或 data');
   }
   return parseAgentRunStreamEvent(eventName, dataLines.join('\n'));
 };
@@ -139,9 +139,9 @@ export async function consumeAgentRunStream(
   { signal, onMessage }: ConsumeAgentRunStreamOptions,
 ): Promise<AgentRunStreamEnd> {
   if (!response.headers.get('Content-Type')?.toLocaleLowerCase().includes('text/event-stream')) {
-    throw protocolError('Agent 会话进度接口未返回 text/event-stream');
+    throw protocolError('BidVolt 会话进度接口未返回 text/event-stream');
   }
-  if (!response.body) throw protocolError('Agent 会话流没有可读取的响应体');
+  if (!response.body) throw protocolError('BidVolt 会话流没有可读取的响应体');
   if (signal?.aborted) throw abortError(signal);
 
   const reader = response.body.getReader();
@@ -175,7 +175,7 @@ export async function consumeAgentRunStream(
           if (event.type === 'message') onMessage(event);
           else return event;
         }
-        throw protocolError('Agent 会话流在 end 事件前断开');
+        throw protocolError('BidVolt 会话流在 end 事件前断开');
       }
     }
   } finally {

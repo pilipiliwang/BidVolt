@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildProjectOutcomeReviewViewModel } from './ProjectOutcomeReviewPanel';
 import { ProjectOverviewPage, type ProjectOverviewView } from './ProjectOverviewPage';
 import type { ProjectSummary } from './project-view-model';
+import type { AgentRunViewModel } from '../../shared/task-events';
 
 const project: ProjectSummary = {
   id: 'BV-2026-018', code: 'BV-2026-018', title: '测试项目', buyer: '测试招标人',
@@ -29,7 +30,66 @@ const overview: ProjectOverviewView = {
   },
 };
 
+const agentRun: AgentRunViewModel = {
+  actionList: [],
+  completion: 'active',
+  conversation: [{ content: '已完成招标文件解析。', kind: 'service', seq: 1 }],
+  errorMessage: null,
+  message: '正在编制技术响应。',
+  outcome: null,
+  percent: 42,
+  phase: '标书制作/审核',
+  projectId: 'BV-2026-018',
+  questions: [],
+  reason: null,
+  sessionId: 'session-1',
+  status: 'running',
+  streamState: 'connected',
+  taskId: 'task-1',
+};
+
 describe('ProjectOverviewPage', () => {
+  it('uses the unified Agent result workspace when the generation run is available', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectOverviewPage
+        agentRun={agentRun}
+        deliverables={overview.deliverables}
+        enterpriseMaterials={[]}
+        materials={[]}
+        onOpenTasks={vi.fn()}
+        outcomeReview={buildProjectOutcomeReviewViewModel({})}
+        project={project}
+        projectId="BV-2026-018"
+        taskSummary={{
+          message: agentRun.message,
+          percent: 42,
+          status: 'running',
+          title: '标书制作/审核',
+        }}
+        workflowFacts={{
+          agentCompletion: 'active',
+          currentTenderMaterialCount: 2,
+          enterpriseMaterialCount: 7,
+          hasDeliverables: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: '成果生成正在执行' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: '项目资源与标书成果' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /企业资料/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /招标材料/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /标书成果（生成中）/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByText('已完成招标文件解析。')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '展开全部' }));
+    expect(screen.getByText('已完成招标文件解析。')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: '标书成果预览' }))
+      .not.toBeInTheDocument();
+  });
+
   it('uses the content-sized workbench layout on the overview page', () => {
     render(
       <ProjectOverviewPage

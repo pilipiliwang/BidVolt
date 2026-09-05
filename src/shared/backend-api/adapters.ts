@@ -574,12 +574,14 @@ const deliverableRouteByType: Record<number, ProjectDeliverableView['id']> = {
   1: 'business',
   2: 'technical',
   3: 'quote',
+  4: 'internal',
 };
 
 const deliverableToneByType: Record<number, ProjectDeliverableView['tone']> = {
   1: 'business',
   2: 'technical',
   3: 'quote',
+  4: 'internal',
 };
 
 export function adaptBackendDeliverableCards(

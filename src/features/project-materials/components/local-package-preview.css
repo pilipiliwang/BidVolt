@@ -1,0 +1,28 @@
+.local-package-preview{display:flex;flex-direction:column;height:100%;min-height:0;padding:20px;background:#f8fafb;color:#182c24}
+.local-package-preview__heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px;flex:none}
+.local-package-preview__heading h1{display:flex;align-items:center;gap:10px;margin:0;font-size:22px}
+.local-package-preview__heading h1 span{font-size:12px;padding:4px 8px;border-radius:5px;background:#fff4d9;color:#8b631a;font-weight:500}
+.local-package-preview__heading p{margin:8px 0 0;color:#68786f;font-size:12px;line-height:1.6}
+.local-package-preview__heading button{flex:none;padding:8px 12px;border:1px solid #dbe5df;border-radius:7px;background:white;color:#476055;cursor:pointer}
+.local-package-preview__actions{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.local-package-preview__actions button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.local-package-preview__actions button:hover{background:#eef8f2;border-color:#a6d9bf;color:#087344}
+.local-package-preview__layout{display:grid;grid-template-columns:minmax(220px,28%) minmax(0,1fr);gap:16px;flex:1;min-height:0}
+.local-package-preview__catalog{padding:14px 10px;border:1px solid #e0e8e3;border-radius:12px;background:white;overflow:auto}
+.local-package-preview__catalog section+section{border-top:1px solid #edf1ef;margin-top:16px;padding-top:12px}
+.local-package-preview__catalog h2{display:flex;align-items:center;gap:8px;margin:3px 8px 12px;font-size:15px}
+.local-package-preview__catalog h2>svg{color:#07924f}.local-package-preview__catalog h2>span{margin-left:auto;color:#728279;font-size:12px}
+.local-package-preview__catalog button{display:flex;align-items:flex-start;gap:9px;width:100%;padding:11px 9px;border:1px solid transparent;border-radius:7px;text-align:left;background:white;color:#43576b;font:inherit;font-size:13px;cursor:pointer}
+.local-package-preview__catalog button:hover{background:#f5faf7}.local-package-preview__catalog button[aria-current]{background:#eaf7f0;border-color:#b8e4cc;color:#087344}
+.local-package-preview__catalog button>svg{flex:none;margin-top:2px}.local-package-preview__catalog button>span{min-width:0;overflow-wrap:anywhere}.local-package-preview__catalog small{display:block;margin-top:5px;color:#829087;font-size:11px}
+.local-package-preview__document{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid #dfe7e3;border-radius:12px;overflow:hidden;background:white}
+.local-package-preview__document>header{display:flex;align-items:center;gap:16px;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #edf1ef}
+.local-package-preview__document>header strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.local-package-preview__document a{display:inline-flex;align-items:center;gap:6px;flex:none;padding:8px 10px;border-radius:6px;background:#07924f;color:white;text-decoration:none;font-size:12px}
+.local-package-preview__notice{margin:0;padding:9px 16px;color:#77857c;font-size:11px;background:#fcfdfc}
+.local-package-preview__canvas{position:relative;flex:1;min-height:0;background:#edf1f4}.local-package-preview__canvas iframe{border:0;display:block;width:100%;height:100%;background:white}
+.local-package-preview__loading{position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;margin:0;background:#f6f9fc;color:#63756c;font-size:13px;pointer-events:none}
+.local-package-preview__loading svg{animation:project-material-spin 1.4s linear infinite}
+@media(max-width:1100px){.local-package-preview{padding:12px}.local-package-preview__layout{grid-template-columns:210px minmax(0,1fr);gap:10px}}
+@media(max-width:760px){.local-package-preview{height:auto;min-height:700px}.local-package-preview__heading{flex-direction:column}.local-package-preview__layout{grid-template-columns:minmax(0,1fr)}.local-package-preview__catalog{max-height:240px}.local-package-preview__document{height:650px}}
+@media(prefers-reduced-motion:reduce){.local-package-preview__loading svg{animation:none}}

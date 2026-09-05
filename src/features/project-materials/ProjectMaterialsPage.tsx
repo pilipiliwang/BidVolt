@@ -29,6 +29,7 @@ import {
 import type { FileImageDescriptions } from '../../shared/backend-api/types';
 import { ImageDescriptionSummary } from '../../shared/ui/ImageDescriptionSummary';
 import { ProjectMaterialUpload } from './components/ProjectMaterialUpload';
+import { LocalPackagePreview, useLocalPackage } from './components/LocalPackagePreview';
 import { RequirementsPanel } from './components/RequirementsPanel';
 import { SnapshotsPanel } from './components/SnapshotsPanel';
 import type {
@@ -38,6 +39,7 @@ import type {
   ProjectMaterialsPageProps,
 } from './types';
 import './project-materials.css';
+import './material-preparation-unified.css';
 
 const kindLabel: Record<ProjectMaterialKind, string> = {
   tender_notice: '招标公告',
@@ -298,6 +300,8 @@ export function ProjectMaterialsPage({
   enterpriseMaterials = [],
   onAddEnterpriseFiles,
   onRefreshEnterpriseMaterials,
+  onLoadEnterprisePreview,
+  onDownloadEnterpriseFile,
   onAssistantAddFiles,
   onAssistantSend,
   onCompletedBidUpload,
@@ -319,6 +323,7 @@ export function ProjectMaterialsPage({
   onRemoveMaterial,
   onStartTask,
   taskSummary,
+  generationTaskId,
   taskStatus,
   workflowFacts: workflowFactsOverride,
 }: ProjectMaterialsPageProps) {
@@ -334,6 +339,7 @@ export function ProjectMaterialsPage({
   const [workflowMode, setWorkflowMode] = useState<'choose' | 'generate'>(initialWorkflowMode);
   const [retryFailedTask, setRetryFailedTask] = useState(false);
   const [materialPreparationConfirmed, setMaterialPreparationConfirmed] = useState(false);
+  const [localPackageStatusKey, setLocalPackageStatusKey] = useState<string | null>(null);
   const [taskState, setTaskState] = useState<{
     message: string;
     status: 'error' | 'idle' | 'loading';
@@ -386,10 +392,11 @@ export function ProjectMaterialsPage({
     materialPreparationConfirmed:
       workflowFactsOverride?.materialPreparationConfirmed || materialPreparationConfirmed,
   };
-  const importingTenderNoticeWithoutMaterials = Boolean(
-    workflowFacts.tenderImporting && tenderPreparation.total === 0,
-  );
   const workflowPhase = resolveProjectWorkflowPhase(workflowFacts);
+  const localPackage = useLocalPackage(projectId, generationTaskId);
+  const localPackageKey = `${projectId}:${generationTaskId}`;
+  const localPackageAvailable = Boolean(localPackage && workflowEnabled && workflowPhase === 'finalizing');
+  const showLocalPackage = localPackageAvailable && localPackageStatusKey !== localPackageKey;
   const workflowResourceState = workflowFacts.materialsState !== undefined
     && workflowFacts.materialsState !== 'ready'
     ? workflowFacts.materialsState
@@ -439,6 +446,8 @@ export function ProjectMaterialsPage({
 
   const workbench = (
     <ProjectWorkbench
+      onLoadEnterprisePreview={onLoadEnterprisePreview}
+      onDownloadEnterpriseFile={onDownloadEnterpriseFile}
       enterpriseCategories={enterpriseCategories}
       enterpriseLibraryKey={enterpriseLibraryKey}
       enterpriseMaterials={enterpriseMaterials}
@@ -455,10 +464,13 @@ export function ProjectMaterialsPage({
       rightRail={!workflowEnabled || workflowPhase === 'completed'
         ? <ProjectReviewSidebar viewModel={reviewSidebar} />
         : undefined}
-      showChat={!workflowEnabled || workflowPhase === 'completed' || workflowPhase === 'executing'
-        || workflowPhase === 'finalizing' || workflowPhase === 'failed'}
+      showChat={!showLocalPackage && (!workflowEnabled || workflowPhase === 'completed' || workflowPhase === 'executing'
+        || workflowPhase === 'finalizing' || workflowPhase === 'failed')}
     >
-      {workflowEnabled && workflowPhase !== 'completed' ? (
+      {showLocalPackage && localPackage ? (
+        <LocalPackagePreview key={`${localPackage.projectId}-${localPackage.taskId}`} manifest={localPackage}
+          onBackToStatus={() => setLocalPackageStatusKey(localPackageKey)} onOpenTasks={onOpenTasks} />
+      ) : workflowEnabled && workflowPhase !== 'completed' ? (
         workflowPhase === 'executing' || workflowPhase === 'finalizing'
           || (workflowPhase === 'failed' && !retryFailedTask) ? (
             <ProjectTaskExecutionPanel
@@ -469,6 +481,7 @@ export function ProjectMaterialsPage({
                   }
                 : undefined}
               onOpenTasks={onOpenTasks ?? (() => undefined)}
+              onPreviewLocalPackage={localPackageAvailable ? () => setLocalPackageStatusKey(null) : undefined}
               task={workflowTask ?? fallbackWorkflowTask(workflowPhase)}
             />
           ) : workflowResourceState ? (
@@ -489,7 +502,6 @@ export function ProjectMaterialsPage({
               <header className="project-generation-setup__header">
                 <div>
                   <h1 id="project-generation-setup-title">上传材料</h1>
-                  <p>上传招标材料并按需补充项目资料，解析完成后即可确认生成。</p>
                 </div>
               </header>
               <ProjectMaterialUpload
@@ -505,25 +517,33 @@ export function ProjectMaterialsPage({
                 tenderFileNames={manuallyUploadedTenderMaterials.map((material) => material.name)}
                 tenderFiles={manuallyUploadedTenderMaterials.map(({ id, name }) => ({ id, name }))}
                 urlImportedFiles={urlImportedMaterials.map(({ id, name }) => ({ id, name }))}
+                generationActions={(
+                  <>
+                    <p className={`project-generation-setup__readiness project-generation-setup__readiness--${tenderPreparation.state}`}>
+                      {tenderPreparation.state === 'empty'
+                        ? '请先上传招标材料，解析完成后即可生成标书'
+                        : tenderPreparation.state === 'ready'
+                          ? '招标材料已解析完成，可以开始生成标书'
+                          : tenderPreparation.state === 'error'
+                            ? '招标材料解析失败，请处理后再生成标书'
+                            : '招标材料正在解析，解析完成后即可生成标书'}
+                    </p>
+                    <button
+                      className="project-generation-setup__start"
+                      disabled={tenderPreparation.state !== 'ready' || taskState.status === 'loading'}
+                      onClick={() => {
+                        setSelectedTaskMode('generate');
+                        setMaterialPreparationConfirmed(true);
+                        void startTaskForMode('generate');
+                      }}
+                      type="button"
+                    >
+                      <Sparkles aria-hidden="true" size={20} />
+                      {taskState.status === 'loading' ? '正在创建任务…' : '确认材料，生成标书'}
+                    </button>
+                  </>
+                )}
               />
-              <div className="project-generation-setup__actions">
-                <button
-                  className="project-generation-setup__start"
-                  disabled={tenderPreparation.state !== 'ready' || taskState.status === 'loading'}
-                  onClick={() => {
-                    setSelectedTaskMode('generate');
-                    setMaterialPreparationConfirmed(true);
-                    void startTaskForMode('generate');
-                  }}
-                  type="button"
-                >
-                  <Sparkles aria-hidden="true" size={18} />
-                  {taskState.status === 'loading' ? '正在创建任务…' : '确认材料并开始生成标书'}
-                </button>
-              </div>
-              {tenderPreparation.state === 'empty' && !importingTenderNoticeWithoutMaterials ? (
-                <p className="project-generation-setup__hint">请先上传招标材料，或粘贴招标公告网址并完成解析。</p>
-              ) : null}
               {taskState.status === 'error' ? (
                 <p className="project-generation-setup__error" role="alert">{taskState.message}</p>
               ) : null}

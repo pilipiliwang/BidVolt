@@ -12,3 +12,7 @@ coverage/
 Thumbs.db
 .worktrees/
 /references/
+/.local-artifacts/
+/outputs/
+__pycache__/
+*.pyc

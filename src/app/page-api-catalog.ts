@@ -224,7 +224,7 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
   return [
     operation(
       'agent-run-start',
-      '启动 Agent 投标主任务',
+      '启动 BidVolt 投标主任务',
       '操作：点击开始生成；重复提交由 idempotency_key 复用原任务',
       'POST',
       `${projectPath}/agent-run`,
@@ -232,8 +232,8 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'agent-run-status',
-      '读取 Agent 任务状态与真实进度',
-      '自动：存在当前 Agent 任务时每 8 秒轮询，直至终态',
+      '读取 BidVolt 任务状态与真实进度',
+      '自动：存在当前 BidVolt 任务时每 8 秒轮询，直至终态',
       'GET',
       `${projectPath}/agent-run/{taskId}`,
       {
@@ -243,8 +243,8 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'agent-run-stream',
-      '订阅 Agent 主会话实时消息',
-      '自动：存在当前 Agent 任务时订阅 SSE；重连时通过 since 续传',
+      '订阅 BidVolt 主会话实时消息',
+      '自动：存在当前 BidVolt 任务时订阅 SSE；重连时通过 since 续传',
       'GET',
       `${projectPath}/agent-run/{taskId}/stream?since={seq}`,
       {
@@ -254,8 +254,8 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'agent-run-questions',
-      '读取 Agent 客户问卡',
-      '自动：任务运行期间刷新待回答问题、倒计时和行动清单',
+      '读取 BidVolt 待处理内容',
+      '自动：任务运行期间刷新待回复内容、倒计时和行动清单',
       'GET',
       `${projectPath}/agent-run/{taskId}/questions`,
       {
@@ -265,8 +265,8 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'agent-run-answer',
-      '回答 Agent 客户问卡',
-      '操作：提交某组问卡答案',
+      '回复 BidVolt 待处理内容',
+      '操作：提交某组待处理内容的回复',
       'POST',
       `${projectPath}/agent-run/{taskId}/asks/{askId}/answer`,
       {
@@ -276,7 +276,7 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'agent-run-chat',
-      '向 Agent 主会话发送消息',
+      '向 BidVolt 主会话发送消息',
       '操作：在任务控制台排队消息或调整后续方向',
       'POST',
       `${projectPath}/agent-run/{taskId}/chat`,
@@ -288,20 +288,20 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     operation(
       'agent-pre-chat',
       '任务开始前咨询项目资料',
-      '操作：尚未启动 Agent 任务时发送项目助手消息',
+      '操作：尚未启动 BidVolt 任务时发送项目助手消息',
       'POST',
       `${projectPath}/pre-chat`,
     ),
     operation(
       'project-response-package',
-      '下载 Agent 响应文件包',
-      '操作：Agent 完成打包后点击下载响应文件包',
+      '下载 BidVolt 响应文件包',
+      '操作：BidVolt 完成打包后点击下载响应文件包',
       'GET',
       `${projectPath}/response-package`,
     ),
     operation(
       'agent-artifact-download',
-      '下载 Agent 单项成果文件',
+      '下载 BidVolt 单项成果文件',
       '当前公开任务响应没有单项成果清单入口',
       'GET',
       `${projectPath}/agent-artifact/{artifactId}/download`,
@@ -346,7 +346,7 @@ const projectCheckAndExportOperations = (projectId: string): PageApiOperation[] 
       },
     ),
     operation('project-delivery-package', '下载项目交付包', '当前页面暂无交付包下载入口', 'GET', `${projectPath}/delivery-package`, {
-      notIntegratedReason: '当前页面提供 Agent 响应文件包和单项成果下载，尚无传统 delivery-package 产品入口。',
+      notIntegratedReason: '当前页面提供 BidVolt 响应文件包和单项成果下载，尚无传统 delivery-package 产品入口。',
     }),
   ];
 };

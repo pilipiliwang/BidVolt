@@ -1,5 +1,3 @@
-/* global AbortSignal, console, fetch */
-
 import { existsSync, readFileSync } from 'node:fs';
 import process from 'node:process';
 

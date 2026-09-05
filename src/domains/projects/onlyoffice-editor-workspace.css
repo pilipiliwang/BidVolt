@@ -1,0 +1,51 @@
+.onlyoffice-workspace { position: relative; display: grid; width: 100%; min-width: 0; min-height: 0; height: 100%; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; background: #fff; }
+.onlyoffice-workspace--tabbed { grid-template-rows: auto minmax(0, 1fr); }
+.onlyoffice-workspace > header { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 7px 12px; border-bottom: 1px solid #e0e9e4; }
+.onlyoffice-workspace > header > div { flex: 1; }
+.onlyoffice-workspace__preparation { display: inline-flex; flex-shrink: 0; color: #778e81; cursor: help; }
+.onlyoffice-workspace > header > .onlyoffice-workspace__preparation { width: auto; height: auto; background: transparent; }
+.onlyoffice-workspace > header > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #07884d; background: #eaf8f0; }
+.onlyoffice-workspace > header div { display: grid; min-width: 0; gap: 2px; }
+.onlyoffice-workspace > header strong, .onlyoffice-workspace > header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onlyoffice-workspace > header small { color: #7a8981; font-size: 10px; }
+.onlyoffice-workspace > header p { display: flex; align-items: center; gap: 5px; margin: 0; color: #42705a; font-size: 11px; }
+.onlyoffice-workspace > header p svg.lucide-loader-circle { animation: onlyoffice-spin 900ms linear infinite; }
+.onlyoffice-workspace > header button { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #dbe6e0; border-radius: 8px; background: #fff; color: #617169; cursor: pointer; }
+.onlyoffice-workspace > header button:disabled { cursor: not-allowed; opacity: .52; }
+.onlyoffice-workspace > header .onlyoffice-workspace__quote { display: flex; width: auto; padding: 0 10px; gap: 6px; color: #087946; border-color: #b9dfca; background: #f1fbf5; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.onlyoffice-workspace__toolbar { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__status { display: flex; align-items: center; gap: 5px; margin: 0; color: #42705a; font-size: 11px; white-space: nowrap; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__status svg.lucide-loader-circle { animation: onlyoffice-spin 900ms linear infinite; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__quote { display: inline-flex; width: auto; height: 34px; flex-shrink: 0; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #b5dcc7; border-radius: 8px; color: #087946; background: #edf9f2; font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__download,
+.onlyoffice-workspace > header .onlyoffice-workspace__download { display: inline-flex; width: auto; height: 34px; gap: 6px; padding: 0 10px; border: 1px solid #d4e2db; border-radius: 8px; background: #fff; color: #416c56; font-size: 12px; cursor: pointer; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__quote:hover:not(:disabled) { background: #e5f5ec; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__quote:focus-visible { outline: 2px solid #159866; outline-offset: 2px; }
+.onlyoffice-workspace__toolbar .onlyoffice-workspace__quote:disabled { cursor: not-allowed; opacity: .52; }
+.onlyoffice-workspace__quote svg.lucide-loader-circle { animation: onlyoffice-spin 900ms linear infinite; }
+.onlyoffice-workspace__editor { position: relative; grid-row: 3; width: 100%; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.onlyoffice-workspace--tabbed .onlyoffice-workspace__editor { grid-row: 2; }
+.onlyoffice-workspace__editor > div { width: 100% !important; height: 100% !important; }
+.onlyoffice-workspace__editor > iframe { display: block !important; width: 100% !important; height: 100% !important; border: 0; }
+.onlyoffice-workspace__error { padding: 9px 12px; color: #a63d33; background: #fff2ef; font-size: 12px; }
+@keyframes onlyoffice-spin { to { transform: rotate(360deg); } }
+@media (max-width: 900px) {
+  .onlyoffice-workspace > header { flex-wrap: wrap; }
+}
+.onlyoffice-workspace__save { display: inline-grid; width: 30px; height: 30px; flex-shrink: 0; place-items: center; padding: 0; border: 1px solid #cde3d7; border-radius: 7px; color: #087946; background: #f1fbf5; cursor: pointer; }
+.onlyoffice-workspace__save:disabled { opacity: .5; cursor: not-allowed; }
+.onlyoffice-workspace__save .lucide-loader-circle { animation: onlyoffice-spin 900ms linear infinite; }
+.onlyoffice-save-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: #163b2a44; backdrop-filter: blur(2px); }
+.onlyoffice-save-dialog { width: min(520px, 100%); padding: 24px; border: 1px solid #d9e6df; border-radius: 18px; background: white; box-shadow: 0 20px 70px #18372a33; color: #243e32; }
+.onlyoffice-save-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.onlyoffice-save-dialog h2 { margin: 0; font-size: 20px; }
+.onlyoffice-save-dialog p { line-height: 1.7; font-size: 14px; }
+.onlyoffice-save-dialog__filename { overflow-wrap: anywhere; font-weight: 600; }
+.onlyoffice-save-dialog .onlyoffice-save-dialog__note { color: #73847a; font-size: 12px; }
+.onlyoffice-save-dialog .onlyoffice-save-dialog__error { padding: 10px; border-radius: 8px; color: #a83529; background: #fff1ed; }
+.onlyoffice-save-dialog footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.onlyoffice-save-dialog button { padding: 9px 14px; border: 1px solid #d6e4dc; border-radius: 9px; background: white; color: #28513b; cursor: pointer; }
+.onlyoffice-save-dialog header button { display: grid; padding: 6px; place-items: center; }
+.onlyoffice-save-dialog button.is-primary { border-color: #069b5f; background: #069b5f; color: white; }
+.onlyoffice-save-dialog button:disabled { cursor: not-allowed; opacity: .5; }
+.onlyoffice-save-dialog button:focus-visible, .onlyoffice-workspace__save:focus-visible { outline: 2px solid #0b995b; outline-offset: 3px; }

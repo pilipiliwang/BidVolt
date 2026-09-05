@@ -2,7 +2,7 @@
    their existing behavior while the shell matches the supplied product UI. */
 
 .ui0802-shell {
-  --sidebar-width: 264px;
+  --sidebar-width: clamp(14rem, 15vw, 15.5rem);
   width: 100%;
   min-width: 0;
   min-height: 100vh;
@@ -21,7 +21,7 @@
   min-height: 0;
   max-height: 100dvh;
   flex-direction: column;
-  padding: 38px 14px 24px;
+  padding: 24px 12px 18px;
   overflow: clip;
   color: #fff;
   background:
@@ -63,15 +63,15 @@
 .ui0802-shell .brand {
   gap: 10px;
   width: 100%;
-  min-height: 55px;
-  padding: 0 12px;
+  min-height: 48px;
+  padding: 0 8px;
   color: #fff;
   white-space: nowrap;
 }
 
 .ui0802-shell .brand__mark {
-  width: 54px;
-  height: 54px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -82,7 +82,7 @@
 
 .ui0802-shell .brand strong {
   color: currentColor;
-  font-size: 26px;
+  font-size: 1.25rem;
   font-weight: 750;
   letter-spacing: -0.04em;
 }
@@ -90,7 +90,7 @@
 .ui0802-shell .primary-nav {
   min-height: 0;
   flex: 0 1 auto;
-  margin-top: 36px;
+  margin-top: 28px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -105,9 +105,9 @@
 
 .ui0802-shell .nav-item {
   display: flex;
-  min-height: 72px;
+  min-height: 52px;
   align-items: center;
-  padding: 0 30px;
+  padding: 10px 20px;
   border: 0;
   border-radius: 12px;
   color: rgb(255 255 255 / 87%);
@@ -126,7 +126,7 @@
 
 .ui0802-shell .nav-item strong {
   color: inherit;
-  font-size: 20px;
+  font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -205,7 +205,7 @@
 
 .ui0802-sidebar-user {
   display: grid;
-  width: 220px;
+  width: 100%;
   min-height: 54px;
   grid-template-columns: 38px minmax(0, 1fr) 16px;
   align-items: center;
@@ -255,7 +255,7 @@
 }
 
 .ui0802-sidebar-user strong {
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -1539,7 +1539,7 @@
    list. Its table remains wider than the card and scrolls inside that card. */
 @media (min-width: 1025px) and (max-width: 1180px) {
   .ui0802-shell--project-list {
-    --sidebar-width: 220px;
+    --sidebar-width: 14rem;
   }
 
   .ui0802-shell--project-list .desktop-sidebar {

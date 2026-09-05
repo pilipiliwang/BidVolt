@@ -562,6 +562,19 @@ describe('backend DTO adapters', () => {
     });
   });
 
+  it('maps a type-4 backend deliverable to the internal-management result folder', () => {
+    expect(adaptBackendDeliverableCards([{
+      deliverable_id: 4,
+      project_id: 18,
+      deliverable_type: 4,
+      title: '编制逻辑与评分响应记录.docx',
+      current_version_no: 2,
+      stat: {},
+    }])).toEqual([
+      expect.objectContaining({ id: 'internal', tone: 'internal', versionId: '2' }),
+    ]);
+  });
+
   it('does not turn an unknown backend task status into queued or invent failure metadata', () => {
     expect(adaptBackendTaskEvent({
       task_id: 24,

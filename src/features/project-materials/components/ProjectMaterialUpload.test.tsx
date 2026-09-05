@@ -20,6 +20,22 @@ function deferred<T>() {
 }
 
 describe('ProjectMaterialUpload tender notice URL import', () => {
+  it('将生成按钮和材料列表放在同一布局内，避免独立悬浮按钮遮挡上传区', () => {
+    render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        generationActions={<button type="button">确认生成</button>}
+      />,
+    );
+
+    const actions = screen.getByRole('button', { name: '确认生成' }).parentElement;
+    const materialList = screen.getByLabelText('材料列表');
+    expect(actions).toHaveClass('project-generation-setup__actions');
+    expect(actions?.parentElement).toBe(materialList.parentElement);
+    expect(actions?.parentElement).toHaveClass('project-generation-upload-layout');
+  });
+
   it('在 generation 模式合并招标文件和网址入口，并在右侧展示材料列表', () => {
     render(
       <ProjectMaterialUpload
@@ -136,6 +152,59 @@ describe('ProjectMaterialUpload tender notice URL import', () => {
     await act(async () => supplementalUpload.resolve());
     expect(await screen.findByRole('img', { name: '补充说明.docx上传成功' }))
       .toHaveClass('project-upload-card__selected-status--success');
+  });
+
+  it('后端材料接管上传成功记录后，删除时不会重新露出本地残影', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn().mockResolvedValue(undefined);
+    const onRemoveMaterial = vi.fn().mockResolvedValue(undefined);
+    const view = render(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onRemoveMaterial={onRemoveMaterial}
+        onSupplementalUpload={vi.fn()}
+        onUpload={onUpload}
+      />,
+    );
+
+    const localFile = new File(['contract'], '5.135 计算机软件采购合同.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    await user.upload(screen.getByLabelText('选择或拖拽招标材料'), localFile);
+    expect(await screen.findByRole('img', { name: `${localFile.name}上传成功` })).toBeInTheDocument();
+
+    view.rerender(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onRemoveMaterial={onRemoveMaterial}
+        onSupplementalUpload={vi.fn()}
+        onUpload={onUpload}
+        tenderFiles={[{ id: '101', name: '5.135计算机软件采购合同.docx' }]}
+      />,
+    );
+
+    const tenderList = screen.getByRole('list', { name: '招标材料列表' });
+    await waitFor(() => expect(within(tenderList).getAllByText(/5\.135.*计算机软件采购合同/)).toHaveLength(1));
+    await user.click(within(tenderList).getByRole('button', { name: /删除5\.135计算机软件采购合同/ }));
+    await user.click(within(screen.getByRole('dialog', { name: '删除项目材料' }))
+      .getByRole('button', { name: '确认删除' }));
+
+    view.rerender(
+      <ProjectMaterialUpload
+        {...baseProps}
+        mode="generation"
+        onRemoveMaterial={onRemoveMaterial}
+        onSupplementalUpload={vi.fn()}
+        onUpload={onUpload}
+        tenderFiles={[]}
+      />,
+    );
+
+    expect(onRemoveMaterial).toHaveBeenCalledWith('BV-2026-018', '101');
+    expect(within(screen.getByLabelText('材料列表')).queryByText(/计算机软件采购合同/))
+      .not.toBeInTheDocument();
   });
 
   it('保留手动上传招标公告文件功能', async () => {

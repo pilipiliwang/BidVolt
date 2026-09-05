@@ -25,6 +25,7 @@ export interface BidMarketContent {
   summary?: string;
   source?: string;
   typeLabel?: string;
+  createdAt?: string;
   updatedAt?: string;
   publishedAt?: string;
   duration?: string;
@@ -44,6 +45,7 @@ export interface BidMarketUrlImportPayload {
 }
 
 export interface BidMarketLibraryProps {
+  canManage?: boolean;
   state: BidMarketLoadState;
   items: BidMarketContent[];
   dataSource?: BidMarketDataSource;
@@ -51,6 +53,7 @@ export interface BidMarketLibraryProps {
   unavailableMessage?: string;
   pageSize?: number;
   onRefresh?: () => Promise<void> | void;
+  onDeleteContent?: (contentId: string) => Promise<void> | void;
   onImportUrl?: (
     payload: BidMarketUrlImportPayload,
   ) => Promise<BidMarketUploadResult | void> | BidMarketUploadResult | void;
