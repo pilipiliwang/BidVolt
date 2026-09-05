@@ -311,13 +311,20 @@ export function groupAgentTimelineLogs(entries: readonly TimelineEntry[]): Timel
 
   const flushLogs = () => {
     if (pendingLogs.length === 0) return;
-    blocks.push({
-      entries: pendingLogs,
-      // Keep the key stable as new live log entries arrive so a user's
-      // expanded/collapsed choice is not reset on every stream event.
-      id: `logs-${pendingLogs[0].id}`,
-      kind: 'log-group',
-    });
+    // Filter private placeholders once, before grouping reaches the renderer.
+    // Counts, category summaries and expanded rows then share the same records;
+    // a private-only segment never becomes an empty, misleading disclosure.
+    const visibleEntries = pendingLogs.filter((entry) => entry.content.trim()
+      && !/^(?:系统记录|运行分析|工具调用|任务调度|命令与执行)（内部详情已隐藏）$/.test(entry.content.trim()));
+    if (visibleEntries.length > 0) {
+      blocks.push({
+        entries: visibleEntries,
+        // Keep the original segment key even when its first entry is hidden,
+        // so streamed content updates preserve the user's disclosure choice.
+        id: `logs-${pendingLogs[0].id}`,
+        kind: 'log-group',
+      });
+    }
     pendingLogs = [];
   };
 
@@ -397,9 +404,6 @@ function MessageBlock({ entry }: { entry: MessageEntry }) {
 function LogGroup({ entries }: { entries: MessageEntry[] }) {
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
-  // Private/ambiguous terminal fragments carry internal classification markers.
-  // Keep their count, but never present repeated markers as if they were logs.
-  const visibleEntries = entries.filter((entry) => !/^(?:系统记录|运行分析|工具调用|任务调度|命令与执行)（内部详情已隐藏）$/.test(entry.content.trim()));
   const typeCounts = entries.reduce((counts, entry) => {
     const label = summarizeRuntimeLog(entry.content);
     counts.set(label, (counts.get(label) ?? 0) + 1);
@@ -429,14 +433,13 @@ function LogGroup({ entries }: { entries: MessageEntry[] }) {
       <div hidden={!expanded} id={contentId}>
         {expanded ? (
           <ol aria-label="运行摘要">
-            {visibleEntries.map((entry) => (
+            {entries.map((entry) => (
               <li key={entry.id}>
                 <p>{entry.content}</p>
               </li>
             ))}
           </ol>
         ) : null}
-        {expanded && visibleEntries.length === 0 ? <p>暂无可展示的业务记录</p> : null}
       </div>
     </article>
   );

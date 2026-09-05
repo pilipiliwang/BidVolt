@@ -24,7 +24,8 @@ export function sanitizeRuntimeText(content: string) {
 }
 
 const terminalDecoration = /^[\s┌┐└┘├┤┬┴┼┊│┃║╭╮╰╯─━█╔╗╚╝╠╣╦╩╬═]+$/u;
-const terminalHeader = /^\s*[┌╭╔][─━═\s]*(?:(?:reasoning|analysis|thinking|terminal|tool|command|execution)\b|运行|分析|执行)/iu;
+const terminalHeader = /^\s*[┌╭╔][─━═\s]*(?:(?:reasoning|analysis|thinking)\b|运行分析|内部分析|推理过程|分析)/iu;
+const operationHeader = /^\s*[┌╭╔][─━═\s]*(?:(?:terminal|tool|command|execution|runtime)\b|运行|执行)/iu;
 // The live Hermes terminal opens this frame for public replies; it does not
 // always emit a closing Reasoning border before switching to the reply.
 const assistantHeader = /^\s*[╭┌╔][─━═\s]*(?:⚕\uFE0F?\s*)?Hermes(?:\s+[─━═]|\s*$)/iu;
@@ -35,6 +36,16 @@ const terminalFooter = /^\s*[└╰╚][─━═]/u;
 const diffHeader = /^(?:diff --git\s|a\/\S+\s+→\s+b\/\S+|@@\s+[-+]\d|\*\*\* (?:Begin Patch|(?:Add|Update|Delete) File:)|--- [ab]\/|\+\+\+ [ab]\/)/u;
 const patchEnd = /^\*\*\* End Patch\s*$/u;
 const runtimeBanner = /^(?:[↪↩↻✦💻🐍🛠⚙]\s*)?(?:welcome to hermes agent|resumed session|initializing agent|preparing terminal|activated skills|mcp servers|async delegation batch complete|a background fan-out|act on these or re-dispatch|full live transcript|window too small|reflecting\.{2,}|analyzing\.{2,}|tip:|timeout\s+\d+)/iu;
+
+function isRuntimeStatusLine(text: string) {
+  const body = stripFrame(text).trim();
+  // These are observable lifecycle events, not reasoning and not final replies.
+  return (runtimeBanner.test(body) && !/^(?:reflecting|analyzing)\.{2,}/iu.test(body))
+    || terminalPreparation.test(text)
+    || /^(?:\[\d*m\s*)?MCP Servers\b/iu.test(body)
+    || /^●\s*\[ASYNC DELEGATION BATCH COMPLETE\]/iu.test(body)
+    || /^(?:HERMES(?: AGENT)?|Session ready)\s*$/iu.test(body);
+}
 const commandLine = /^(?:\$\s+|PS>\s*|[A-Z]:\\>\s*|(?:system|runtime|reasoning|tool(?:\s+(?:call|result))?|stdout|stderr|debug|trace|command|执行命令|运行命令)\s*[:：]|(?:python\d?|node|npm|npx|pnpm|yarn|rg|grep|findstr|git|ls|dir|cd|pwd|wc|head|tail|cat|sed|awk|get-content|get-childitem|select-string|invoke-webrequest|curl|wget)\s+\S)/iu;
 const codeLine = /^(?:(?:from\s+[\w.]+\s+import|import\s+[\w.]+)|(?:if|elif|for|while|with|def|class|try|except)\b[^\n]*:\s*(?:.*)?$|(?:return|raise|assert)\s+|(?:const|let|var)\s+\w+\s*=|[a-z_]\w*(?:\[[^\]]+\]|\.[a-z_]\w*)*\s*(?:[+\-*/]?=)(?!=)|[a-z_]\w*(?:\[[^\]]+\])?\s+(?:and|or|in|for)\b|(?:print|nt|isinstance|json\.(?:dump|load)|open)\s*\(|(?:traceback\s*\(|file\s+["'][/\\])|(?:diff --git|@@\s+[-+]\d|\+\+\+\s|---\s+[ab]\/))/iu;
 const structuredLine = /^(?:[{}[\](),;]+|["'][\w.-]+["']\s*:\s*.*[,}]|(?:\.{3}\s*)?\(\+\d+ more lines\)|\+\s*\d+\s+commands?\s*\(.*\))$/iu;
@@ -100,6 +111,7 @@ const hiddenRuntime = (category: string) => `${category}（内部详情已隐藏
  */
 export function classifyAgentConversation(messages: readonly AgentConversationMessage[]): ClassifiedAgentMessage[] {
   let terminalOpen = false;
+  let operationOpen = false;
   let publicFrame = false;
   let replayFrame = false;
   let replayToolTail = false;
@@ -151,6 +163,7 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
 
     if (userKinds.has(kind)) {
       terminalOpen = false;
+      operationOpen = false;
       publicFrame = false;
       replayFrame = false;
       replayToolTail = false;
@@ -160,6 +173,7 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
       // User-authored content is preserved; it is not a source of Agent output.
       append('user', content);
     } else if (privateKinds.has(kind)) {
+      operationOpen = false;
       publicFrame = false;
       replayFrame = false;
       replayToolTail = false;
@@ -177,6 +191,7 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
     } else {
       if (explicitKind && kind !== priorKind) {
         terminalOpen = false;
+        operationOpen = false;
         publicFrame = false;
         replayFrame = false;
         replayToolTail = false;
@@ -190,11 +205,11 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
       for (const line of lines) {
         let text = line.trim();
         const combinedHeader = pendingHeader + text;
-        if (pendingHeader && (assistantHeader.test(combinedHeader) || terminalHeader.test(combinedHeader))) {
+        if (pendingHeader && (assistantHeader.test(combinedHeader) || terminalHeader.test(combinedHeader) || operationHeader.test(combinedHeader))) {
           text = combinedHeader;
           pendingHeader = '';
         } else if (/^[╭┌╔]/u.test(combinedHeader) && !/[╮┐╗]$/u.test(combinedHeader)
-          && combinedHeader.length < 1024 && !assistantHeader.test(combinedHeader) && !terminalHeader.test(combinedHeader)) {
+          && combinedHeader.length < 1024 && !assistantHeader.test(combinedHeader) && !terminalHeader.test(combinedHeader) && !operationHeader.test(combinedHeader)) {
           pendingHeader = combinedHeader;
           append('log', line);
           continue;
@@ -202,23 +217,35 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
           pendingHeader = '';
         }
         const framedBody = stripFrame(text).trim();
-        const body = publicFrame ? framedBody : text;
+        const body = publicFrame || operationOpen ? framedBody : text;
         const fenceMatch = body.match(/^(`{3,}|~{3,})(?:[\w.+-]+)?\s*$/);
         if (replayFrame && /^●\s*You:/iu.test(framedBody)) {
           publicFrame = false;
           replayFrame = false;
           replayToolTail = false;
           append('log', line);
-        } else if (terminalHeader.test(body) || privateHeading.test(body) || privateTag.test(body)) {
+        } else if (terminalHeader.test(framedBody) || privateHeading.test(framedBody) || privateTag.test(framedBody)) {
           terminalOpen = true;
+          operationOpen = false;
           publicFrame = false;
           replayFrame = false;
           replayToolTail = false;
           fence = null;
           diffOpen = false;
           append('log', line);
+        } else if (operationHeader.test(framedBody) && !terminalOpen) {
+          // Execution panels are inspectable logs. They must not open the
+          // privacy boundary used for Reasoning panels.
+          operationOpen = true;
+          publicFrame = false;
+          replayFrame = false;
+          replayToolTail = false;
+          fence = null;
+          diffOpen = false;
+          append('log', framedBody.replace(/^[┌╭╔][─━═\s]*/u, '').replace(/[─━═\s╮┐╗]+$/u, '') + '\n', true);
         } else if (replayAssistant.test(framedBody)) {
           terminalOpen = false;
+          operationOpen = false;
           publicFrame = true;
           replayFrame = true;
           replayToolTail = /\[\d+ tool calls?:/iu.test(framedBody) && !/\[\d+ tool calls?:[^]*\]/iu.test(framedBody);
@@ -227,6 +254,7 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
           append('agent', framedBody.replace(replayAssistant, '').replace(/\s*\[\d+ tool calls?:[^]*$/iu, '') + '\n');
         } else if (assistantHeader.test(text) || publicHeading.test(text)) {
           terminalOpen = false;
+          operationOpen = false;
           publicFrame = true;
           replayFrame = false;
           replayToolTail = false;
@@ -242,6 +270,7 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
           append('log', line);
         } else if (terminalFooter.test(text) || privateTagEnd.test(text)) {
           terminalOpen = false;
+          operationOpen = false;
           publicFrame = false;
           replayFrame = false;
           replayToolTail = false;
@@ -256,6 +285,20 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
         } else if ([...privateLines].some((hidden) => hidden.length >= 6 && stripFrame(body).includes(hidden))) {
           // Some terminal captures repeat an analysis paragraph outside its box.
           append('log', 'reasoning: repeated private paragraph');
+        } else if (operationOpen) {
+          if (!terminalDecoration.test(text)) append('log', stripFrame(line.replace(/\r?\n$/, '')) + (line.endsWith('\n') ? '\n' : ''), true);
+        } else if (fence === null && !diffOpen && isRuntimeStatusLine(text)) {
+          // Preserve real status text even when the backend transports it in
+          // the raw terminal channel. Never promote it to a chat response.
+          append('log', stripFrame(line.replace(/\r?\n$/, '')) + (line.endsWith('\n') ? '\n' : ''), true);
+          // Preparation is an overlay inside the current public reply. Other
+          // lifecycle events end that frame; following orphan terminal text
+          // must not inherit permission to become an assistant message.
+          if (!terminalPreparation.test(text)) {
+            publicFrame = false;
+            replayFrame = false;
+            replayToolTail = false;
+          }
         } else if (patchEnd.test(body)) {
           diffOpen = false;
           append('log', line);
@@ -300,7 +343,7 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
       ...part,
       content: part.kind === 'user' ? part.content : part.content
         .replace(/\/data\/hermes\//giu, '[工作目录]/')
-        .replace(/\bHermes(?: Agent)?\b/giu, 'BidVolt'),
+        .replace(/Hermes(?: Agent)?/giu, 'BidVolt'),
       id: `conversation-${message.seq}${visibleParts.length > 1 ? `-part-${index}` : ''}`,
       sequence: message.seq,
     }));

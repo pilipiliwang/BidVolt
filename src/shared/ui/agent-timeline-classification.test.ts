@@ -154,18 +154,78 @@ describe('agent conversation classification', () => {
 
   it.each([
     '╔═════════════════════════════════╗',
+    '╚═════════════════════════════════╝',
+  ])('discards pure console decoration rather than inventing a runtime record: %s', (content) => {
+    expect(classifyAgentConversation([message(1, content)]))
+      .toEqual([expect.objectContaining({ content: expect.stringContaining('内部详情已隐藏'), kind: 'log' })]);
+  });
+
+  it.each([
     '║       HERMES AGENT              ║',
     '║ Session ready                  ║',
-    '╚═════════════════════════════════╝',
     'MCP Servers: bidvolt connected',
     '[0m MCP Servers: bidvolt connected',
     '● [ASYNC DELEGATION BATCH COMPLETE] 2 tasks finished',
     'A background fan-out of 2 subagent(s) you dispatched earlier has finished.',
     'Act on these or re-dispatch if things have changed.',
-  ])('folds live startup and delegation console banners: %s', (content) => {
+    '↪ Resumed session 20260905_sample',
+    '┊ 💻 preparing terminal…',
+  ])('retains real startup and delegation console status as inspectable logs: %s', (content) => {
     const entries = classifyAgentConversation([message(1, content)]);
 
-    expect(entries).toEqual([expect.objectContaining({ content: expect.stringContaining('内部详情已隐藏'), kind: 'log' })]);
+    const expected = content.replace(/^[│┃┊║]\s?/u, '').replace(/\s*[│┃║]$/u, '').replace(/Hermes(?: Agent)?/giu, 'BidVolt');
+    expect(entries).toEqual([expect.objectContaining({ content: expected, kind: 'log' })]);
+    expect(publicAgentReply(content)).toBe('');
+  });
+
+  it.each(['hermes', 'system', 'service'])('restores screenshot lifecycle logs carried by %s', (kind) => {
+    const entries = classifyAgentConversation([
+      message(1, '↪ Resumed session sample-session', kind),
+      message(2, 'A background fan-out of 2 subagents finished', kind),
+      message(3, 'Preparing terminal…', kind),
+    ]);
+    expect(entries.map((entry) => entry.content)).toEqual([
+      '↪ Resumed session sample-session',
+      'A background fan-out of 2 subagents finished',
+      'Preparing terminal…',
+    ]);
+    expect(entries.every((entry) => entry.kind === 'log')).toBe(true);
+    expect(entries.map((entry) => summarizeRuntimeLog(entry.content))).toEqual(['任务调度', '任务调度', '系统记录']);
+  });
+
+  it.each(['Terminal', 'Tool', '运行', '执行'])('keeps %s frames inspectable without exposing nested Reasoning', (heading) => {
+    const entries = classifyAgentConversation([
+      message(1, `╭─ ${heading} ─╮\n│ $ python verify.py │\n`, 'hermes'),
+      message(2, '│ 图片核验完成：173 张。 │\n╰──╯', 'hermes'),
+      message(3, '│ ┌─ Reasoning │\n│ 内部判断过程应继续隐藏。 │', 'hermes'),
+      message(4, 'Final answer: 核验完成，请查看成果。', 'hermes'),
+    ]);
+    const content = entries.map((entry) => entry.content).join('\n');
+    expect(content).toContain('$ python verify.py');
+    expect(content).toContain('图片核验完成：173 张。');
+    expect(content).not.toContain('内部判断过程');
+    expect(entries.filter((entry) => entry.kind === 'agent').map((entry) => entry.content))
+      .toEqual(['核验完成，请查看成果。']);
+  });
+
+  it('sanitizes product identifiers in inspectable runtime data', () => {
+    const entries = classifyAgentConversation([
+      message(1, 'Resumed session Hermes Agent; hermes_cli; /data/hermes/work/result.docx', 'hermes'),
+    ]);
+    expect(entries[0].content).toContain('BidVolt');
+    expect(entries[0].content).toContain('[工作目录]/work/result.docx');
+    expect(JSON.stringify(entries)).not.toMatch(/hermes/i);
+  });
+
+  it('does not let a restored lifecycle record expose following unbounded terminal text as a reply', () => {
+    const entries = classifyAgentConversation([
+      message(1, '╭─ ⚕ Hermes ──╮\n│ 材料已就绪。 │', 'hermes'),
+      message(2, '↪ Resumed session sample-session', 'hermes'),
+      message(3, '终端中的未标记续段。', 'hermes'),
+    ]);
+    expect(entries.filter((entry) => entry.kind === 'agent').map((entry) => entry.content)).toEqual(['材料已就绪。']);
+    expect(entries.find((entry) => entry.sequence === 2)?.content).toBe('↪ Resumed session sample-session');
+    expect(JSON.stringify(entries)).not.toContain('未标记续段');
   });
 
   it('folds terminal diff omission notices without hiding surrounding status messages', () => {

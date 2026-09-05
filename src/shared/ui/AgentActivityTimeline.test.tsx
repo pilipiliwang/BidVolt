@@ -112,8 +112,7 @@ describe('AgentActivityTimeline', () => {
     ]);
   });
 
-  it('sanitizes mixed HTTP output and action_list without leaking raw reasoning through disclosure', async () => {
-    const user = userEvent.setup();
+  it('sanitizes mixed HTTP output and action_list without creating private-only disclosures', () => {
     const privateContent = '这里是内部分析，不能暴露给用户。';
     render(<AgentActivityTimeline run={{ ...baseRun, actionList: [
       `<think>${privateContent}</think><final>请核对签章。</final>`,
@@ -125,7 +124,7 @@ describe('AgentActivityTimeline', () => {
     ]} />);
     expect(screen.getByText('收到，继续待命。')).toBeInTheDocument();
     expect(screen.getByText('请核对签章。')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '展开全部' }));
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument();
     const region = screen.getByRole('region', { name: '任务动态' });
     expect(region).not.toHaveTextContent(privateContent);
     expect(region).not.toHaveTextContent('无法确认边界');
@@ -198,7 +197,6 @@ describe('AgentActivityTimeline', () => {
     expect(messages.map((message) => message.textContent)).toEqual([
       expect.stringContaining('开始核验材料'),
       expect.stringContaining('优先检查技术文件'),
-      expect.stringContaining('运行记录'),
     ]);
     expect(screen.queryByText('后端新增的自主输出')).not.toBeInTheDocument();
     expect(screen.queryByText('主会话动态')).not.toBeInTheDocument();
@@ -260,19 +258,19 @@ describe('AgentActivityTimeline', () => {
     const records = screen.getByRole('article', { name: /运行记录，共/ });
     expect(records).not.toHaveTextContent('Preparing terminal');
     expect(within(records).queryByText(/timeout\s+1800s/)).not.toBeInTheDocument();
-    expect(screen.getByText('· 4 条')).toBeInTheDocument();
+    expect(screen.getByText('· 3 条')).toBeInTheDocument();
     expect(screen.getByText('成果文件已更新。').closest('article')).toHaveAttribute('data-kind', 'agent');
 
     await user.click(screen.getByRole('button', { name: '展开全部' }));
-    expect(records).not.toHaveTextContent('timeout');
+    expect(records).toHaveTextContent('timeout 1800s');
     expect(records).toHaveTextContent('$ npm run build');
     expect(records).toHaveTextContent('构建完成');
+    expect(records).toHaveTextContent('Preparing terminal…');
     expect(records).not.toHaveTextContent('内部详情已隐藏');
     expect(within(records).getByRole('list', { name: '运行摘要' })).toBeInTheDocument();
   });
 
-  it('collapses a single terminal frame without rendering its markdown or box drawing as a preview', async () => {
-    const user = userEvent.setup();
+  it('omits private-only terminal frames instead of presenting an empty runtime disclosure', () => {
     const frame = `╭─ Reasoning ${'─'.repeat(240)}\n│ # 内部运行分析\n│ **这不是面向用户的结论**\n╰${'─'.repeat(240)}`;
     render(
       <AgentActivityTimeline
@@ -280,22 +278,87 @@ describe('AgentActivityTimeline', () => {
       />,
     );
 
-    const records = screen.getByRole('article', { name: '运行记录，共 1 条' });
-    const toggle = within(records).getByRole('button', { name: '展开全部' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(toggle).toHaveAttribute('aria-controls');
-    expect(records.querySelector('pre, .bv-markdown')).not.toBeInTheDocument();
-    expect(records).not.toHaveTextContent('内部运行分析');
-    expect(records.textContent?.length).toBeLessThan(70);
+    const timeline = screen.getByRole('region', { name: '任务动态' });
+    expect(screen.queryByRole('article', { name: /运行记录，共/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument();
+    expect(timeline).not.toHaveTextContent('这不是面向用户的结论');
+    expect(timeline).not.toHaveTextContent('Reasoning');
+    expect(timeline).not.toHaveTextContent('内部详情已隐藏');
+    expect(timeline).not.toHaveTextContent('暂无可展示的业务记录');
+    expect(timeline.querySelector('.bv-markdown, h1, h2, strong, pre')).not.toBeInTheDocument();
+  });
 
+  it('does not render the screenshot empty three-record group when all rows are legacy placeholders', () => {
+    render(<AgentActivityTimeline run={{ ...baseRun, conversation: [
+      { seq: 1, kind: 'system', content: '任务调度（内部详情已隐藏）' },
+      { seq: 2, kind: 'system', content: '任务调度（内部详情已隐藏）' },
+      { seq: 3, kind: 'system', content: '系统记录（内部详情已隐藏）' },
+      { seq: 4, kind: 'final', content: '材料核验已完成。' },
+    ] }} />);
+
+    expect(screen.queryByRole('article', { name: /运行记录，共/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument();
+    expect(screen.queryByText('暂无可展示的业务记录')).not.toBeInTheDocument();
+    expect(screen.getByText('材料核验已完成。')).toBeInTheDocument();
+  });
+
+  it('shows all three lifecycle records with matching counts instead of an empty business-log message', async () => {
+    const user = userEvent.setup();
+    const records = [
+      '↪ Resumed session sample-session',
+      'A background fan-out of 2 subagents finished',
+      'Preparing terminal…',
+    ];
+    render(<AgentActivityTimeline run={{ ...baseRun, conversation: [
+      ...records.map((content, index) => ({ seq: index + 1, kind: 'hermes', content })),
+      { seq: 4, kind: 'final', content: '材料核验已完成。' },
+    ] }} />);
+
+    const group = screen.getByRole('article', { name: '运行记录，共 3 条' });
+    expect(group).toHaveTextContent('任务调度 2 · 系统记录 1');
+    await user.click(within(group).getByRole('button', { name: '展开全部' }));
+    expect(within(group).getAllByRole('listitem')).toHaveLength(3);
+    records.forEach((content) => expect(within(group).getByText(content)).toBeInTheDocument());
+    expect(group).not.toHaveTextContent('暂无可展示的业务记录');
+    expect(group).not.toHaveTextContent(/hermes/i);
+  });
+
+  it('uses the same visible subset for count, category summary and rows in a mixed log group', async () => {
+    const user = userEvent.setup();
+    const firstRun = { ...baseRun, conversation: [
+      { seq: 1, kind: 'reasoning', content: '只供内部使用的推理。' },
+      { seq: 2, kind: 'service', content: '建立任务目录' },
+      { seq: 3, kind: 'system', content: '任务调度（内部详情已隐藏）' },
+      { seq: 4, kind: 'tool', content: 'tool: 读取评分规则' },
+      { seq: 5, kind: 'user', content: '请继续' },
+      { seq: 6, kind: 'reasoning', content: '另一条只供内部使用的推理。' },
+      { seq: 7, kind: 'final', content: '收到，正在处理。' },
+    ] };
+    const { rerender } = render(<AgentActivityTimeline run={firstRun} />);
+
+    const group = screen.getByRole('article', { name: '运行记录，共 2 条' });
+    expect(group).toHaveTextContent('系统记录 1 · 工具调用 1');
+    expect(group).not.toHaveTextContent('运行分析');
+    expect(group).not.toHaveTextContent('任务调度');
+    const toggle = within(group).getByRole('button', { name: '展开全部' });
+    const contentId = toggle.getAttribute('aria-controls');
     await user.click(toggle);
-    expect(records).not.toHaveTextContent('这不是面向用户的结论');
-    expect(records).not.toHaveTextContent('Reasoning');
-    expect(records).not.toHaveTextContent('内部详情已隐藏');
-    expect(records).toHaveTextContent('暂无可展示的业务记录');
-    expect(records.querySelector('.bv-markdown, h1, h2, strong')).not.toBeInTheDocument();
-    await user.click(within(records).getByRole('button', { name: '收起' }));
-    expect(records.querySelector('pre')).not.toBeInTheDocument();
+    expect(within(group).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      '建立任务目录', 'tool: 读取评分规则',
+    ]);
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(screen.getByText('请继续').closest('article')).toHaveAttribute('data-kind', 'user');
+
+    // A stream reclassification of the original first row must not remount the
+    // same log segment and reset the user's expansion choice.
+    rerender(<AgentActivityTimeline run={{ ...firstRun, conversation: [
+      { seq: 1, kind: 'service', content: '任务已启动' },
+      ...firstRun.conversation.slice(1),
+    ] }} />);
+    const updatedGroup = screen.getByRole('article', { name: '运行记录，共 3 条' });
+    expect(within(updatedGroup).getByRole('button', { name: '收起' })).toHaveAttribute('aria-controls', contentId);
+    expect(within(updatedGroup).getAllByRole('listitem')).toHaveLength(3);
+    expect(updatedGroup).toHaveTextContent('任务已启动');
   });
 
   it('preserves the user expansion choice when more live logs join the same group', async () => {
@@ -353,11 +416,10 @@ describe('AgentActivityTimeline', () => {
 
     await user.click(screen.getByRole('button', { name: '展开全部' }));
     expect(within(records).getByText(/内部系统说明/)).toBeInTheDocument();
-    expect(records).not.toHaveTextContent('Resumed session');
+    expect(records).toHaveTextContent('↻ Resumed session 20260903_104750');
   });
 
-  it('joins streamed BidVolt fragments, renders markdown and keeps execution traces in logs', async () => {
-    const user = userEvent.setup();
+  it('joins streamed BidVolt fragments and omits ambiguous private execution traces', () => {
     render(
       <AgentActivityTimeline
         run={{
@@ -372,17 +434,15 @@ describe('AgentActivityTimeline', () => {
     );
 
     const articles = screen.getAllByRole('article');
-    expect(articles).toHaveLength(2);
+    expect(articles).toHaveLength(1);
     expect(screen.getByText('材料核验').tagName).toBe('STRONG');
     expect(screen.getByText('招标文件完整').tagName).toBe('LI');
     expect(screen.getByText(/已经完成/)).toBeInTheDocument();
     expect(screen.queryByText(/import json/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '展开全部' }));
-    expect(screen.getByRole('list', { name: '运行摘要' })).not.toHaveTextContent('import json');
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument();
   });
 
-  it('compresses code fragments whose backend kind is incorrectly marked as BidVolt output', async () => {
-    const user = userEvent.setup();
+  it('omits ambiguous code fragments whose backend kind is incorrectly marked as BidVolt output', () => {
     render(
       <AgentActivityTimeline
         run={{
@@ -405,9 +465,9 @@ describe('AgentActivityTimeline', () => {
     );
 
     expect(screen.queryByRole('list', { name: '运行摘要' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '展开全部' }));
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument();
     expect(screen.queryByText("f and '合同'", { exact: false })).not.toBeInTheDocument();
-    expect(screen.getByRole('list', { name: '运行摘要' })).not.toHaveTextContent('内部详情已隐藏');
+    expect(screen.getByRole('region', { name: '任务动态' })).not.toHaveTextContent('内部详情已隐藏');
     expect(screen.getByText('成果文件已完成核验。').closest('article'))
       .toHaveAttribute('data-kind', 'agent');
   });
