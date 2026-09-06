@@ -396,13 +396,13 @@ describe('ProjectGenerationWorkspace', () => {
     }
   });
 
-  it('keeps scores visible above Agent status while a task is still running', () => {
+  it('keeps scores visible after Agent status while a task is still running', () => {
     renderWorkspace();
     const summary = screen.getByRole('region', { name: '成果评分与响应记录' });
     const scores = within(summary).getByRole('region', { name: '评分结果' });
     const status = within(summary).getByRole('heading', { name: '成果生成需要您的处理' });
     expect(within(scores).getByText('等待评审结果')).toBeInTheDocument();
-    expect(scores.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(status.compareDocumentPosition(scores) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(summary).getByRole('region', { name: '编制逻辑与评分响应记录' })).toBeInTheDocument();
   });
 

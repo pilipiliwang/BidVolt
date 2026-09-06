@@ -70,7 +70,8 @@ describe('ProjectCompletionDashboard', () => {
     expect(within(scores).getByText('技术标').parentElement).toHaveTextContent('82 分');
     expect(within(scores).getByText('价格文件').parentElement).toHaveTextContent('91 分');
     expect(within(scores).getByText('可提升空间').parentElement).toHaveTextContent('+7 分');
-    expect(within(scores).getByText('缺失材料').parentElement).toHaveTextContent('2 项');
+    expect(scores.children).toHaveLength(5);
+    expect(screen.getByText('缺失材料：2 项')).toBeInTheDocument();
 
     expect(screen.getByLabelText('成果评分与响应记录'))
       .toHaveAttribute('data-layout-region', 'completion-summary');
@@ -84,7 +85,7 @@ describe('ProjectCompletionDashboard', () => {
     expect(onOpenRecordFile).toHaveBeenCalledWith(recordFile);
   });
 
-  it('places scores above Agent status and keeps records at the bottom', () => {
+  it('places Agent status before scores and keeps records at the bottom', () => {
     render(
       <ProjectCompletionDashboard
         findings={[]}
@@ -99,7 +100,7 @@ describe('ProjectCompletionDashboard', () => {
     const top = status.closest('.project-completion-dashboard__top');
     expect(top).toHaveClass('project-completion-dashboard__top--with-status');
     expect(top).toContainElement(scores);
-    expect(scores.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(status.compareDocumentPosition(scores) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(top).not.toContainElement(screen.getByRole('region', { name: '编制逻辑与评分响应记录' }));
     expect(screen.getByRole('heading', { name: '成果生成已完成' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '编制逻辑与评分响应记录' })).not.toBeInTheDocument();
@@ -161,7 +162,9 @@ describe('ProjectCompletionDashboard', () => {
 
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     expect(screen.getByText('尚无评分')).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: '标书成果评分' })).not.toBeInTheDocument();
+    const scores = screen.getByRole('group', { name: '标书成果评分' });
+    expect(scores.children).toHaveLength(5);
+    expect(within(scores).getAllByText('—')).toHaveLength(5);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });

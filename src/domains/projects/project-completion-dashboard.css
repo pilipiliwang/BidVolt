@@ -20,46 +20,30 @@
 }
 
 .project-completion-dashboard__top--with-status {
-  grid-template-columns: minmax(250px, .8fr) minmax(360px, 1.2fr);
+  grid-template-columns: minmax(280px, .85fr) minmax(0, 1.15fr);
   align-items: start;
   gap: 18px;
 }
 
 .project-completion-dashboard__status {
   min-width: 0;
-  padding-left: 18px;
-  border-left: 1px solid #e1e9e5;
 }
 
 .project-completion-dashboard__scores,
 .project-completion-dashboard__records { min-width: 0; }
 
-.project-completion-dashboard__top--with-status .project-completion-dashboard__scores { padding: 0; }
-.project-completion-dashboard__top--with-status .project-completion-dashboard__score-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+.project-completion-dashboard__top--with-status .project-completion-dashboard__scores {
+  padding-left: 18px;
+  border-left: 1px solid #e1e9e5;
 }
-.project-completion-dashboard__top--with-status .project-completion-dashboard__score-grid > .is-emphasis {
-  grid-column: auto;
-}
-.project-completion-dashboard__top--with-status .project-completion-dashboard__score-grid > div {
-  min-height: 54px;
-  gap: 4px;
-  padding: 8px;
-}
-.project-completion-dashboard__top--with-status .project-completion-dashboard__score-grid dd { font-size: 19px; }
-.project-completion-dashboard__top--with-status .project-completion-dashboard__score-grid > .is-emphasis dd { font-size: 22px; }
 
 .project-completion-dashboard__score-empty {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 8px;
+  margin: 8px 0 0;
   color: #718079;
-  background: #f6f9f7;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -144,20 +128,23 @@
 
 .project-completion-dashboard__score-grid {
   display: grid;
-  grid-template-columns: 1.15fr repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(96px, 1.15fr) repeat(4, minmax(84px, 1fr));
   gap: 7px;
   margin: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #b3c9bd transparent;
 }
 
 .project-completion-dashboard__score-grid > div {
   display: grid;
   min-width: 0;
-  min-height: 78px;
+  min-height: 90px;
   align-content: center;
   gap: 10px;
-  padding: 9px 8px;
+  padding: 12px 10px;
   border: 1px solid #dfe8e3;
-  border-radius: 9px;
+  border-radius: 12px;
   background: #fbfdfc;
 }
 
@@ -307,24 +294,21 @@
     gap: 8px;
   }
 
-  .project-completion-dashboard__status {
-    padding: 8px 0 0;
+  .project-completion-dashboard__top--with-status .project-completion-dashboard__scores {
+    padding: 12px 0 0;
     border-top: 1px solid #e1e9e5;
     border-left: 0;
   }
 
-  .project-completion-dashboard__top--with-status .project-completion-dashboard__scores { padding-left: 0; }
   .project-completion-dashboard__section-heading { margin-bottom: 6px; }
   .project-completion-dashboard__section-heading p { display: none; }
-  .project-completion-dashboard__score-empty { padding: 8px 10px; }
-  .project-completion-dashboard__score-grid > div { min-height: 56px; gap: 5px; }
   .project-completion-dashboard__record-name { align-items: flex-start; flex-direction: column; gap: 2px; }
   .project-completion-dashboard__record-name strong { max-width: 100%; }
 }
 
 @container completion-card (max-width: 460px) {
-  .project-completion-dashboard__score-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-  .project-completion-dashboard__score-grid > div { padding: 8px 5px; }
+  .project-completion-dashboard__score-grid { gap: 6px; }
+  .project-completion-dashboard__score-grid > div { min-height: 82px; padding: 10px 8px; }
   .project-completion-dashboard__score-grid dt { font-size: 11px; }
   .project-completion-dashboard__score-grid dd { font-size: 20px; }
   .project-completion-dashboard__score-grid > .is-emphasis dd { font-size: 22px; }

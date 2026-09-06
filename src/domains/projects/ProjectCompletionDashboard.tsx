@@ -53,7 +53,6 @@ export function ProjectCompletionDashboard({
       suffix: '分',
       value: score?.estimatedLift,
     },
-    { label: '缺失材料', suffix: '项', value: score?.missingMaterials },
   ];
 
   return (
@@ -66,6 +65,7 @@ export function ProjectCompletionDashboard({
       data-task-status={task.status ?? 'unknown'}
     >
       <div className={`project-completion-dashboard__top${status ? ' project-completion-dashboard__top--with-status' : ''}`}>
+        {status ? <div className="project-completion-dashboard__status">{status}</div> : null}
         <section aria-labelledby={`${titleId}-scores`} className="project-completion-dashboard__scores">
           <div className="project-completion-dashboard__section-heading" title={nonEmptyText(review.description)}>
             <div>
@@ -76,7 +76,7 @@ export function ProjectCompletionDashboard({
               {isStale ? '评分已过期' : review.state === 'empty' ? '尚无评分' : nonEmptyText(review.title)}
             </span>
           </div>
-          {hasScore ? <dl
+          <dl
             aria-label="标书成果评分"
             className="project-completion-dashboard__score-grid"
             role="group"
@@ -90,24 +90,25 @@ export function ProjectCompletionDashboard({
                 <dd>{formatMetric(metric.value, metric.suffix, metric.prefix)}</dd>
               </div>
             ))}
-          </dl> : (
+          </dl>
+          {!hasScore ? (
             <div className="project-completion-dashboard__score-empty" role="status">
               <span>{emptyScoreMessage}</span>
               {onOpenReview && scoreIsStartable ? <button onClick={onOpenReview} type="button">
                 {review.state === 'empty' ? '发起模拟评标' : '查看模拟评标'}
               </button> : null}
             </div>
-          )}
-          {hasScore && (scaleLabel || score?.versionLabel || isStale || score?.formalFileVersionUnverified) ? (
+          ) : null}
+          {hasScore && (scaleLabel || score?.versionLabel || isStale || score?.formalFileVersionUnverified || finiteNumber(score?.missingMaterials) !== undefined) ? (
             <p className="project-completion-dashboard__score-basis">
               {scaleLabel ? <span>{scaleLabel}</span> : null}
               {score?.versionLabel ? <span>评分版本：{score.versionLabel}</span> : null}
+              {finiteNumber(score?.missingMaterials) !== undefined ? <span>缺失材料：{score?.missingMaterials} 项</span> : null}
               {isStale ? <strong>成果已更新，当前分数仅供参考。</strong> : null}
               {score?.formalFileVersionUnverified ? <span>评分尚未关联正式文件版本，仅供参考。</span> : null}
             </p>
           ) : null}
         </section>
-        {status ? <div className="project-completion-dashboard__status">{status}</div> : null}
       </div>
 
       <section aria-label="编制逻辑与评分响应记录" className="project-completion-dashboard__records">
