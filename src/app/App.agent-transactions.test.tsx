@@ -11,9 +11,17 @@ import { BACKEND_SESSION_EXPIRED_EVENT, saveBackendSession } from './backend-ses
 
 type OverviewProps = ComponentProps<typeof import('../domains/projects/ProjectOverviewPage').ProjectOverviewPage>;
 type DrawerProps = ComponentProps<typeof import('../shared/ui/TaskProgressDrawer').TaskProgressDrawer>;
+type ReviewProps = ComponentProps<typeof import('../domains/review/ReviewCenter').ReviewCenter>;
 const captured = vi.hoisted(() => ({
   overview: undefined as OverviewProps | undefined,
   drawer: undefined as DrawerProps | undefined,
+  review: undefined as ReviewProps | undefined,
+}));
+vi.mock('../domains/review/ReviewCenter', () => ({
+  ReviewCenter: (props: ReviewProps) => {
+    captured.review = props;
+    return <div>Review integration test workspace</div>;
+  },
 }));
 
 vi.mock('../domains/projects/ProjectOverviewPage', async (importOriginal) => ({
@@ -67,6 +75,7 @@ const score: ScoreSummary = {
 beforeEach(() => {
   captured.overview = undefined;
   captured.drawer = undefined;
+  captured.review = undefined;
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.history.replaceState({}, '', '/projects/7/overview');
@@ -120,6 +129,52 @@ async function mountReady() {
 }
 
 describe('App Agent request boundaries', () => {
+  it('allows the first review without a prior snapshot and reads the produced run, score and items', async () => {
+    window.history.replaceState({}, '', '/projects/7/review');
+    vi.mocked(backendApi.artifacts.listAll).mockResolvedValue([artifact]);
+    const provider = { provider_id: 6, provider_code: 'builtin_completeness', provider_type: 'code',
+      provider_version: '1.0.0', name: '成果完整性检查（内置）', enabled: true };
+    vi.mocked(backendApi.review.listProviders).mockResolvedValue([provider]);
+    const detail = { run_id: 81, status: 2, snapshot_id: 91, provider,
+      score: { score_id: 101, total_score: 60, improvable: 8 }, items: [] };
+    const getRun = vi.spyOn(backendApi.review, 'getRun').mockResolvedValue(detail);
+    const listItems = vi.spyOn(backendApi.review, 'listItems').mockResolvedValue([{
+      item_id: 301, category: '完整性', problem_description: '缺少授权材料', got: 0, full: 8,
+      improvable: 8, risk_level: 'high', suggestion: '补充授权材料', suggestion_override: null,
+      effective_suggestion: '补充授权材料', action_type: 'upload_material', evidence: null, status: 1,
+    }]);
+    const evaluate = vi.spyOn(backendApi.review, 'evaluate').mockImplementation(async () => {
+      vi.mocked(backendApi.review.listRuns).mockResolvedValue({ items: [{
+        run_id: 81, provider_id: 6, snapshot_id: 91, status: 2, provider_raw_hash: null, created_at: null,
+      }] });
+      vi.mocked(backendApi.review.latestScore).mockResolvedValue({ ...score, review_run_id: 81, snapshot_id: 91 });
+      return { run_id: 81, score_id: 101, snapshot_id: 91 };
+    });
+    render(<App />);
+    await waitFor(() => expect(captured.review?.runAllowed).toBe(true));
+    await waitFor(() => expect(captured.review?.providers).toHaveLength(1));
+    expect(captured.review?.run.status).toBe('idle');
+    expect(backendApi.snapshots.list).toHaveBeenCalledWith('7');
+    expect(evaluate).not.toHaveBeenCalled();
+
+    await act(async () => { await captured.review!.onRun!('6'); });
+    expect(evaluate).toHaveBeenCalledExactlyOnceWith('7', { provider_id: 6 });
+    expect(getRun).toHaveBeenCalledWith('7', 81);
+    expect(listItems).toHaveBeenCalledWith('7', '101');
+    expect(captured.review?.run).toMatchObject({ id: '81', status: 'succeeded', projectSnapshotId: '91',
+      validatedSummary: { currentScore: 60, totalLift: 8 }, findings: [{ id: '301' }] });
+    expect(backendApi.review.latestScore).toHaveBeenCalledWith('7');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not allow a review when the completed task has no readable results', async () => {
+    window.history.replaceState({}, '', '/projects/7/review');
+    render(<App />);
+    await waitFor(() => expect(captured.review?.runBlockReason).toContain('当前任务尚无可评审的成果'));
+    expect(captured.review?.runAllowed).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('fetches current project details before patching editable fields and preserves notes and unrelated metadata', async () => {
     await mountReady();
     const freshNote = '后端新追加的业务备注\n\n[BidVolt 项目扩展信息 v1]\n'

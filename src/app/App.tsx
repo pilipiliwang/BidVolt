@@ -3434,13 +3434,19 @@ export function App() {
           providers={reviewProviders}
           run={activeData?.reviewRun ?? emptyReview()}
           runAllowed={Boolean(
-            activeData?.snapshots.length
+            activeData && loadingProjectId !== route.projectId
+            && projectTasksState === 'ready'
+            && !projectResourceErrors[route.projectId]?.deliverables
             && hasDeliverableVersions
             && !generationTaskIsActive
           )}
-          runBlockReason={generationTaskIsActive
-            ? '当前标书任务仍在执行，请等待成果生成完成。'
-            : '请先完成材料解析并生成至少一个成果版本。'}
+          runBlockReason={!activeData || loadingProjectId === route.projectId
+            ? '正在读取项目成果与任务状态，请稍候。'
+            : projectTasksState === 'error' || projectResourceErrors[route.projectId]?.deliverables
+              ? '成果目录或任务状态读取失败，请先点击页面上方“重试”。'
+              : generationTaskIsActive
+                ? '当前标书任务仍在执行，请等待成果生成完成。'
+                : '当前任务尚无可评审的成果，请先生成并同步至少一个成果文件。'}
         />
       ) : null}
       {route.name === 'pricing-center' && activeProject ? (
