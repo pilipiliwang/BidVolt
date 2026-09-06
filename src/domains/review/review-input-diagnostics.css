@@ -1,0 +1,20 @@
+.review-input-diagnostics { margin-top: 16px; padding: 18px; border: 1px solid #dce6e1; border-radius: 12px; background: #fff; color: #345247; font-size: 13px; }
+.review-input-diagnostics header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.review-input-diagnostics h3 { margin: 0; font-size: 16px; }
+.review-input-diagnostics p { margin: 8px 0; line-height: 1.6; }
+.review-input-diagnostics button { flex-shrink: 0; padding: 8px 12px; border: 1px solid #9ac8af; border-radius: 8px; color: #087646; background: #f5fbf7; cursor: pointer; }
+.review-input-diagnostics button:disabled { opacity: .6; cursor: wait; }
+.review-input-diagnostics dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.review-input-diagnostics dl > div { padding: 10px; border-radius: 8px; background: #f5f8f6; }
+.review-input-diagnostics dt { color: #6f8178; }
+.review-input-diagnostics dd { margin: 6px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.review-input-diagnostics [role='status'] { padding: 10px; border-left: 3px solid #d2a449; background: #fffcf5; }
+.review-input-diagnostics summary { cursor: pointer; margin: 12px 0; }
+.review-input-diagnostics__table { max-height: 320px; overflow: auto; }
+.review-input-diagnostics table { width: 100%; border-collapse: collapse; text-align: left; }
+.review-input-diagnostics th, .review-input-diagnostics td { padding: 8px; border-bottom: 1px solid #e0e8e3; }
+.review-input-diagnostics small { display: block; line-height: 1.6; color: #6f8178; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .review-input-diagnostics header { align-items: flex-start; flex-direction: column; }
+  .review-input-diagnostics dl { grid-template-columns: 1fr; }
+}

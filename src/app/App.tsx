@@ -46,6 +46,7 @@ import type {
   ProjectWorkflowTaskSummary,
 } from '../domains/projects/ProjectWorkflow';
 import { ReviewCenter } from '../domains/review/ReviewCenter';
+import { ReviewInputDiagnostics } from '../domains/review/ReviewInputDiagnostics';
 import type { ReviewProvider, ReviewRunView } from '../domains/review/types';
 import {
   EnterpriseAssetsPage,
@@ -103,6 +104,7 @@ import {
   type ImageDescribeProgress,
   type MeResponse,
   type ScoreSummary,
+  type Requirement,
   type TenderNoticeImportJob,
 } from '../shared/backend-api';
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
@@ -199,6 +201,8 @@ type ProjectData = {
   quote: QuoteCalculationView;
   quoteSamples: HistoryPriceSample[];
   requirements: ProjectRequirement[];
+  reviewInputRequirements?: Requirement[];
+  reviewInputArtifactCount?: number;
   reviewRun: ReviewRunView;
   score?: ScoreSummary;
   snapshots: ProjectSnapshot[];
@@ -814,6 +818,9 @@ export function App() {
           tasks: [],
         };
         const next: ProjectData = { ...previous };
+        next.reviewInputArtifactCount = artifactsResult.status === 'fulfilled'
+          ? artifactsResult.value.filter((item) => item.kind !== 'zip' && !/\.zip$/i.test(item.filename)).length
+          : undefined;
         if (artifactsResult.status === 'fulfilled') {
           if (previous.artifacts && previous.score && artifactResourcesRevision(previous.artifacts)
             !== artifactResourcesRevision(artifactsResult.value)) next.invalidatedScoreId = previous.score.score_id;
@@ -826,6 +833,7 @@ export function App() {
           next.materials = adaptBackendProjectMaterials(filesResult.value.materials, filesById);
         }
         if (requirementsResult.status === 'fulfilled') {
+          next.reviewInputRequirements = requirementsResult.value;
           const fileNamesById = filesResult.status === 'fulfilled'
             ? Object.fromEntries(filesResult.value.files.map((file) => [String(file.file_id), file.name]))
             : {};
@@ -3088,6 +3096,20 @@ export function App() {
         message={backendActivityMessage}
         status={pageApiActivity.status}
       />
+      {route.name === 'review-center' && !localPreviewActive ? (
+        <ReviewInputDiagnostics
+          projectId={route.projectId}
+          requirements={activeData?.reviewInputRequirements}
+          score={activeData?.score}
+          loading={loadingProjectId === route.projectId}
+          requirementsFailed={Boolean(projectResourceErrors[route.projectId]?.requirements)}
+          scoreFailed={Boolean(projectResourceErrors[route.projectId]?.score)}
+          artifactCount={loadingProjectId === route.projectId ? undefined : activeData?.reviewInputArtifactCount}
+          deliverableCount={loadingProjectId === route.projectId || projectResourceErrors[route.projectId]?.deliverables
+            ? undefined : activeData?.deliverables.filter((item) => (item.current_version_no ?? 0) > 0).length}
+          onRefresh={() => void loadProject(route.projectId)}
+        />
+      ) : null}
     </ApiTestPanel>
   ) : undefined;
 

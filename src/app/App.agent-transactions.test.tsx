@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +16,7 @@ const captured = vi.hoisted(() => ({
   overview: undefined as OverviewProps | undefined,
   drawer: undefined as DrawerProps | undefined,
   review: undefined as ReviewProps | undefined,
+  diagnostics: false,
 }));
 vi.mock('../domains/review/ReviewCenter', () => ({
   ReviewCenter: (props: ReviewProps) => {
@@ -37,7 +38,7 @@ vi.mock('../shared/ui/TaskProgressDrawer', () => ({
     return null;
   },
 }));
-vi.mock('./api-test-panel-gate', () => ({ shouldShowApiTestPanel: () => false }));
+vi.mock('./api-test-panel-gate', () => ({ shouldShowApiTestPanel: () => captured.diagnostics }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -76,6 +77,7 @@ beforeEach(() => {
   captured.overview = undefined;
   captured.drawer = undefined;
   captured.review = undefined;
+  captured.diagnostics = false;
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.history.replaceState({}, '', '/projects/7/overview');
@@ -129,6 +131,38 @@ async function mountReady() {
 }
 
 describe('App Agent request boundaries', () => {
+  it('refreshes review input diagnostics from real API adapters without business writes', async () => {
+    captured.diagnostics = true;
+    window.history.replaceState({}, '', '/projects/7/review');
+    vi.mocked(backendApi.requirements.list).mockResolvedValue([{
+      req_id: 8, req_type: 'score_rule', req_key: null, content: 'fixture only',
+      structured: { score_rule: { weight: 20, criterion: 'fixture criterion' } },
+      revision: 1, source_file_id: null, confidence: null, coordinates: null,
+    }]);
+    vi.mocked(backendApi.review.latestScore).mockResolvedValue({ ...score, scale: 'builtin', detail: { score_rules: { count: 0 } } });
+    vi.mocked(backendApi.artifacts.listAll).mockResolvedValue([artifact, { ...artifact, artifact_id: 92, kind: 'zip', filename: 'bundle.zip' }]);
+    const writes = [
+      vi.spyOn(backendApi.review, 'evaluate'), vi.spyOn(backendApi.review, 'reEvaluate'),
+      vi.spyOn(backendApi.review, 'confirmItem'), vi.spyOn(backendApi.review, 'confirmItems'),
+      vi.spyOn(backendApi.review, 'updateSuggestion'),
+    ];
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: '展开 API 联调测试框' }));
+    const panel = await screen.findByRole('region', { name: '评审输入核对' });
+    await waitFor(() => expect(within(panel).getByRole('status')).toHaveTextContent('当前已有评分细则'));
+    expect(within(panel).getByText('1 / 1 条')).toBeInTheDocument();
+    expect(within(panel).getByText('1 / 0')).toBeInTheDocument();
+    const readsBefore = vi.mocked(backendApi.requirements.list).mock.calls.length;
+    vi.mocked(backendApi.requirements.list).mockResolvedValue([]);
+    fireEvent.click(within(panel).getByRole('button', { name: '重新读取评审输入' }));
+    await waitFor(() => expect(within(panel).getByRole('status')).toHaveTextContent('当前要求接口没有返回 score_rule'));
+    expect(backendApi.requirements.list).toHaveBeenCalledTimes(readsBefore + 1);
+    expect(backendApi.requirements.list).toHaveBeenLastCalledWith('7');
+    expect(within(panel).getByText('0 / 0 条')).toBeInTheDocument();
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('allows the first review without a prior snapshot and reads the produced run, score and items', async () => {
     window.history.replaceState({}, '', '/projects/7/review');
     vi.mocked(backendApi.artifacts.listAll).mockResolvedValue([artifact]);
