@@ -1,5 +1,6 @@
 import { createAuthApi } from './auth';
 import { createAgentApi } from './agent';
+import { createArtifactsApi } from './artifacts';
 import {
   BackendApiError,
   createBackendApiClient,
@@ -93,6 +94,7 @@ export const createBackendApi = ({
   return {
     client,
     agent: createAgentApi(client),
+    artifacts: createArtifactsApi(client),
     auth: createAuthApi(client), projects: createProjectsApi(client), files: createFilesApi(client),
     enterprise: createEnterpriseApi(client), requirements: createRequirementsApi(client),
     snapshots: createSnapshotsApi(client), tasks: createTasksApi(client),

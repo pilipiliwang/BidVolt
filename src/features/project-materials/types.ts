@@ -96,6 +96,9 @@ export interface ProjectMaterialUploadProps {
 }
 
 export interface ProjectMaterialsPageProps extends ProjectMaterialUploadProps {
+  projectPackageNo?: string;
+  projectDeadline?: string;
+  onUpdateProjectDetails?: (update: { title?: string; packageNo?: string; deadline?: string }) => Promise<void>;
   enterpriseCategories?: import('../enterprise-assets').EnterpriseAssetCategoryFolder[];
   enterpriseLibraryKey?: string;
   enterpriseMaterials?: import('../../domains/projects/ProjectWorkbench').WorkspaceMaterial[];

@@ -217,6 +217,9 @@ export function classifyAgentConversation(messages: readonly AgentConversationMe
           pendingHeader = '';
         }
         const framedBody = stripFrame(text).trim();
+        // Terminal sizing diagnostics carry no business progress or reply.
+        // Drop only this known environment noise, preserving ordinary logs.
+        if (/^(?:window too small|terminal (?:window |size )?too small)(?:[\s.!…,:;\d×x-].*)?$/iu.test(framedBody)) continue;
         const body = publicFrame || operationOpen ? framedBody : text;
         const fenceMatch = body.match(/^(`{3,}|~{3,})(?:[\w.+-]+)?\s*$/);
         if (replayFrame && /^●\s*You:/iu.test(framedBody)) {

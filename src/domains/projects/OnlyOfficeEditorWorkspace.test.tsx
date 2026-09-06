@@ -36,6 +36,33 @@ function mockCommunitySelection(selectedText: string) {
 }
 
 describe('OnlyOfficeEditorWorkspace', () => {
+  it('labels backend artifacts as local working copies and downloads the backend original through its caller', async () => {
+    const user = userEvent.setup();
+    let dirty!: (event: { data: boolean }) => void;
+    window.DocsAPI = { DocEditor: class {
+      constructor(_id: string, config: Record<string, unknown>) {
+        const events = config.events as { onDocumentReady: () => void; onDocumentStateChange: typeof dirty };
+        dirty = events.onDocumentStateChange;
+        queueMicrotask(events.onDocumentReady);
+      }
+    } };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ documentServerUrl: 'http://localhost:8080', editorConfig: {}, sessionId: 'artifact-session' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const onDownloadOriginal = vi.fn().mockResolvedValue(undefined);
+    render(<OnlyOfficeEditorWorkspace
+      bridgeFile={{ id: 'imported-artifact', name: '成果.docx', relative: 'imported/成果.docx', size: 1000 }}
+      displayName="成果.docx" localCopyOnly onDownloadOriginal={onDownloadOriginal} onClose={vi.fn()} />);
+    await screen.findByText('已连接');
+    expect(screen.getByText('本机工作副本：保存的修改尚未同步后端，下载后端原件不包含这些修改。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '下载文件' })).not.toBeInTheDocument();
+    act(() => dirty({ data: true }));
+    const button = screen.getByRole('button', { name: '下载后端原件' });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(onDownloadOriginal).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('__office-download'))).toBe(false);
+  });
+
   it('downloads the selected revision, reports failures and blocks stale downloads while dirty', async () => {
     const user = userEvent.setup();
     let dirty!: (event: { data: boolean }) => void;

@@ -132,12 +132,13 @@ describe('AgentActivityTimeline', () => {
     expect(region).not.toHaveTextContent('内部详情已隐藏');
   });
 
-  it('renders slow and accepted requests as normal waiting, reserving details for actual errors', () => {
+  it('distinguishes a slow open request from confirmed delivery, reserving details for actual errors', () => {
     render(<AgentActivityTimeline run={baseRun} localMessages={[
       { id: 'slow', content: '慢请求', status: 'waiting', notice: '处理时间较长，仍在等待 BidVolt 回复。' },
       { id: 'accepted', content: '已返回请求', status: 'accepted', notice: '请求已返回，等待 BidVolt 回复。' },
     ]} />);
-    expect(screen.getAllByText('等待回复')).toHaveLength(2);
+    expect(screen.getByText('等待回复')).toBeInTheDocument();
+    expect(screen.getByText('已送达')).toBeInTheDocument();
     expect(screen.getAllByRole('status')).toHaveLength(2);
     expect(screen.queryByText('结果待确认')).not.toBeInTheDocument();
     expect(screen.queryByText('后端已排队')).not.toBeInTheDocument();

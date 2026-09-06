@@ -24,6 +24,8 @@ export type ProjectResponse = {
   project_id: number; name: string; tender_no: string | null; buyer: string | null;
   deadline: string | null; status: number; note: string | null; updated_at: string;
   summary: ProjectSummaryResponse | null;
+  /** Optional native fields; current deployment uses note compatibility metadata. */
+  author_name?: string | null; package_no?: string | null;
 };
 export type ProjectWrite = {
   name?: string; tender_no?: string | null; buyer?: string | null;
@@ -183,6 +185,7 @@ export type AgentAnswerResponse = {
 export type AgentChatResponse = {
   queued?: boolean; mode?: 'queue' | 'steer'; reply: string | null; session_id: string | null;
   returncode?: number; message?: string;
+  status?: string; message_id?: number | string; reply_to_message_id?: number | string;
 };
 
 export type Deliverable = {
@@ -249,8 +252,9 @@ export type ScoreSummary = {
   improvable: number | null;
   detail: JsonObject | null;
   scale: string; full_marks: number | null; got_marks: number | null;
-  /** Legacy deployments may still attach freshness metadata. */
-  is_stale?: boolean; stale_reasons?: string[];
+  deliverable_versions?: Record<string, number>;
+  is_stale?: boolean;
+  stale_reasons?: Array<string | { deliverable_id?: number; scored_version?: number; current_version?: number; [key: string]: unknown }>;
 };
 
 export type QuoteHistoryScope = 'all' | 'public' | 'private';

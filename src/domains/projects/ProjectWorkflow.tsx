@@ -13,6 +13,7 @@ import {
 import type { ReactNode } from 'react';
 
 import { AppLink } from '../../app/router';
+import { ProjectIdentityEditor, type ProjectDetailsUpdate } from './ProjectIdentityEditor';
 import {
   ProjectFlowTrack,
   type ProjectFlowStageState,
@@ -250,11 +251,17 @@ export function ProjectWorkflowFrame({
   className = '',
   facts,
   projectTitle,
+  projectPackageNo,
+  projectDeadline,
+  onUpdateProjectDetails,
 }: {
   children: ReactNode;
   className?: string;
   facts: ProjectWorkflowFacts;
   projectTitle?: string;
+  projectPackageNo?: string;
+  projectDeadline?: string;
+  onUpdateProjectDetails?: (update: ProjectDetailsUpdate) => Promise<void>;
 }) {
   return (
     <div className={`project-workflow-frame ${className}`.trim()}>
@@ -265,10 +272,12 @@ export function ProjectWorkflowFrame({
             <span>返回</span>
           </AppLink>
           <i aria-hidden="true" />
-          <p>
-            <span>项目名称：</span>
-            <strong title={projectTitle}>{projectTitle ?? '当前项目'}</strong>
-          </p>
+          <ProjectIdentityEditor
+            onUpdateProjectDetails={onUpdateProjectDetails}
+            projectDeadline={projectDeadline}
+            projectPackageNo={projectPackageNo}
+            projectTitle={projectTitle}
+          />
         </div>
         <ProjectFlowTrack showDetails={false} stages={buildProjectFlowStages(facts)} />
       </header>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -189,60 +189,31 @@ describe('ProjectListPage', () => {
     expect(within(dialog).getByRole('textbox', { name: '项目名称' })).toHaveFocus();
   });
 
-  it('rejects incomplete, duplicate-code, and expired project drafts', async () => {
+  it('requires only a project name and writing owner before material parsing', async () => {
     const { onCreateProject } = renderProjectList();
     const { user, dialog } = await openCreateProjectDialog();
     const submitButton = within(dialog).getByRole('button', { name: '创建并进入材料页' });
 
     await user.click(submitButton);
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('请完整填写');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('请填写项目名称和编写负责人');
 
     await user.type(within(dialog).getByRole('textbox', { name: '项目名称' }), '北方变电站扩容项目');
-    await user.type(within(dialog).getByRole('textbox', { name: '招标编号' }), 'bv-2026-018');
-    await user.type(within(dialog).getByRole('textbox', { name: '招标人' }), '北方电网有限公司');
-    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
-      target: { value: '2099-12-31T12:00' },
-    });
     await user.click(submitButton);
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('该招标编号已存在');
-
-    await user.clear(within(dialog).getByRole('textbox', { name: '招标编号' }));
-    await user.type(within(dialog).getByRole('textbox', { name: '招标编号' }), 'BV-2026-099');
-    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
-      target: { value: '2020-01-01T09:00' },
-    });
-    await user.click(submitButton);
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('截止时间必须是晚于当前时间');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('请填写项目名称和编写负责人');
     expect(onCreateProject).not.toHaveBeenCalled();
-
-    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
-      target: { value: '2099-12-31T12:00' },
-    });
+    await user.type(within(dialog).getByRole('textbox', { name: '编写负责人' }), '张三');
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('provides a safe explicit deadline picker with a keyboard fallback', async () => {
+  it('disables parsed fields instead of asking the user to fill in tender facts', async () => {
     renderProjectList();
-    const { user, dialog } = await openCreateProjectDialog();
-    const deadlineInput = within(dialog).getByLabelText('截止时间') as HTMLInputElement;
-    const showPicker = vi.fn(() => {
-      throw new DOMException('Picker unavailable', 'NotAllowedError');
-    });
-    Object.defineProperty(deadlineInput, 'showPicker', {
-      configurable: true,
-      value: showPicker,
-    });
-
-    expect(deadlineInput.min).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-    expect(new Date(deadlineInput.min).getTime()).toBeGreaterThan(Date.now());
-
-    await user.click(
-      within(dialog).getByRole('button', { name: '选择截止日期与时间' }),
-    );
-
-    expect(showPicker).toHaveBeenCalledTimes(1);
-    expect(deadlineInput).toHaveFocus();
-    expect(within(dialog).getByText(/也可使用键盘直接输入/)).toBeInTheDocument();
+    const { dialog } = await openCreateProjectDialog();
+    for (const name of ['招标编号', '招标人', '包号', '截止时间']) {
+      expect(within(dialog).getByLabelText(name)).toBeDisabled();
+      expect(within(dialog).getByLabelText(name)).toHaveAttribute('placeholder', '系统解析后填写');
+    }
+    expect(within(dialog).getByRole('textbox', { name: '项目名称' })).toBeRequired();
+    expect(within(dialog).getByRole('textbox', { name: '编写负责人' })).toBeRequired();
   });
 
   it('returns a normalized ProjectSummary after a valid submission', async () => {
@@ -250,21 +221,19 @@ describe('ProjectListPage', () => {
     const { user, dialog } = await openCreateProjectDialog();
 
     await user.type(within(dialog).getByRole('textbox', { name: '项目名称' }), ' 北方变电站扩容项目 ');
-    await user.type(within(dialog).getByRole('textbox', { name: '招标编号' }), ' BV-2099-099 ');
-    await user.type(within(dialog).getByRole('textbox', { name: '招标人' }), ' 北方电网有限公司 ');
-    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
-      target: { value: '2099-12-31T12:00' },
-    });
+    await user.type(within(dialog).getByRole('textbox', { name: '编写负责人' }), ' 张三 ');
     await user.click(within(dialog).getByRole('button', { name: '创建并进入材料页' }));
 
     expect(onCreateProject).toHaveBeenCalledWith({
-      id: 'BV-2099-099',
-      code: 'BV-2099-099',
+      id: '',
+      code: '',
+      authorName: '张三',
+      packageNo: '',
       title: '北方变电站扩容项目',
-      buyer: '北方电网有限公司',
+      buyer: '',
       stage: '材料解析',
       progress: 0,
-      deadline: '2099-12-31 12:00',
+      deadline: '',
       materialCount: 0,
       riskCount: 0,
       updatedAt: '刚刚',
@@ -301,19 +270,15 @@ describe('ProjectListPage', () => {
   });
 
   it('keeps the create dialog open while creation fails', async () => {
-    const onCreateProject = vi.fn().mockRejectedValue(new Error('招标编号已被占用'));
+    const onCreateProject = vi.fn().mockRejectedValue(new Error('项目创建请求失败'));
     renderProjectList(onCreateProject);
     const { user, dialog } = await openCreateProjectDialog();
 
     await user.type(within(dialog).getByRole('textbox', { name: '项目名称' }), '北方变电站扩容项目');
-    await user.type(within(dialog).getByRole('textbox', { name: '招标编号' }), 'BV-2099-099');
-    await user.type(within(dialog).getByRole('textbox', { name: '招标人' }), '北方电网有限公司');
-    fireEvent.change(within(dialog).getByLabelText('截止时间'), {
-      target: { value: '2099-12-31T12:00' },
-    });
+    await user.type(within(dialog).getByRole('textbox', { name: '编写负责人' }), '张三');
     await user.click(within(dialog).getByRole('button', { name: '创建并进入材料页' }));
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('招标编号已被占用');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('项目创建请求失败');
     expect(screen.getByRole('dialog', { name: '新增项目' })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: '创建并进入材料页' })).toBeEnabled();
   });
@@ -327,5 +292,23 @@ describe('ProjectListPage', () => {
 
     expect(screen.queryByRole('dialog', { name: '新增项目' })).not.toBeInTheDocument();
     expect(launchButton).toHaveFocus();
+  });
+
+  it('does not dismiss or duplicate a create request while awaiting the backend', async () => {
+    let rejectCreation: (error: Error) => void = () => undefined;
+    const onCreateProject = vi.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectCreation = reject;
+    }));
+    renderProjectList(onCreateProject);
+    const { user, dialog } = await openCreateProjectDialog();
+    await user.type(within(dialog).getByRole('textbox', { name: '项目名称' }), '新项目');
+    await user.type(within(dialog).getByRole('textbox', { name: '编写负责人' }), '张三');
+    await user.click(within(dialog).getByRole('button', { name: '创建并进入材料页' }));
+    expect(within(dialog).getByRole('button', { name: '创建中…' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: '新增项目' })).toBeInTheDocument();
+    expect(onCreateProject).toHaveBeenCalledTimes(1);
+    rejectCreation(new Error('创建失败'));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('创建失败');
   });
 });

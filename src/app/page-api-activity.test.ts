@@ -163,8 +163,10 @@ describe('page API activity', () => {
       status: 'not-run',
       callCount: 0,
     });
-    expect(result.checks.find((check) => check.id === 'requirement-confirm')?.status)
-      .toBe('not-run');
+    expect(result.checks.find((check) => check.id === 'requirement-confirm')).toMatchObject({
+      status: 'not-integrated',
+      callCount: 0,
+    });
     expect(result.checks.find((check) => check.id === 'agent-run-stream')?.status)
       .toBe('not-run');
     expect(result.checks.find((check) => check.id === 'agent-run-status')?.status)

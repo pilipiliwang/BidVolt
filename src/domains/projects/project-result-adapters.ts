@@ -87,6 +87,7 @@ const RESULT_CATEGORY_LABELS: Readonly<Record<ProjectResultCategory, string>> = 
   internal: '内部管理文件',
   price: '价格文件',
   technical: '技术文件',
+  unclassified: '待分类成果',
 };
 
 const DEFAULT_RESULT_MIME_TYPES: Readonly<Record<'business' | 'internal' | 'quote' | 'technical', string>> = {

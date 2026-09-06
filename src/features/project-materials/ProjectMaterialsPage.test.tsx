@@ -199,6 +199,31 @@ describe('ProjectMaterialsPage', () => {
     expect(onStartTask).toHaveBeenCalledWith('53', 'generate');
   });
 
+  it('starts after parsing even when requirements retain the default unconfirmed state', async () => {
+    const user = userEvent.setup();
+    const onStartTask = vi.fn().mockResolvedValue(undefined);
+    const onConfirmRequirement = vi.fn();
+    render(
+      <ProjectMaterialsPage
+        initialWorkflowMode="generate"
+        materials={materials.map((material) => ({ ...material, parseStatus: 'needs_confirmation' as const }))}
+        onStartTask={onStartTask}
+        onConfirmRequirement={onConfirmRequirement}
+        projectId="53"
+        projectName="测试项目"
+        requirements={requirements.map((requirement) => ({ ...requirement, confirmationStatus: 'needs_confirmation' as const }))}
+        snapshots={[]}
+        workflowFacts={{ currentTenderMaterialCount: 2, enterpriseMaterialCount: 7, hasDeliverables: false }}
+      />,
+    );
+    const startButton = screen.getByRole('button', { name: /确认材料，生成标书/ });
+    expect(startButton).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '确认原文' })).not.toBeInTheDocument();
+    await user.click(startButton);
+    expect(onStartTask).toHaveBeenCalledWith('53', 'generate');
+    expect(onConfirmRequirement).not.toHaveBeenCalled();
+  });
+
   it('rolls material confirmation back when generation task creation fails', async () => {
     const user = userEvent.setup();
     const onStartTask = vi.fn().mockRejectedValue(new Error('任务队列暂不可用'));
@@ -549,7 +574,7 @@ describe('ProjectMaterialsPage', () => {
 
     currentTenderToggle.focus();
     await user.keyboard(' ');
-    await user.click(screen.getByRole('button', { name: /Requirement/ }));
+    await user.click(screen.getByRole('button', { name: /招标要求/ }));
     expect(screen.getByText('置信度 64%')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '收起当前招标材料，1项' }));
     await user.click(screen.getByRole('button', { name: '展开当前招标材料，1项' }));
@@ -916,7 +941,7 @@ describe('ProjectMaterialsPage', () => {
     expect(screen.queryByText(/生成任务已创建/)).not.toBeInTheDocument();
   });
 
-  it('confirms low-confidence Requirements and opens a frozen snapshot', async () => {
+  it('offers optional requirement inspection and snapshot lookup without individual approval actions', async () => {
     const user = userEvent.setup();
     const onConfirmRequirement = vi.fn();
     const onCorrectRequirement = vi.fn();
@@ -936,23 +961,14 @@ describe('ProjectMaterialsPage', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /Requirement/ }));
+    await user.click(screen.getByRole('button', { name: /招标要求/ }));
     expect(screen.getByText('置信度 64%')).toBeInTheDocument();
     expect(screen.getByText(/第 18 页/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '确认原文' }));
-    expect(onConfirmRequirement).toHaveBeenCalledWith('BV-2026-0088', 'requirement-1');
-    const requirementRow = screen.getByText('投标人资质等级').closest('article');
-    expect(requirementRow).not.toBeNull();
-    await user.click(within(requirementRow!).getByRole('button', { name: '纠正内容' }));
-    const correctionEditor = within(requirementRow!).getByRole('textbox', { name: '纠正后内容' });
-    await user.clear(correctionEditor);
-    await user.type(correctionEditor, '更新后的资质要求。');
-    await user.click(within(requirementRow!).getByRole('button', { name: '保存纠正' }));
-    expect(onCorrectRequirement).toHaveBeenCalledWith(
-      'BV-2026-0088',
-      'requirement-1',
-      '更新后的资质要求。',
-    );
+    expect(screen.getByText(/无需逐条审核/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '确认原文' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '纠正内容' })).not.toBeInTheDocument();
+    expect(onConfirmRequirement).not.toHaveBeenCalled();
+    expect(onCorrectRequirement).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: /项目快照/ }));
     expect(screen.getByText('生成任务输入快照')).toBeInTheDocument();

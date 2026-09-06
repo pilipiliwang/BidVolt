@@ -33,6 +33,38 @@ function deferred<T>() {
 }
 
 describe('RequirementsPanel', () => {
+  it('只读主流程保留原文依据，但不把未确认默认值变成用户审核任务', () => {
+    const onConfirmRequirement = vi.fn();
+    const onCorrectRequirement = vi.fn();
+    render(
+      <RequirementsPanel
+        projectId="project-1"
+        requirements={requirements}
+        readOnly
+        onConfirmRequirement={onConfirmRequirement}
+        onCorrectRequirement={onCorrectRequirement}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: '招标要求' })).toBeInTheDocument();
+    expect(screen.getByText('共 1 条要求')).toBeInTheDocument();
+    expect(screen.getByText(/无需逐条审核/)).toBeInTheDocument();
+    expect(screen.getByText(requirements[0].content)).toBeInTheDocument();
+    expect(screen.getByText(/第 18 页/)).toBeInTheDocument();
+    expect(screen.queryByText(/条待确认|全部已确认|确认状态未提供/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '确认原文' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '纠正内容' })).not.toBeInTheDocument();
+    expect(screen.getByText(requirements[0].title).closest('article')).not.toHaveClass('project-requirement--attention');
+    expect(onConfirmRequirement).not.toHaveBeenCalled();
+    expect(onCorrectRequirement).not.toHaveBeenCalled();
+  });
+
+  it('只读空列表不错误宣称全部已经确认', () => {
+    render(<RequirementsPanel projectId="project-1" requirements={[]} readOnly />);
+    expect(screen.getByText('共 0 条要求')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '尚未解析出招标要求' })).toBeInTheDocument();
+    expect(screen.queryByText('全部已确认')).not.toBeInTheDocument();
+  });
+
   it('等待异步确认并在请求期间防止重复提交', async () => {
     const user = userEvent.setup();
     const confirmation = deferred<void>();

@@ -99,6 +99,13 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
   return [
     operation('project-detail', '读取当前项目', '自动：进入项目路由', 'GET', projectPath),
     operation(
+      'project-update',
+      '保存项目基础信息',
+      '操作：编辑后保存名称、包号和截止时间；名称与截止时间使用原生字段，负责人和包号暂存服务端 note 扩展信息',
+      'PATCH',
+      projectPath,
+    ),
+    operation(
       'project-materials',
       '加载当前项目材料',
       '自动：进入项目；上传或任务完成后刷新',
@@ -116,7 +123,7 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
     operation(
       'project-requirements',
       '加载招标要求',
-      '自动：进入项目；上传或任务完成后刷新',
+      '自动：进入项目；上传或任务完成后刷新，仅查看解析要求，异常由 Agent 在 Log 中提问',
       'GET',
       `/requirements?project_id=${encoded}`,
       { matchPathname: '/requirements', matchQuery: { project_id: projectId } },
@@ -132,7 +139,7 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'project-deliverables',
-      '加载成果列表',
+      '加载结构化成果列表',
       '自动：进入项目；生成或保存后刷新',
       'GET',
       `/deliverables?project_id=${encoded}`,
@@ -140,14 +147,21 @@ const projectAutomaticOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'project-deliverable-versions',
-      '加载每项成果的真实版本列表',
+      '加载结构化成果版本列表',
       '条件自动：成果列表返回后，并发读取各成果版本',
       'GET',
       '/deliverables/{deliverableId}/versions',
       { matchPathname: /^\/deliverables\/[^/]+\/versions$/ },
     ),
+    operation(
+      'project-artifacts',
+      '加载正式成果文件目录',
+      '自动：进入项目或刷新成果时，读取 assembly/artifacts 全量分页；按正式 artifactId 展示，不混用本机同名文件',
+      'GET',
+      `${projectPath}/assembly/artifacts?page={page}&size=100`,
+    ),
     operation('project-review-runs', '加载评审记录', '自动：进入项目；评审后刷新', 'GET', `${projectPath}/reviews`),
-    operation('project-latest-score', '加载最新评分', '自动：进入项目；评审后刷新', 'GET', `${projectPath}/scores`),
+    operation('project-latest-score', '加载最新评分', '自动：进入项目、评审后及成果版本变化时刷新；旧评分提示过期，不把刷新等同重新评分', 'GET', `${projectPath}/scores`),
     operation(
       'project-review-run-detail',
       '加载最新评审详情',
@@ -218,9 +232,9 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
   const projectPath = `/projects/${encodeURIComponent(projectId)}`;
   const projectPattern = escapeRegExp(projectPath);
 
-  // `/assembly/*` and `POST .../asks` are tools used inside the Agent main
-  // session. Browser pages consume the run, question, package, and artifact
-  // contracts below, so the internal tool chain is intentionally not listed.
+  // Most assembly mutations and POST .../asks are internal Agent tools. The
+  // browser now consumes GET assembly/artifacts (listed above) and authenticated
+  // artifact downloads; the remaining internal tool chain is not a page action.
   return [
     operation(
       'agent-run-start',
@@ -301,13 +315,12 @@ const projectAgentOperations = (projectId: string): PageApiOperation[] => {
     ),
     operation(
       'agent-artifact-download',
-      '下载 BidVolt 单项成果文件',
-      '当前公开任务响应没有单项成果清单入口',
+      '预览或下载正式单项成果文件',
+      '操作：点击正式成果目录文件预览，或点击单文件下载；使用该文件的项目 ID 与 artifactId 鉴权读取',
       'GET',
       `${projectPath}/agent-artifact/{artifactId}/download`,
       {
         matchPathname: new RegExp(`^${projectPattern}/agent-artifact/[^/]+/download$`),
-        notIntegratedReason: '后端提供按 artifactId 下载，但公开任务响应没有可供页面列举的单项成果清单；当前使用响应文件包下载。',
       },
     ),
   ];
@@ -463,7 +476,7 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
   if (route.name === 'projects') {
     return [
       ...operations,
-      operation('projects-create', '新增投标项目', '操作：提交新增项目表单', 'POST', '/projects'),
+      operation('projects-create', '新增投标项目', '操作：填写项目名称和编写负责人后创建；其余信息等待材料解析，负责人暂存服务端 note 扩展信息', 'POST', '/projects'),
       operation('projects-archive', '归档投标项目', '操作：点击归档项目', 'POST', '/projects/{projectId}/archive', {
         matchPathname: /^\/projects\/[^/]+\/archive$/,
       }),
@@ -545,16 +558,18 @@ export function pageApiCatalog(route: AppRoute): PageApiOperation[] {
       }),
       operation('requirement-detail', '读取单条招标要求', '操作：展开某条招标要求', 'GET', '/requirements/{requirementId}', {
         matchPathname: /^\/requirements\/[^/]+$/,
-        notIntegratedReason: '当前招标要求列表响应已包含页面展示和纠正所需字段，展开操作不会重复读取单条详情。',
+        notIntegratedReason: '当前招标要求列表响应已包含只读展示所需字段，展开操作不会重复读取单条详情。',
       }),
       operation('requirements-upsert', '写入招标要求识别结果', '当前页面暂无人工新建 Requirement 入口', 'POST', `${projectPath}/requirements/upsert`, {
-        notIntegratedReason: '解析结果由后端任务写入；前端现有人工操作使用 confirm/correct，不制造 upsert 调用。',
+        notIntegratedReason: '解析结果由后端任务写入；材料页只读查看，不增加人工新建或逐条确认门槛，也不制造 upsert 调用。',
       }),
-      operation('requirement-confirm', '确认招标要求原文', '操作：携带 expected_revision 确认要求', 'PUT', `${projectPath}/requirements/{requirementId}/confirm`, {
+      operation('requirement-confirm', '确认招标要求原文（可选能力）', '非当前主流程：材料页仅查看，异常通过 Log 处理', 'PUT', `${projectPath}/requirements/{requirementId}/confirm`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/requirements/[^/]+/confirm$`),
+        notIntegratedReason: '已有请求封装，但材料页不再提供逐条人工确认；正常解析后点击开始即可，异常由 Agent 在 Log 中请求处理。',
       }),
-      operation('requirement-correct', '纠正招标要求内容', '操作：携带 expected_revision 保存人工纠正', 'PUT', `${projectPath}/requirements/{requirementId}/correct`, {
+      operation('requirement-correct', '纠正招标要求内容（可选能力）', '非当前主流程：材料页仅查看，异常通过 Log 处理', 'PUT', `${projectPath}/requirements/{requirementId}/correct`, {
         matchPathname: new RegExp(`^${escapeRegExp(projectPath)}/requirements/[^/]+/correct$`),
+        notIntegratedReason: '已有请求封装，但当前材料页没有手动改写要求入口；不把该接口等同已经接通的 Log 异常确认闭环。',
       }),
     ];
   }

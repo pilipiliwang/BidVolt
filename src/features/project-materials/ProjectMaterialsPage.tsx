@@ -309,6 +309,9 @@ export function ProjectMaterialsPage({
   onLoadImageDescriptions,
   projectId,
   projectName,
+  projectPackageNo,
+  projectDeadline,
+  onUpdateProjectDetails,
   reviewSidebar,
   hasDeliverables,
   initialWorkflowMode = 'choose',
@@ -601,7 +604,7 @@ export function ProjectMaterialsPage({
                   onClick={() => setActiveTab('requirements')}
                 >
                   <CheckCircle2 aria-hidden="true" size={16} />
-                  Requirement
+                  招标要求
                   <span>{requirements.length}</span>
                 </button>
                 <button
@@ -694,6 +697,7 @@ export function ProjectMaterialsPage({
 
               {activeTab === 'requirements' ? (
                 <RequirementsPanel
+                  readOnly
                   projectId={projectId}
                   requirements={requirements}
                   onConfirmRequirement={onConfirmRequirement}
@@ -737,7 +741,8 @@ export function ProjectMaterialsPage({
   );
 
   return workflowEnabled ? (
-    <ProjectWorkflowFrame facts={workflowFacts} projectTitle={projectName}>
+    <ProjectWorkflowFrame facts={workflowFacts} projectTitle={projectName}
+      projectPackageNo={projectPackageNo} projectDeadline={projectDeadline} onUpdateProjectDetails={onUpdateProjectDetails}>
       {workbench}
     </ProjectWorkflowFrame>
   ) : workbench;

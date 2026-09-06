@@ -1,15 +1,18 @@
-import { Download, Eye, FileText } from 'lucide-react';
+import { Eye, FileText } from 'lucide-react';
 import { useId, type ReactNode } from 'react';
 
 import type { ReviewFinding } from '../review/types';
 import type { ProjectOutcomeReviewViewModel } from './ProjectOutcomeReviewPanel';
 import type { ProjectWorkflowTaskSummary } from './ProjectWorkflow';
 import type { ProjectResultFile } from './ProjectResourceRail';
+import { FileDownloadButton } from '../../shared/ui/FileDownloadButton';
 import './project-completion-dashboard.css';
 
 export type ProjectCompletionDashboardProps = {
   findings: readonly ReviewFinding[];
-  onDownloadRecordFile?: (file: ProjectResultFile) => void;
+  onDownloadRecordFile?: (file: ProjectResultFile) => void | Promise<void>;
+  /** Opens the existing review workflow; it never silently starts a scoring job. */
+  onOpenReview?: () => void;
   onOpenRecordFile?: (file: ProjectResultFile) => void;
   recordFile?: ProjectResultFile;
   review: ProjectOutcomeReviewViewModel;
@@ -19,6 +22,7 @@ export type ProjectCompletionDashboardProps = {
 
 export function ProjectCompletionDashboard({
   onDownloadRecordFile,
+  onOpenReview,
   onOpenRecordFile,
   recordFile,
   review,
@@ -27,8 +31,18 @@ export function ProjectCompletionDashboard({
 }: ProjectCompletionDashboardProps) {
   const titleId = useId();
   const score = review.score;
+  const hasScore = finiteNumber(score?.total) !== undefined;
+  const fullMarks = finiteNumber(score?.fullMarks);
+  const isStale = review.state === 'stale';
+  const scoreIsStartable = review.state === 'empty' || review.state === 'failed' || review.state === 'error';
+  const emptyScoreMessage = review.state === 'empty'
+    ? '尚未发起模拟评标，评分完成后将在这里展示。'
+    : nonEmptyText(review.description);
+  const scaleLabel = score?.scale === 'score_rules'
+    ? '招标评分细则'
+    : score?.scale === 'builtin' ? '完整性参考评分' : undefined;
   const metrics = [
-    { emphasis: true, label: '综合评分', suffix: '分 / 100', value: score?.total },
+    { emphasis: true, label: '综合评分', suffix: fullMarks !== undefined && fullMarks > 0 ? `分 / ${formatNumber(fullMarks)}` : '分', value: score?.total },
     { label: '商务标', suffix: '分', value: score?.business },
     { label: '技术标', suffix: '分', value: score?.technical },
     { label: '价格文件', suffix: '分', value: score?.pricing },
@@ -39,6 +53,7 @@ export function ProjectCompletionDashboard({
       suffix: '分',
       value: score?.estimatedLift,
     },
+    { label: '缺失材料', suffix: '项', value: score?.missingMaterials },
   ];
 
   return (
@@ -47,19 +62,21 @@ export function ProjectCompletionDashboard({
       className="project-completion-dashboard"
       data-layout-region="completion-summary"
       data-review-state={review.state}
+      data-score-state={isStale ? 'stale' : hasScore ? 'available' : 'empty'}
       data-task-status={task.status ?? 'unknown'}
     >
       <div className={`project-completion-dashboard__top${status ? ' project-completion-dashboard__top--with-status' : ''}`}>
-        {status ? <div className="project-completion-dashboard__status">{status}</div> : null}
         <section aria-labelledby={`${titleId}-scores`} className="project-completion-dashboard__scores">
           <div className="project-completion-dashboard__section-heading" title={nonEmptyText(review.description)}>
             <div>
               <h2 id={`${titleId}-scores`}>评分结果</h2>
-              <p>{nonEmptyText(review.description)}</p>
+              {hasScore ? <p>{nonEmptyText(review.description)}</p> : null}
             </div>
-            <span className="project-completion-dashboard__review-state">{nonEmptyText(review.title)}</span>
+            <span className="project-completion-dashboard__review-state">
+              {isStale ? '评分已过期' : review.state === 'empty' ? '尚无评分' : nonEmptyText(review.title)}
+            </span>
           </div>
-          <dl
+          {hasScore ? <dl
             aria-label="标书成果评分"
             className="project-completion-dashboard__score-grid"
             role="group"
@@ -73,8 +90,24 @@ export function ProjectCompletionDashboard({
                 <dd>{formatMetric(metric.value, metric.suffix, metric.prefix)}</dd>
               </div>
             ))}
-          </dl>
+          </dl> : (
+            <div className="project-completion-dashboard__score-empty" role="status">
+              <span>{emptyScoreMessage}</span>
+              {onOpenReview && scoreIsStartable ? <button onClick={onOpenReview} type="button">
+                {review.state === 'empty' ? '发起模拟评标' : '查看模拟评标'}
+              </button> : null}
+            </div>
+          )}
+          {hasScore && (scaleLabel || score?.versionLabel || isStale || score?.formalFileVersionUnverified) ? (
+            <p className="project-completion-dashboard__score-basis">
+              {scaleLabel ? <span>{scaleLabel}</span> : null}
+              {score?.versionLabel ? <span>评分版本：{score.versionLabel}</span> : null}
+              {isStale ? <strong>成果已更新，当前分数仅供参考。</strong> : null}
+              {score?.formalFileVersionUnverified ? <span>评分尚未关联正式文件版本，仅供参考。</span> : null}
+            </p>
+          ) : null}
         </section>
+        {status ? <div className="project-completion-dashboard__status">{status}</div> : null}
       </div>
 
       <section aria-label="编制逻辑与评分响应记录" className="project-completion-dashboard__records">
@@ -95,14 +128,13 @@ export function ProjectCompletionDashboard({
               <span className="project-completion-dashboard__record-action"><Eye aria-hidden="true" size={16} />查看</span>
             </button>
             {onDownloadRecordFile ? (
-              <button
-                aria-label={`下载 ${recordFile.name}`}
+              <FileDownloadButton
+                label="下载"
+                ariaLabel={`下载 ${recordFile.name}`}
+                title={`下载 ${recordFile.name}`}
                 className="project-completion-dashboard__record-download"
-                onClick={() => onDownloadRecordFile(recordFile)}
-                type="button"
-              >
-                <Download aria-hidden="true" size={16} />下载
-              </button>
+                onDownload={() => onDownloadRecordFile(recordFile)}
+              />
             ) : null}
           </div>
         ) : (

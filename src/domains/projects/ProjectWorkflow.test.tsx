@@ -148,6 +148,30 @@ describe('project workflow', () => {
     expect(screen.getByRole('region', { name: '材料准备区' })).toBeInTheDocument();
   });
 
+  it('wires the compact project identity editor without replacing the workflow track', async () => {
+    const user = userEvent.setup();
+    const onUpdateProjectDetails = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProjectWorkflowFrame
+        facts={{ currentTenderMaterialCount: 1, enterpriseMaterialCount: 2, hasDeliverables: false }}
+        onUpdateProjectDetails={onUpdateProjectDetails}
+        projectTitle="项目基础信息测试"
+        projectPackageNo="包 01"
+        projectDeadline="2099-08-21 10:00"
+      >
+        <div>工作区</div>
+      </ProjectWorkflowFrame>,
+    );
+    expect(screen.getByRole('navigation', { name: '项目流程' })).toBeInTheDocument();
+    expect(screen.getByText('包 01')).toBeInTheDocument();
+    expect(screen.getByText('2099-08-21 10:00')).toBeInTheDocument();
+    await user.dblClick(screen.getByRole('button', { name: '编辑项目名称' }));
+    await user.clear(screen.getByRole('textbox', { name: '项目名称' }));
+    await user.type(screen.getByRole('textbox', { name: '项目名称' }), '已调整名称');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onUpdateProjectDetails).toHaveBeenCalledWith({ title: '已调整名称' });
+  });
+
   it('integrates backend task progress into the track and execution panel', () => {
     const task = {
       message: '正在读取评分办法并生成技术响应',

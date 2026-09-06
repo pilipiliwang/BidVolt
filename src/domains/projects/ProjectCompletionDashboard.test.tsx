@@ -50,6 +50,8 @@ describe('ProjectCompletionDashboard', () => {
           score: {
             business: 88,
             estimatedLift: 7,
+            fullMarks: 100,
+            missingMaterials: 2,
             pricing: 91,
             technical: 82,
             total: 86,
@@ -68,6 +70,7 @@ describe('ProjectCompletionDashboard', () => {
     expect(within(scores).getByText('技术标').parentElement).toHaveTextContent('82 分');
     expect(within(scores).getByText('价格文件').parentElement).toHaveTextContent('91 分');
     expect(within(scores).getByText('可提升空间').parentElement).toHaveTextContent('+7 分');
+    expect(within(scores).getByText('缺失材料').parentElement).toHaveTextContent('2 项');
 
     expect(screen.getByLabelText('成果评分与响应记录'))
       .toHaveAttribute('data-layout-region', 'completion-summary');
@@ -81,7 +84,7 @@ describe('ProjectCompletionDashboard', () => {
     expect(onOpenRecordFile).toHaveBeenCalledWith(recordFile);
   });
 
-  it('places the supplied Agent status alongside scores and keeps records below them', () => {
+  it('places scores above Agent status and keeps records at the bottom', () => {
     render(
       <ProjectCompletionDashboard
         findings={[]}
@@ -96,6 +99,7 @@ describe('ProjectCompletionDashboard', () => {
     const top = status.closest('.project-completion-dashboard__top');
     expect(top).toHaveClass('project-completion-dashboard__top--with-status');
     expect(top).toContainElement(scores);
+    expect(scores.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(top).not.toContainElement(screen.getByRole('region', { name: '编制逻辑与评分响应记录' }));
     expect(screen.getByRole('heading', { name: '成果生成已完成' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '编制逻辑与评分响应记录' })).not.toBeInTheDocument();
@@ -156,13 +160,76 @@ describe('ProjectCompletionDashboard', () => {
     );
 
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    const scores = screen.getByRole('group', { name: '标书成果评分' });
-    for (const label of ['综合评分', '商务标', '技术标', '价格文件', '可提升空间']) {
-      expect(within(scores).getByText(label).parentElement).toHaveTextContent('—');
-    }
-    expect(scores).not.toHaveTextContent(/100|\+\d/);
+    expect(screen.getByText('尚无评分')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '标书成果评分' })).not.toBeInTheDocument();
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('shows the actual scale and associated versions and warns when that score is stale', () => {
+    render(
+      <ProjectCompletionDashboard
+        findings={[]}
+        review={buildProjectOutcomeReviewViewModel({
+          score: { total: 72, fullMarks: 80, scale: 'score_rules', versionLabel: '商务文件 V2 · 技术文件 V3' },
+          scoreIsStale: true,
+        })}
+        task={completeTask}
+      />,
+    );
+    expect(screen.getByText('综合评分').parentElement).toHaveTextContent('72 分 / 80');
+    expect(screen.getByText('评分已过期')).toBeInTheDocument();
+    expect(screen.getByText('招标评分细则')).toBeInTheDocument();
+    expect(screen.getByText('评分版本：商务文件 V2 · 技术文件 V3')).toBeInTheDocument();
+    expect(screen.getByText('成果已更新，当前分数仅供参考。')).toBeInTheDocument();
+  });
+
+  it('does not assume an undisclosed maximum score or category breakdown', () => {
+    render(
+      <ProjectCompletionDashboard
+        findings={[finding]}
+        review={buildProjectOutcomeReviewViewModel({ score: { total: 0, scale: 'builtin' } })}
+        task={completeTask}
+      />,
+    );
+    const scores = screen.getByRole('group', { name: '标书成果评分' });
+    expect(within(scores).getByText('综合评分').parentElement).toHaveTextContent('0 分');
+    expect(scores).not.toHaveTextContent('/ 100');
+    expect(within(scores).getByText('商务标').parentElement).toHaveTextContent('—');
+    expect(screen.getByText('完整性参考评分')).toBeInTheDocument();
+    expect(screen.queryByText('尚无评分')).not.toBeInTheDocument();
+  });
+
+  it('makes an absent score an explicit simulation-evaluation state instead of a failed response', async () => {
+    const user = userEvent.setup();
+    const onOpenReview = vi.fn();
+    render(
+      <ProjectCompletionDashboard
+        findings={[]}
+        onOpenReview={onOpenReview}
+        review={buildProjectOutcomeReviewViewModel({})}
+        task={completeTask}
+      />,
+    );
+    expect(within(screen.getByRole('region', { name: '评分结果' })).getByRole('status')).toHaveTextContent('尚未发起模拟评标');
+    await user.click(screen.getByRole('button', { name: '发起模拟评标' }));
+    expect(onOpenReview).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an in-progress score state distinct from an unstarted score', () => {
+    render(
+      <ProjectCompletionDashboard
+        findings={[]}
+        onOpenReview={vi.fn()}
+        review={buildProjectOutcomeReviewViewModel({
+          tasks: [{ phase: 'bid_review', sequence: 1, status: 'running', task_type: 'bid_review' }],
+        })}
+        task={completeTask}
+      />,
+    );
+    const scores = screen.getByRole('region', { name: '评分结果' });
+    expect(within(scores).getByRole('status')).toHaveTextContent('系统正依据已识别的评分规则评审当前标书成果');
+    expect(within(scores).queryByRole('button', { name: '发起模拟评标' })).not.toBeInTheDocument();
   });
 
   it('renders a clear empty state when the backend has no response records', () => {
@@ -180,5 +247,12 @@ describe('ProjectCompletionDashboard', () => {
       .toHaveTextContent('编制逻辑与评分响应记录');
     expect(screen.queryByRole('button', { name: /查看|下载/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('does not imply a structured score has verified the current formal file', () => {
+    render(<ProjectCompletionDashboard findings={[]} task={completeTask}
+      review={buildProjectOutcomeReviewViewModel({ score: { total: 85, formalFileVersionUnverified: true } })} />);
+    expect(screen.getByText('评分尚未关联正式文件版本，仅供参考。')).toBeInTheDocument();
+    expect(screen.getByText('综合评分').parentElement).toHaveTextContent('85');
   });
 });

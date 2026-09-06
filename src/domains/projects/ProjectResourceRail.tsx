@@ -50,6 +50,7 @@ export const PROJECT_RESULT_CATEGORIES = [
   'technical',
   'price',
   'internal',
+  'unclassified',
 ] as const;
 
 export type ProjectResultCategory = (typeof PROJECT_RESULT_CATEGORIES)[number];
@@ -60,6 +61,8 @@ export type ProjectResultFile = ProjectResourceFile & {
   mediaType?: string;
   selectedVersionId?: string;
   versionLabel?: string;
+  /** A freshness key for the remote bytes, not a requestable historical version. */
+  remoteRevision?: string;
   versions?: readonly ProjectResultFileVersion[];
 };
 
@@ -113,6 +116,7 @@ const RESULT_CATEGORY_LABELS: Record<ProjectResultCategory, string> = {
   technical: '技术文件',
   price: '价格文件',
   internal: '内部管理文件',
+  unclassified: '待分类成果',
 };
 
 const GENERATION_STATUS_LABELS: Record<ProjectResultGenerationStatus, string> = {
@@ -375,6 +379,7 @@ export function ProjectResourceRail({
           ) : null}
           {PROJECT_RESULT_CATEGORIES.map((category) => {
             const files = normalizedResultFiles.filter((file) => file.category === category);
+            if (category === 'unclassified' && files.length === 0) return null;
             const expanded = expandedResultFolders.has(category);
             const folderStatus = resultGeneration.folders?.[category] ?? resultGeneration.overall;
             const folderContentId = `${contentIdPrefix}-result-folder-${category}`;

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRunViewModel } from '../../shared/task-events';
 import type { OutcomeFileAgentContext } from './OutcomeFileWorkspace';
@@ -66,6 +66,58 @@ const run: AgentRunViewModel = {
 };
 
 describe('ProjectGenerationWorkspace Office resource previews', () => {
+  beforeEach(() => {
+    officeMocks.importFile.mockReset();
+  });
+
+  it('keeps a formal artifact downloadable when its optional Office preview bridge is unavailable', async () => {
+    const user = userEvent.setup();
+    const originalBlob = new Blob(['formal artifact'], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const onLoadResourcePreview = vi.fn().mockResolvedValue({
+      blob: originalBlob,
+      kind: 'office',
+      mimeType: originalBlob.type,
+    });
+    const onDownloadArtifact = vi.fn().mockResolvedValue(undefined);
+    officeMocks.importFile.mockRejectedValueOnce(new Error('Failed to fetch local bridge details'));
+    const artifact = {
+      category: 'business' as const,
+      id: 'artifact:207:502',
+      name: '商务响应文件.docx',
+      versionLabel: 'V1',
+    };
+
+    render(
+      <ProjectGenerationWorkspace
+        agentRun={run}
+        artifactFiles={[artifact]}
+        deliverables={[]}
+        enterpriseMaterials={[]}
+        materials={[]}
+        onDownloadArtifact={onDownloadArtifact}
+        onLoadResourcePreview={onLoadResourcePreview}
+        outcomeReview={{
+          canOpenTaskProgress: false,
+          description: '等待评审。',
+          state: 'waiting-results',
+          title: '等待评审结果',
+        }}
+        task={{ message: '正在执行。', percent: 45, status: 'running', title: '标书制作/审核' }}
+      />,
+    );
+
+    const rail = screen.getByRole('complementary', { name: '项目资源与标书成果' });
+    await user.click(within(rail).getByRole('button', { name: /商务文件.*已生成/ }));
+    await user.click(within(rail).getByTitle('商务响应文件.docx'));
+
+    expect(await screen.findByText('当前环境暂时无法打开此 Office 文件进行在线预览。可下载原文件后在本机查看。')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch local bridge details')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '下载原文件' }));
+    expect(onDownloadArtifact).toHaveBeenCalledWith(artifact);
+  });
+
   it('opens tender and enterprise Office documents in editable ONLYOFFICE tabs without replacing the source', async () => {
     const user = userEvent.setup();
     const tenderBlob = new Blob(['tender'], { type: 'application/msword' });

@@ -22,6 +22,7 @@ export type AgentTimelineLocalMessageStatus =
   | 'waiting'
   | 'unconfirmed'
   | 'accepted'
+  | 'no-reply'
   | 'sent'
   | 'steer'
   | 'cancelled'
@@ -104,7 +105,8 @@ const localStatusLabels: Record<AgentTimelineLocalMessageStatus, string> = {
   queued: '排队中',
   waiting: '等待回复',
   unconfirmed: '结果待确认',
-  accepted: '等待回复',
+  accepted: '已送达',
+  'no-reply': '未收到回复',
   sent: '已发送',
   steer: '方向调整',
 };

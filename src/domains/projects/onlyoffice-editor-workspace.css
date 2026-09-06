@@ -28,6 +28,7 @@
 .onlyoffice-workspace__editor > div { width: 100% !important; height: 100% !important; }
 .onlyoffice-workspace__editor > iframe { display: block !important; width: 100% !important; height: 100% !important; border: 0; }
 .onlyoffice-workspace__error { padding: 9px 12px; color: #a63d33; background: #fff2ef; font-size: 12px; }
+.onlyoffice-workspace__local-copy { margin: 0; padding: 7px 12px; color: #86651e; background: #fff8e7; font-size: 12px; line-height: 1.5; }
 @keyframes onlyoffice-spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) {
   .onlyoffice-workspace > header { flex-wrap: wrap; }

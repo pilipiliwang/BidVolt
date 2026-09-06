@@ -15,11 +15,18 @@ import './project-outcome-review-panel.css';
 export type ProjectOutcomeScore = {
   business?: number;
   estimatedLift?: number;
+  /** The backend's scoring ceiling; an absent ceiling must not be assumed to be 100. */
+  fullMarks?: number;
   missingMaterials?: number;
   pricing?: number;
   rejectionRisks?: number;
   technical?: number;
   total: number;
+  scale?: string;
+  /** Human-readable versions actually associated with this score, supplied by the caller. */
+  versionLabel?: string;
+  /** The current score API does not establish an artifact-to-deliverable version mapping. */
+  formalFileVersionUnverified?: boolean;
 };
 
 export type ProjectOutcomeReviewState =

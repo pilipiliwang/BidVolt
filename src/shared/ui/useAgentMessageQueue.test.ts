@@ -172,7 +172,7 @@ describe('useAgentMessageQueue', () => {
   });
 
   it.each([
-    undefined, {}, { queued: false }, { queued: true }, { reply: null }, { returncode: 0, reply: '  \n' },
+    undefined, {}, { queued: false }, { queued: true }, { reply: null },
   ])('does not claim a completed reply or create an Agent output for an acknowledgement: %j', async (response) => {
     const onSend = vi.fn().mockResolvedValue(response);
     const onFailure = vi.fn();
@@ -185,7 +185,7 @@ describe('useAgentMessageQueue', () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a raw runtime-only HTTP response waiting instead of rendering it as an Agent reply', async () => {
+  it('ends waiting when processing finished without a public reply, without inventing output or resending', async () => {
     const onSend = vi.fn().mockResolvedValue({
       returncode: 0,
       reply: '┌─ Reasoning ─────\n│ 不应该出现在会话中的内部分析\n│ python build.py\n',
@@ -193,8 +193,23 @@ describe('useAgentMessageQueue', () => {
     const { result } = renderHook(() => useAgentMessageQueue({ scopeKey: 1, onSend }));
     await act(async () => { result.current.send('请整理结果'); });
     expect(result.current.localMessages).toHaveLength(1);
-    expect(result.current.localMessages[0].status).toBe('accepted');
+    expect(result.current.localMessages[0].status).toBe('no-reply');
+    expect(result.current.localMessages[0].notice).toContain('未返回有效回复');
+    expect(result.current.hasInFlight).toBe(false);
+    expect(onSend).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(result.current.localMessages)).not.toContain('内部分析');
+  });
+
+  it.each([
+    { status: 'processed', reply: 'Window too small...' },
+    { returncode: 0, reply: '  \n' },
+  ])('does not leave a completed empty/runtime response waiting: %j', async (response) => {
+    const onSend = vi.fn().mockResolvedValue(response);
+    const { result } = renderHook(() => useAgentMessageQueue({ scopeKey: 1, onSend }));
+    await act(async () => { result.current.send('请回复'); });
+    expect(result.current.localMessages).toHaveLength(1);
+    expect(result.current.localMessages[0].status).toBe('no-reply');
+    expect(JSON.stringify(result.current.localMessages)).not.toContain('Window too small');
   });
 
   it('emits only the public HTTP reply with its originating message id', async () => {

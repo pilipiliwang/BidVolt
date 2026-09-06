@@ -19,6 +19,7 @@ import {
 } from '../../features/project-materials/components/LocalPackagePreview';
 import type { AgentRunViewModel } from '../../shared/task-events';
 import { AgentActivityTimeline } from '../../shared/ui/AgentActivityTimeline';
+import { FileDownloadButton } from '../../shared/ui/FileDownloadButton';
 import {
   AgentWorkspaceComposer,
   type AgentWorkspaceAttachment,
@@ -81,10 +82,20 @@ type AgentSendResult = {
   reply?: string | null;
   returncode?: number;
   message?: string;
+  status?: string;
+};
+
+export type ProjectResultsChange = {
+  reason: 'office-save' | 'version-select';
+  fileId?: string;
+  version?: number | string;
+  localOnly?: boolean;
 };
 
 export type ProjectGenerationWorkspaceProps = {
   agentRun: AgentRunViewModel;
+  /** Undefined permits legacy fallback; an empty array is an authoritative empty catalog. */
+  artifactFiles?: readonly ProjectResultFile[];
   answeringAskId?: string | null;
   deliverables: readonly ProjectDeliverableView[];
   enterpriseCategories?: readonly EnterpriseAssetCategoryFolder[];
@@ -100,6 +111,7 @@ export type ProjectGenerationWorkspaceProps = {
   onAssistantAddFiles?: (files: File[]) => void | Promise<void>;
   onAssistantSend?: (value: string, mode?: 'queue' | 'steer') => AgentSendResult | Promise<AgentSendResult | void> | void;
   onDownloadAllResults?: () => void | Promise<void>;
+  onDownloadArtifact?: (file: ProjectResultFile) => void | Promise<void>;
   onDownloadDeliverable?: (deliverable: ProjectDeliverableView) => void | Promise<void>;
   onLoadDeliverableContent?: (
     deliverable: ProjectDeliverableView,
@@ -108,6 +120,8 @@ export type ProjectGenerationWorkspaceProps = {
     fileId: string,
     fileName: string,
   ) => EnterpriseAssetPreview | Promise<EnterpriseAssetPreview>;
+  onOpenReview?: () => void;
+  onRefreshProjectResults?: (change: ProjectResultsChange) => void | Promise<void>;
   outcomeReview: ProjectOutcomeReviewViewModel;
   /** True only after the caller has linked the catalog/version to this generation task. */
   resultsReady?: boolean;
@@ -121,7 +135,13 @@ export type ProjectGenerationWorkspaceProps = {
 type PreviewState =
   | { status: 'closed' }
   | { sourceFile: ProjectResultFile; status: 'loading' }
-  | { sourceFile: ProjectResultFile; message: string; status: 'error' }
+  | {
+    /** A failed Office bridge import can still safely fall back to the original file. */
+    downloadAvailable?: boolean;
+    sourceFile: ProjectResultFile;
+    message: string;
+    status: 'error';
+  }
   | {
     bridgeFile?: OnlyOfficeBridgeFile;
     sourceFile: ProjectResultFile;
@@ -134,6 +154,7 @@ type OpenPreview = Exclude<PreviewState, { status: 'closed' }> & { key: string }
 
 export function ProjectGenerationWorkspace({
   agentRun,
+  artifactFiles,
   answeringAskId = null,
   deliverables,
   enterpriseCategories = [],
@@ -146,9 +167,12 @@ export function ProjectGenerationWorkspace({
   onAssistantAddFiles,
   onAssistantSend,
   onDownloadAllResults,
+  onDownloadArtifact,
   onDownloadDeliverable,
   onLoadDeliverableContent,
   onLoadResourcePreview,
+  onOpenReview,
+  onRefreshProjectResults,
   outcomeReview,
   resultsReady: resultsReadyOverride,
   queueAcknowledgementTimeoutMs = 30_000,
@@ -157,7 +181,7 @@ export function ProjectGenerationWorkspace({
 }: ProjectGenerationWorkspaceProps) {
   const previewRequestsRef = useRef(new Map<string, symbol>());
   const resourcePreviewUrlsRef = useRef(new Map<string, string>());
-  const localPackage = useLocalPackage(agentRun.projectId, agentRun.taskId, localOfficeEnabled);
+  const localPackage = useLocalPackage(agentRun.projectId, agentRun.taskId, localOfficeEnabled && artifactFiles === undefined);
   const [openPreviews, setOpenPreviews] = useState<OpenPreview[]>([]);
   useEffect(() => {
     const urls = resourcePreviewUrlsRef.current;
@@ -183,6 +207,22 @@ export function ProjectGenerationWorkspace({
   });
   const [selectedPackageVersion, setSelectedPackageVersion] = useState<string | null>(null);
   const [bridgeFiles, setBridgeFiles] = useState<OnlyOfficeBridgeFile[]>([]);
+  const [resultsRefreshState, setResultsRefreshState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const resultsRefreshRequestRef = useRef(0);
+  const lastResultsChangeRef = useRef<ProjectResultsChange | null>(null);
+  useEffect(() => () => { resultsRefreshRequestRef.current += 1; }, [agentRun.projectId, agentRun.taskId]);
+  const refreshProjectResults = async (change: ProjectResultsChange) => {
+    if (!onRefreshProjectResults) return;
+    const request = ++resultsRefreshRequestRef.current;
+    lastResultsChangeRef.current = change;
+    setResultsRefreshState('loading');
+    try {
+      await onRefreshProjectResults(change);
+      if (resultsRefreshRequestRef.current === request) setResultsRefreshState('idle');
+    } catch {
+      if (resultsRefreshRequestRef.current === request) setResultsRefreshState('error');
+    }
+  };
   const [dirtyPreviewKeys, setDirtyPreviewKeys] = useState<Set<string>>(() => new Set());
   const [previewToolbarContainer, setPreviewToolbarContainer] = useState<HTMLDivElement | null>(null);
   const previewKey = (file: ProjectResultFile) => [
@@ -190,6 +230,7 @@ export function ProjectGenerationWorkspace({
     file.id,
     file.selectedVersionId ?? 'latest',
     file.officeVersion ?? 'office-latest',
+    ...(file.id.startsWith('artifact:') ? [file.remoteRevision ?? 'remote-unversioned'] : []),
   ].join(':');
   const setOpenPreview = (next: Exclude<PreviewState, { status: 'closed' }>, activate = true) => {
     const key = previewKey(next.sourceFile);
@@ -242,16 +283,16 @@ export function ProjectGenerationWorkspace({
     [bridgeFiles, localPackage],
   );
   const availableResultFiles = useMemo(
-    () => localPackage
+    () => artifactFiles !== undefined ? artifactFiles : localPackage
       ? mergeLocalPackageResultFiles(localPackageResultFiles, backendResultFiles)
       : backendResultFiles,
-    [backendResultFiles, localPackage, localPackageResultFiles],
+    [artifactFiles, backendResultFiles, localPackage, localPackageResultFiles],
   );
   const resultFiles = useMemo(() => availableResultFiles.map((file) => {
     // The local package selector represents the immutable response-package
     // version. Office saves create per-file versions, so do not overwrite a
     // file's live Vn badge with the package's V1 label.
-    if (localPackage || !selectedPackageVersion) return file;
+    if (artifactFiles !== undefined || localPackage || !selectedPackageVersion) return file;
     const version = file.versions?.find((item) => item.id === selectedPackageVersion);
     return version ? {
       ...file,
@@ -260,7 +301,7 @@ export function ProjectGenerationWorkspace({
       sizeLabel: version.sizeLabel ?? file.sizeLabel,
       versionLabel: version.label ?? formatVersionLabel(version.id),
     } : file;
-  }), [availableResultFiles, localPackage, selectedPackageVersion]);
+  }), [artifactFiles, availableResultFiles, localPackage, selectedPackageVersion]);
 
   useEffect(() => {
     if (selectedPackageVersion) return;
@@ -281,8 +322,9 @@ export function ProjectGenerationWorkspace({
       .catch(() => setBridgeFiles([]));
     return () => controller.abort();
   }, [agentRun.projectId, localPackage, localOfficeEnabled]);
-  const resultsReady = Boolean(localPackage)
-    || (resultsReadyOverride ?? resultFiles.length > 0);
+  const resultsReady = artifactFiles !== undefined
+    ? artifactFiles.length > 0 && (resultsReadyOverride ?? true)
+    : Boolean(localPackage) || (resultsReadyOverride ?? resultFiles.length > 0);
   const resultGeneration = useMemo(
     () => generationState(agentRun, resultFiles, resultsReady),
     [agentRun, resultFiles, resultsReady],
@@ -321,10 +363,6 @@ export function ProjectGenerationWorkspace({
         id: preview.sourceFile.id,
         versionId: preview.sourceFile.selectedVersionId,
       };
-  const isComplete = Boolean(localPackage)
-    || agentRun.completion === 'complete'
-    || task.status === 'succeeded';
-
   const canSwitchPreview = (nextKey: string) => {
     if (!activePreviewKey || !dirtyPreviewKeys.has(activePreviewKey)) return true;
     if (nextKey === activePreviewKey) return false;
@@ -334,6 +372,56 @@ export function ProjectGenerationWorkspace({
   const openResultFile = async (file: ProjectResultFile) => {
     if (!canSwitchPreview(previewKey(file))) return;
     if (typeof file.officeVersion === 'number') file = { ...file, versionLabel: officeVersionLabel(file.officeVersion) };
+    if (file.id.startsWith('artifact:')) {
+      const isCurrentRequest = beginPreviewRequest(file);
+      setOpenPreview({ sourceFile: file, status: 'loading' });
+      let loaded: EnterpriseAssetPreview | undefined;
+      try {
+        if (!onLoadResourcePreview) throw new Error('成果文件预览暂不可用，请稍后重试。');
+        loaded = await onLoadResourcePreview(file.id, file.name);
+        if (!isCurrentRequest()) return;
+        const fallbackFile: OutcomeWorkspaceFile = {
+          categoryId: file.category,
+          categoryLabel: '标书成果',
+          id: file.id,
+          kind: 'other',
+          name: file.name,
+          readOnly: true,
+          version: file.versionLabel ?? '版本待返回',
+        };
+        if (loaded.kind === 'office') {
+          if (!localOfficeEnabled) throw new Error('当前环境尚未启用在线 Office 预览，可下载后端原件查看。');
+          const bridgeFile = await importOnlyOfficeBridgeFile(
+            `${agentRun.projectId}:${file.id}:${file.remoteRevision ?? file.selectedVersionId ?? file.versionLabel ?? 'current'}`,
+            file.name,
+            loaded.blob,
+          );
+          if (!isCurrentRequest()) return;
+          setBridgeFiles((current) => [...current.filter((item) => item.id !== bridgeFile.id), bridgeFile]);
+          setOpenPreview({
+            bridgeFile,
+            file: { ...fallbackFile, kind: /\.xlsx?$/i.test(file.name) ? 'spreadsheet' : 'word', readOnly: false },
+            sourceFile: file,
+            status: 'ready',
+          }, false);
+          return;
+        }
+        const outcomeFile = resourcePreviewOutcome(fallbackFile, loaded);
+        if ('blob' in loaded && outcomeFile.previewUrl) {
+          resourcePreviewUrlsRef.current.set(previewKey(file), outcomeFile.previewUrl);
+        }
+        setOpenPreview({ file: outcomeFile, sourceFile: file, status: 'ready' }, false);
+      } catch (error) {
+        if (!isCurrentRequest()) return;
+        setOpenPreview({
+          downloadAvailable: loaded?.kind === 'office' || canRetryArtifactDownload(error),
+          sourceFile: file,
+          message: artifactPreviewFailureMessage(error, loaded?.kind === 'office' ? 'office' : 'source'),
+          status: 'error',
+        }, false);
+      }
+      return;
+    }
     const localFile = localPackage?.files.find((item) => item.id === file.id);
     if (localFile && localPackage) {
       const isCurrentRequest = beginPreviewRequest(file);
@@ -506,6 +594,16 @@ export function ProjectGenerationWorkspace({
     setDirtyPreviewKeys(new Set());
   };
 
+  const downloadFailedArtifact = async (file: ProjectResultFile) => {
+    if (!onDownloadArtifact) return;
+    try {
+      await onDownloadArtifact(file);
+    } catch (error) {
+      // Download failure must not reopen a tab the user has since closed.
+      throw new Error(artifactPreviewFailureMessage(error, 'download'), { cause: error });
+    }
+  };
+
   const sendMessage = (value: string) => {
     const sentAttachments = composerAttachments;
     // Explicit references are inserted into the editable draft. The visible
@@ -587,6 +685,12 @@ export function ProjectGenerationWorkspace({
       await onDownloadAllResults();
       return;
     }
+    if (artifactFiles !== undefined) {
+      if (onDownloadArtifact) {
+        for (const file of artifactFiles) await onDownloadArtifact(file);
+      }
+      return;
+    }
     if (!onDownloadDeliverable) return;
     const downloadedDeliverables = new Set<string>();
     for (const resultFile of resultFiles) {
@@ -615,7 +719,18 @@ export function ProjectGenerationWorkspace({
     : [];
 
   const activity = (
-    <div className="project-generation-workspace__activity-stack">
+    <div className={`project-generation-workspace__activity-stack${resultsRefreshState !== 'idle' ? ' project-generation-workspace__activity-stack--refreshing' : ''}`}>
+      {resultsRefreshState !== 'idle' ? (
+        <div className="project-generation-workspace__results-refresh" role="status">
+          <span>{resultsRefreshState === 'loading'
+            ? '正在刷新成果与评分…'
+            : '成果与评分刷新失败，当前评分可能不是最新结果。'}</span>
+          {resultsRefreshState === 'error' ? <button
+            onClick={() => { if (lastResultsChangeRef.current) void refreshProjectResults(lastResultsChangeRef.current); }}
+            type="button"
+          >重试刷新</button> : null}
+        </div>
+      ) : null}
       <AgentActivityTimeline
         answeringAskId={answeringAskId}
         compact={preview.status !== 'closed'}
@@ -657,31 +772,42 @@ export function ProjectGenerationWorkspace({
   const recordDeliverable = recordFile
     ? deliverables.find((item) => item.id === resultDeliverableId(recordFile))
     : undefined;
+  const hasCurrentArtifactCatalog = artifactFiles !== undefined
+    && preview.status !== 'closed' && preview.sourceFile.id.startsWith('artifact:');
+  const latestPreviewArtifact = hasCurrentArtifactCatalog
+    ? artifactFiles?.find((file) => file.id === preview.sourceFile.id)
+    : undefined;
+  const artifactPreviewIsRemoved = hasCurrentArtifactCatalog && !latestPreviewArtifact;
+  const artifactPreviewIsOutdated = Boolean(latestPreviewArtifact && preview.status !== 'closed'
+    && latestPreviewArtifact.remoteRevision !== preview.sourceFile.remoteRevision);
 
   return (
     <ProjectResultWorkspace
       activity={activity}
-      summary={isComplete ? (status) => (
+      summary={(status) => (
         <ProjectCompletionDashboard
           findings={findings}
-          onDownloadRecordFile={onDownloadDeliverable && recordDeliverable
-            ? (file) => void onDownloadDeliverable({
+          onDownloadRecordFile={recordFile?.id.startsWith('artifact:') && onDownloadArtifact
+            ? onDownloadArtifact
+            : onDownloadDeliverable && recordDeliverable
+            ? (file) => onDownloadDeliverable({
                 ...recordDeliverable,
                 title: file.name,
                 versionId: file.selectedVersionId ?? recordDeliverable.versionId,
               })
             : undefined}
           onOpenRecordFile={(file: ProjectResultFile) => void openResultFile(file)}
+          onOpenReview={onOpenReview}
           recordFile={recordFile}
           review={outcomeReview}
           status={status}
           task={task}
         />
-      ) : undefined}
+      )}
       composer={composer}
       fileCount={resultFiles.length}
       fileWorkspace={preview.status === 'closed' ? undefined : (
-        <div className="project-generation-workspace__preview-tabs-shell">
+        <div className={`project-generation-workspace__preview-tabs-shell${artifactPreviewIsRemoved || artifactPreviewIsOutdated ? ' project-generation-workspace__preview-tabs-shell--changed' : ''}`}>
           <div className="project-generation-workspace__preview-tabbar">
           <nav aria-label="已打开文件" className="project-generation-workspace__preview-tabs">
             {openPreviews.map((item) => (
@@ -714,6 +840,17 @@ export function ProjectGenerationWorkspace({
             type="button"
           ><X aria-hidden="true" size={19} /></button>
           </div>
+          {artifactPreviewIsRemoved || artifactPreviewIsOutdated ? (
+            <div className="project-generation-workspace__preview-revision-notice" role="status">
+              <span>{artifactPreviewIsRemoved
+                ? '该文件已不在当前成果目录中，当前预览不会自动关闭。'
+                : '后端文件已更新，当前预览为旧版本。'}</span>
+              {artifactPreviewIsOutdated && latestPreviewArtifact ? <button
+                onClick={() => void openResultFile(latestPreviewArtifact)}
+                type="button"
+              >打开最新版本</button> : null}
+            </div>
+          ) : null}
           {preview.status === 'ready' && activeBridgeFile ? (
             <OnlyOfficeEditorWorkspace
               key={activePreviewKey}
@@ -722,11 +859,23 @@ export function ProjectGenerationWorkspace({
               displayName={preview.sourceFile.name}
               mode="edit"
               selectedVersion={preview.sourceFile.officeVersion}
+              localCopyOnly={preview.sourceFile.id.startsWith('artifact:')}
+              onDownloadOriginal={preview.sourceFile.id.startsWith('artifact:') && onDownloadArtifact
+                ? () => onDownloadArtifact(preview.sourceFile)
+                : undefined}
               toolbarContainer={previewToolbarContainer}
               onClose={() => closePreview(activePreviewKey, true)}
               onDirtyChange={(dirty) => updatePreviewDirty(activePreviewKey, dirty)}
               onSaved={(version) => {
-                const savedSourceFile = { ...preview.sourceFile, officeVersion: version, versionLabel: officeVersionLabel(version) };
+                // Opening an existing local session can replay its saved snapshot.
+                // Only a save following edits represents a new document change.
+                if (activePreviewKey && dirtyPreviewKeys.has(activePreviewKey)) {
+                  void refreshProjectResults({ reason: 'office-save', fileId: preview.sourceFile.id, version, localOnly: true });
+                }
+                const localVersionLabel = preview.sourceFile.id.startsWith('artifact:')
+                  ? `${preview.sourceFile.versionLabel?.split(' · 本机')[0] ?? '后端原件'} · 本机 ${officeVersionLabel(version)}`
+                  : officeVersionLabel(version);
+                const savedSourceFile = { ...preview.sourceFile, officeVersion: version, versionLabel: localVersionLabel };
                 const savedPreviewKey = previewKey(savedSourceFile);
                 const savedBridgeFile = activeBridgeFile;
                 if (savedBridgeFile) setBridgeFiles((current) => current.map((file) => (
@@ -745,7 +894,7 @@ export function ProjectGenerationWorkspace({
                   ? {
                       ...item,
                       key: savedPreviewKey,
-                      file: item.status === 'ready' ? { ...item.file, saveStatus: 'saved', version: officeVersionLabel(version) } : undefined,
+                      file: item.status === 'ready' ? { ...item.file, saveStatus: 'saved', version: localVersionLabel } : undefined,
                       sourceFile: savedSourceFile,
                     } as OpenPreview
                   : item));
@@ -765,8 +914,13 @@ export function ProjectGenerationWorkspace({
       ) : preview.status === 'error' ? (
         <PreviewStatePanel
           actionLabel="重试"
+          downloadActionLabel={preview.downloadAvailable && onDownloadArtifact ? '下载原文件' : undefined}
           message={preview.message}
           onAction={() => void openResultFile(preview.sourceFile)}
+          onClose={() => closePreview(activePreviewKey, true)}
+          onDownload={preview.downloadAvailable && onDownloadArtifact
+            ? () => downloadFailedArtifact(preview.sourceFile)
+            : undefined}
           title="文件加载失败"
         />
       ) : preview.status === 'ready' ? (
@@ -776,7 +930,9 @@ export function ProjectGenerationWorkspace({
           toolbarContainer={previewToolbarContainer}
           onClose={() => closePreview(activePreviewKey, true)}
           onDirtyChange={(dirty) => updatePreviewDirty(activePreviewKey, dirty)}
-          onDownload={onDownloadDeliverable && preview.deliverable
+          onDownload={preview.sourceFile.id.startsWith('artifact:') && onDownloadArtifact
+            ? () => onDownloadArtifact(preview.sourceFile)
+            : onDownloadDeliverable && preview.deliverable
             ? () => onDownloadDeliverable(preview.deliverable as ProjectDeliverableView)
             : undefined}
           onDraftChange={localPackage?.files.some((item) => item.id === preview.sourceFile.id)
@@ -808,10 +964,14 @@ export function ProjectGenerationWorkspace({
           enterpriseUploadControl={onAddEnterpriseFiles
             ? <EnterpriseUploadControl onUpload={uploadEnterpriseFiles} />
             : undefined}
-          onDownloadAllResults={onDownloadAllResults || onDownloadDeliverable ? downloadAllResults : undefined}
+          onDownloadAllResults={onDownloadAllResults || (artifactFiles !== undefined ? onDownloadArtifact && artifactFiles.length > 0 : onDownloadDeliverable) ? downloadAllResults : undefined}
           onSelectEnterpriseFile={(file) => openResourceFile(file, 'enterprise')}
           onSelectResultFile={(file) => void openResultFile(file)}
-          onSelectResultVersion={setSelectedPackageVersion}
+          onSelectResultVersion={(version) => {
+            if (version === selectedPackageVersion) return;
+            setSelectedPackageVersion(version);
+            void refreshProjectResults({ reason: 'version-select', ...(version ? { version } : {}) });
+          }}
           onSelectTenderMaterial={(file) => openResourceFile(file, 'tender')}
           resultFiles={resultFiles}
           resultGeneration={resultGeneration}
@@ -871,15 +1031,19 @@ function EnterpriseUploadControl({ onUpload }: { onUpload: EnterpriseUploadHandl
 
 function PreviewStatePanel({
   actionLabel,
+  downloadActionLabel,
   message,
   onAction,
   onClose,
+  onDownload,
   title,
 }: {
   actionLabel?: string;
+  downloadActionLabel?: string;
   message: string;
   onAction?: () => void;
   onClose?: () => void;
+  onDownload?: () => void | Promise<void>;
   title: string;
 }) {
   return (
@@ -888,10 +1052,54 @@ function PreviewStatePanel({
       <p>{message}</p>
       <div>
         {onAction && actionLabel ? <button onClick={onAction} type="button">{actionLabel}</button> : null}
+        {onDownload && downloadActionLabel ? <FileDownloadButton onDownload={onDownload} label={downloadActionLabel} /> : null}
         {onClose ? <button onClick={onClose} type="button">关闭预览</button> : null}
       </div>
     </section>
   );
+}
+
+function responseStatus(error: unknown): number | null {
+  return typeof error === 'object' && error !== null
+    && 'status' in error && typeof error.status === 'number'
+    ? error.status
+    : null;
+}
+
+/**
+ * The artifact list is authoritative, but a file's binary and the optional
+ * local Office bridge are independent requests. Do not expose a transport
+ * response or a bridge implementation error as if it were a business log.
+ */
+function artifactPreviewFailureMessage(
+  error: unknown,
+  phase: 'source' | 'office' | 'download',
+) {
+  if (phase === 'office') {
+    return '当前环境暂时无法打开此 Office 文件进行在线预览。可下载原文件后在本机查看。';
+  }
+  const status = responseStatus(error);
+  if (status === 401) return '登录状态已失效，请重新登录后打开该成果。';
+  if (status === 403) {
+    return '当前账号没有读取该成果原文件的权限，请确认权限后重新打开。';
+  }
+  if (status === 404) {
+    return '暂未找到可读取的成果原文件，请刷新成果目录后重新打开。';
+  }
+  if (status === 409) {
+    return '成果状态已变化，请刷新成果目录后重新打开。';
+  }
+  if (phase === 'download') {
+    return '原文件暂时无法下载。请稍后重试；若仍失败，请刷新成果目录后重新打开。';
+  }
+  return '暂时无法读取该成果原文件。它可能正在同步或服务暂不可用；可下载原文件后查看，或稍后重试。';
+}
+
+function canRetryArtifactDownload(error: unknown) {
+  const status = responseStatus(error);
+  // A missing file and a permission failure cannot be repaired by immediately
+  // issuing the same download request. Other failures may be transient.
+  return status !== 401 && status !== 403 && status !== 404;
 }
 
 function generationState(

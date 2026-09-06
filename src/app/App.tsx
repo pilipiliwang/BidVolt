@@ -106,6 +106,8 @@ import {
   type TenderNoticeImportJob,
 } from '../shared/backend-api';
 import { TaskProgressDrawer } from '../shared/ui/TaskProgressDrawer';
+import { publicAgentReply } from '../shared/ui/agent-timeline-classification';
+import { isUnconfirmedAgentRequestError } from '../shared/ui/useAgentMessageQueue';
 import { PRODUCT_NAME } from '../shared/product-brand';
 import { ApiTestPanel } from './ApiTestPanel';
 import { AppShell } from './AppShell';
@@ -143,6 +145,10 @@ import { createEmptyTenantDomainState, createTenantGenerationGuard } from './ten
 import { readUploadOutcome, uploadExpansionMessage, uploadOutcomeError } from './upload-outcome';
 import { buildEnterpriseUploadRecords } from './enterprise-upload-records';
 import { createEditorSaveGate } from './editor-save-gate';
+import { updateProjectMetadata } from '../shared/project-metadata';
+import { deliverableVersionSignature, scoreIsOutdated } from './score-freshness';
+import { adaptArtifactResources, artifactIdentityFromResourceId, artifactResourcesRevision } from './artifact-resources';
+import type { AgentArtifactSummary } from '../shared/backend-api/artifacts';
 import { buildPageApiActivity } from './page-api-activity';
 import { pageApiCatalog } from './page-api-catalog';
 import {
@@ -182,6 +188,9 @@ const loadLocalPreviewPayload = import.meta.env.DEV
   : undefined;
 
 type ProjectData = {
+  artifacts?: AgentArtifactSummary[];
+  invalidatedScoreId?: number;
+  localOfficeChanges?: boolean;
   agentRun?: AgentRunViewModel;
   deliverables: Deliverable[];
   deliverableVersions: DeliverableVersionsById;
@@ -372,6 +381,9 @@ export function App() {
   const editorLoadKeyRef = useRef('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
   const projectDataRef = useRef<Record<string, ProjectData>>({});
+  const scoreRefreshErrorRef = useRef<Record<string, string | undefined>>({});
+  const resultRefreshGenerationRef = useRef<Record<string, number>>({});
+  const projectIdentityRevisionRef = useRef<Record<string, number>>({});
   const editorSaveGateRef = useRef(createEditorSaveGate());
   const tenantGuardRef = useRef(createTenantGenerationGuard());
   const projectListRequestRef = useRef(0);
@@ -429,6 +441,9 @@ export function App() {
     setMissingProjectId(null);
     setProjectRouteFailure(null);
     setProjectResourceErrors({});
+    scoreRefreshErrorRef.current = {};
+    resultRefreshGenerationRef.current = {};
+    projectIdentityRevisionRef.current = {};
     apiRouteStartedAtRef.current = Date.now();
     setBackendRequestEvents({});
     setBackendReachability(initialBackendReachabilityState);
@@ -666,6 +681,8 @@ export function App() {
   }, []);
 
   const loadProject = useCallback(async (projectId: string) => {
+    const identityRevision = projectIdentityRevisionRef.current[projectId] ?? 0;
+    resultRefreshGenerationRef.current[projectId] = (resultRefreshGenerationRef.current[projectId] ?? 0) + 1;
     const tenantGeneration = tenantGuardRef.current.capture();
     const resourceGeneration = (projectResourceGenerationRef.current[projectId] ?? 0) + 1;
     const taskLoadGeneration = (taskLoadGenerationRef.current[projectId] ?? 0) + 1;
@@ -738,6 +755,8 @@ export function App() {
           );
           return { quote, samples };
         })(),
+        backendApi.projects.get(projectId),
+        backendApi.artifacts.listAll(projectId),
       ]);
       if (!tenantGuardRef.current.isCurrent(tenantGeneration)
         || projectResourceGenerationRef.current[projectId] !== resourceGeneration) return;
@@ -753,7 +772,13 @@ export function App() {
         reviewResult,
         scoreResult,
         quoteResult,
+        projectResult,
+        artifactsResult,
       ] = results;
+      if (projectResult.status === 'fulfilled' && projectResult.value?.project_id !== undefined
+        && (projectIdentityRevisionRef.current[projectId] ?? 0) === identityRevision) {
+        setProjects((current) => upsertProjectSummary(current, adaptBackendProject(projectResult.value)));
+      }
       const taskResultIsCurrent = taskLoadGenerationRef.current[projectId] === taskLoadGeneration;
       const resourceResults: Array<[ProjectResourceKey, PromiseSettledResult<unknown>]> = [
         ['materials', filesResult],
@@ -771,6 +796,9 @@ export function App() {
         result.status === 'rejected'
           ? [[key, readableError(result.reason, `${projectResourceLabels[key]}加载失败`)]]
           : [])) as ProjectResourceErrors;
+      if (artifactsResult.status === 'rejected') {
+        errors.deliverables = readableError(artifactsResult.reason, '正式成果目录读取失败');
+      }
 
       setProjectData((current) => {
         const previous = current[projectId] ?? {
@@ -786,6 +814,11 @@ export function App() {
           tasks: [],
         };
         const next: ProjectData = { ...previous };
+        if (artifactsResult.status === 'fulfilled') {
+          if (previous.artifacts && previous.score && artifactResourcesRevision(previous.artifacts)
+            !== artifactResourcesRevision(artifactsResult.value)) next.invalidatedScoreId = previous.score.score_id;
+          next.artifacts = artifactsResult.value;
+        }
         if (filesResult.status === 'fulfilled') {
           const filesById = Object.fromEntries(
             filesResult.value.files.map((file) => [String(file.file_id), file]),
@@ -845,6 +878,10 @@ export function App() {
           }
         }
         if (deliverablesResult.status === 'fulfilled') {
+          if (previous.score && deliverableVersionSignature(previous.deliverables)
+            !== deliverableVersionSignature(deliverablesResult.value.deliverables)) {
+            next.invalidatedScoreId = previous.score.score_id;
+          }
           next.deliverables = deliverablesResult.value.deliverables;
           next.deliverableVersions = deliverablesResult.value.deliverableVersions;
         }
@@ -863,6 +900,7 @@ export function App() {
         return { ...current, [projectId]: next };
       });
       setProjectResourceErrors((current) => ({ ...current, [projectId]: errors }));
+      scoreRefreshErrorRef.current[projectId] = errors.score;
     } finally {
       if (projectResourceGenerationRef.current[projectId] === resourceGeneration) {
         tenantGuardRef.current.commit(tenantGeneration, () => {
@@ -873,6 +911,7 @@ export function App() {
   }, [requestTaskSnapshots]);
 
   const refreshProjectMaterials = useCallback(async (projectId: string) => {
+    const identityRevision = projectIdentityRevisionRef.current[projectId] ?? 0;
     const tenantGeneration = tenantGuardRef.current.capture();
     const [files, materials] = await Promise.all([
       backendApi.files.listAll({ target: 'project', project_id: projectId }),
@@ -894,6 +933,13 @@ export function App() {
       delete next.materials;
       return { ...current, [projectId]: next };
     });
+    // Material parsing may update authoritative project metadata asynchronously.
+    void backendApi.projects.get(projectId).then((project) => {
+      if (tenantGuardRef.current.isCurrent(tenantGeneration) && project?.project_id !== undefined
+        && (projectIdentityRevisionRef.current[projectId] ?? 0) === identityRevision) {
+        setProjects((current) => upsertProjectSummary(current, adaptBackendProject(project)));
+      }
+    }).catch(() => undefined);
     return nextMaterials;
   }, []);
 
@@ -902,13 +948,26 @@ export function App() {
     task: DeliverableTaskIdentity,
   ) => {
     const tenantGeneration = tenantGuardRef.current.capture();
-    const deliverables = await backendApi.deliverables.list(projectId);
+    const resultGeneration = (resultRefreshGenerationRef.current[projectId] ?? 0) + 1;
+    resultRefreshGenerationRef.current[projectId] = resultGeneration;
+    const [deliverables, artifacts] = await Promise.all([
+      backendApi.deliverables.list(projectId), backendApi.artifacts.listAll(projectId),
+    ]);
     const deliverableVersions = await loadDeliverableVersionLists(
       deliverables,
       (deliverableId) => backendApi.deliverables.listVersions(deliverableId),
     );
+    const scoreResult = await Promise.allSettled([backendApi.review.latestScore(projectId).catch((error) => {
+      if (isReviewScoreUnavailable(error)) return undefined;
+      throw error;
+    })]);
     if (!tenantGuardRef.current.isCurrent(tenantGeneration)
-      || routeProjectIdRef.current !== projectId) return false;
+      || routeProjectIdRef.current !== projectId
+      || resultRefreshGenerationRef.current[projectId] !== resultGeneration) return false;
+
+    const scoreError = scoreResult[0].status === 'rejected'
+      ? readableError(scoreResult[0].reason, '评分刷新失败') : undefined;
+    scoreRefreshErrorRef.current[projectId] = scoreError;
 
     setProjectData((current) => {
       const existing = current[projectId];
@@ -917,7 +976,12 @@ export function App() {
         ...existing,
         deliverables,
         deliverableVersions,
+        artifacts,
       };
+      const changed = deliverableVersionSignature(existing.deliverables) !== deliverableVersionSignature(deliverables)
+        || (existing.artifacts !== undefined && artifactResourcesRevision(existing.artifacts) !== artifactResourcesRevision(artifacts));
+      if (changed && existing.score) next.invalidatedScoreId = existing.score.score_id;
+      if (scoreResult[0].status === 'fulfilled') next.score = scoreResult[0].value;
       next.overview = adaptBackendProjectOverview(
         deliverables,
         next.score ? scoreSummaryForOverview(next.score) : undefined,
@@ -926,12 +990,13 @@ export function App() {
     });
     setProjectResourceErrors((current) => {
       const existing = current[projectId];
-      if (!existing?.deliverables) return current;
       const next = { ...existing };
       delete next.deliverables;
+      if (scoreError) next.score = scoreError;
+      else delete next.score;
       return { ...current, [projectId]: next };
     });
-    return deliverables.some((deliverable) => {
+    return artifacts.some(artifact => artifact.kind !== 'zip' && String(artifact.task_id) === String(task.task_id)) || deliverables.some((deliverable) => {
       const currentVersionNo = deliverable.current_version_no;
       const currentVersion = deliverableVersions[String(deliverable.deliverable_id)]
         ?.find((version) => version.version_no === currentVersionNo);
@@ -1045,7 +1110,8 @@ export function App() {
     ? routeAgentRun?.completion === 'complete' || routeAgentRun?.completion === 'unknown_terminal'
     : routeLatestGenerationTask?.status === 'succeeded';
   const routeHasDeliverableVersions = routeProjectId
-    ? hasDeliverableVersionForGenerationTask(
+    ? Boolean(projectData[routeProjectId]?.artifacts?.some(artifact => artifact.kind !== 'zip'
+        && String(artifact.task_id) === String(routeLatestGenerationTask?.task_id))) || hasDeliverableVersionForGenerationTask(
         projectData[routeProjectId],
         routeLatestGenerationTask,
         routeUsesAgentRun ? routeAgentRun : undefined,
@@ -1060,6 +1126,32 @@ export function App() {
     ? `${session.enterpriseId}:${routeProjectId}:${activeBidGenerateTaskId}`
     : null;
   const routeAgentTaskId = routeAgentRun?.taskId;
+  useEffect(() => {
+    if (authState !== 'authenticated' || localPreviewActive || !routeProjectId || loadingProjectId === routeProjectId) return;
+    const projectId = routeProjectId;
+    let stopped = false;
+    let refreshing = false;
+    const refresh = async () => {
+      if (stopped || refreshing || document.visibilityState === 'hidden') return;
+      refreshing = true;
+      try {
+        await refreshProjectDeliverables(projectId, { task_id: routeAgentTaskId ?? '', occurred_at: undefined });
+      } catch {
+        // A background read failure never turns a completed task into a failed task.
+        // The explicit refresh path retains its actionable error/retry feedback.
+      } finally { refreshing = false; }
+    };
+    const onFocus = () => { void refresh(); };
+    const timer = window.setInterval(onFocus, 30_000);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [authState, localPreviewActive, loadingProjectId, refreshProjectDeliverables, routeAgentTaskId, routeProjectId]);
   const routeTenderNoticeId = routeProjectId
     ? projectData[routeProjectId]?.tenderNotices.reduce<number | undefined>((latest, notice) => (
         notice.status === 1 && (latest === undefined || notice.tender_notice_id > latest)
@@ -1211,20 +1303,21 @@ export function App() {
       || localPreviewActive
       || !routeProjectId
       || !routeAgentTaskId
-      || routeAgentRun?.completion !== 'active') return undefined;
+      || (routeAgentRun?.completion !== 'active' && !sendingAgentMessage)) return undefined;
     const projectId = routeProjectId;
     const taskId = routeAgentTaskId;
     const generation = tenantGuardRef.current.capture();
     let polling = false;
+    let disposed = false;
     let terminalProjectReloaded = false;
-    const refresh = async () => {
+    const refresh = async (reconnect = false) => {
       if (polling) return;
       polling = true;
       try {
         const status = await backendApi.agent.status(projectId, taskId);
         const questions = await backendApi.agent.questions(projectId, taskId)
           .catch(() => status.customer);
-        if (!tenantGuardRef.current.isCurrent(generation)
+        if (disposed || !tenantGuardRef.current.isCurrent(generation)
           || routeProjectIdRef.current !== projectId) return;
         const polledCompletion = createAgentRunViewModel(status, {
           projectId,
@@ -1247,8 +1340,9 @@ export function App() {
             },
           };
         });
+        if (reconnect && !agentStreamOpenRef.current) setAgentStreamRefresh((current) => current + 1);
         if (shouldReloadProjectAfterAgentPoll(
-          'active',
+          routeAgentRun?.completion ?? 'active',
           polledCompletion,
           terminalProjectReloaded,
         )) {
@@ -1257,7 +1351,7 @@ export function App() {
           await loadProject(projectId);
         }
       } catch (error) {
-        if (tenantGuardRef.current.isCurrent(generation)) {
+        if (!disposed && tenantGuardRef.current.isCurrent(generation)) {
           setProjectResourceErrors((current) => ({
             ...current,
             [projectId]: {
@@ -1271,13 +1365,14 @@ export function App() {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 8_000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => void refresh(true), 8_000);
+    return () => { disposed = true; window.clearInterval(timer); };
   }, [
     authState,
     loadProject,
     localPreviewActive,
     routeAgentRun?.completion,
+    sendingAgentMessage,
     routeAgentTaskId,
     routeProjectId,
   ]);
@@ -1673,9 +1768,7 @@ export function App() {
     const generation = tenantGuardRef.current.capture();
     const created = await backendApi.projects.create({
       name: project.title,
-      tender_no: project.code,
-      buyer: project.buyer || null,
-      deadline: toIsoOrNull(project.deadline),
+      note: updateProjectMetadata(project.note, { authorName: project.authorName }),
     });
     if (!tenantGuardRef.current.isCurrent(generation)) return;
     tenantGuardRef.current.commit(generation, () => {
@@ -1694,6 +1787,29 @@ export function App() {
       setProjects((current) => current.filter((project) => project.id !== projectId));
       setProjectsTotal((current) => Math.max(0, current - 1));
     });
+  };
+
+  const handleUpdateProjectDetails = async (
+    projectId: string,
+    patch: { title?: string; packageNo?: string; deadline?: string },
+  ) => {
+    if (localPreviewActive) throw blockLocalPreviewWrite('修改项目信息');
+    const generation = tenantGuardRef.current.capture();
+    const current = await backendApi.projects.get(projectId);
+    if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('登录已切换，请重新打开项目。');
+    if (patch.title !== undefined && !patch.title.trim()) throw new Error('项目名称不能为空。');
+    const deadline = patch.deadline === undefined ? undefined : toIsoOrNull(patch.deadline);
+    if (patch.deadline?.trim() && !deadline) throw new Error('截止时间格式无效。');
+    const updated = await backendApi.projects.update(projectId, {
+      ...(patch.title === undefined ? {} : { name: patch.title.trim() }),
+      ...(deadline === undefined ? {} : { deadline }),
+      ...(patch.packageNo === undefined ? {} : {
+        note: updateProjectMetadata(current.note, { packageNo: patch.packageNo }),
+      }),
+    });
+    if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('登录已切换，请重新打开项目。');
+    projectIdentityRevisionRef.current[projectId] = (projectIdentityRevisionRef.current[projectId] ?? 0) + 1;
+    setProjects((items) => upsertProjectSummary(items, adaptBackendProject(updated)));
   };
 
   const notifyBidVoltLifecycle = (projectId: string, message: string) => {
@@ -2166,13 +2282,18 @@ export function App() {
       tenantGuardRef.current.commit(generation, () => {
         setStatusMessage({
           tone: 'info',
-          text: response.reply || response.message || '任务前对话已完成，并会作为后续 BidVolt 任务上下文。',
+          text: publicAgentReply(response.reply || response.message || '') || '消息已提交。',
         });
       });
       return response;
     } catch (error) {
       if (tenantGuardRef.current.isCurrent(generation)) {
-        setError(error, '项目助手请求失败');
+        setStatusMessage({
+          tone: isUnconfirmedAgentRequestError(error) ? 'info' : 'error',
+          text: isUnconfirmedAgentRequestError(error)
+            ? '连接中断，消息处理结果待确认；请勿重复发送。'
+            : publicAgentReply(readableError(error, '项目助手请求失败')) || '项目助手请求失败，请稍后重试。',
+        });
       }
       throw error;
     } finally {
@@ -2215,7 +2336,7 @@ export function App() {
         });
         setStatusMessage({
           tone: 'info',
-          text: response.reply || (response.queued ? '回答已排队回传 BidVolt 主会话。' : '回答已提交。'),
+          text: publicAgentReply(response.reply || '') || (response.queued ? '回答已排队回传 BidVolt 主会话。' : '回答已提交。'),
         });
       });
       return response;
@@ -2258,15 +2379,22 @@ export function App() {
         setStatusMessage({
           tone: response.returncode !== undefined && response.returncode !== 0 ? 'error' : 'info',
           text: response.returncode !== undefined && response.returncode !== 0
-            ? response.message || 'BidVolt 未能完成请求，请查看对话记录。'
-            : response.reply?.trim()
+            ? publicAgentReply(response.message || '') || 'BidVolt 未能完成请求，请查看对话记录。'
+            : publicAgentReply(response.reply || '')
               ? '已收到 BidVolt 回复。'
-              : response.message || (response.queued ? '消息已由后端排队，等待处理。' : '消息已发送给 BidVolt 主会话。'),
+              : !response.queued && (response.status === 'processed' || response.returncode === 0)
+                ? '本次请求已结束，但未返回有效回复。'
+                : '消息已送达 BidVolt，等待处理。',
         });
       });
       return response;
     } catch (error) {
-      if (tenantGuardRef.current.isCurrent(generation)) setError(error, 'BidVolt 主会话消息发送失败');
+      if (tenantGuardRef.current.isCurrent(generation)) setStatusMessage({
+        tone: isUnconfirmedAgentRequestError(error) ? 'info' : 'error',
+        text: isUnconfirmedAgentRequestError(error)
+          ? '连接中断，消息处理结果待确认；请勿重复发送。'
+          : publicAgentReply(readableError(error, 'BidVolt 主会话消息发送失败')) || '本次请求未完成，请稍后重试。',
+      });
       throw error;
     } finally {
       // The first reopened stream may have observed the old terminal status
@@ -2835,8 +2963,12 @@ export function App() {
     reviewRunId: activeData?.reviewRun.id,
     reviewRunStatus: activeData?.reviewRun.status,
     reviewSourceState: projectReviewState,
-    score: activeData?.overview?.score,
-    scoreIsStale: activeData?.score?.is_stale,
+    score: activeData?.overview?.score ? {
+      ...activeData.overview.score,
+      formalFileVersionUnverified: Boolean(activeData.artifacts?.some(artifact => artifact.kind !== 'zip')),
+    } : undefined,
+    scoreIsStale: scoreIsOutdated(activeData?.score, activeData?.deliverables ?? [],
+      activeData?.invalidatedScoreId, activeData?.localOfficeChanges),
     scoreReviewRunId: activeData?.score?.review_run_id === null
       || activeData?.score?.review_run_id === undefined
       ? undefined
@@ -2846,6 +2978,8 @@ export function App() {
     tasksState: projectTasksState,
   });
   const deliverableCards = activeData ? adaptBackendDeliverableCards(activeData.deliverables) : undefined;
+  const artifactResources = routeProjectId && activeData?.artifacts
+    ? adaptArtifactResources(routeProjectId, activeData.artifacts) : undefined;
   const selectedAgentRun = shouldUseAgentRunForGenerationTask(
     latestGenerationTask,
     activeData?.agentRun,
@@ -2854,7 +2988,8 @@ export function App() {
     ?? (latestGenerationTask
       ? agentRunFallbackFromGenerationTask(latestGenerationTask)
       : undefined);
-  const hasDeliverableVersions = hasDeliverableVersionForGenerationTask(
+  const hasDeliverableVersions = Boolean(activeData?.artifacts?.some(artifact =>
+    artifact.kind !== 'zip' && String(artifact.task_id) === generationWorkspaceRun?.taskId)) || hasDeliverableVersionForGenerationTask(
     activeData,
     latestGenerationTask,
     selectedAgentRun,
@@ -3076,6 +3211,19 @@ export function App() {
       ) : null}
       {route.name === 'project-overview' && activeProject ? (
         <ProjectOverviewPage
+          artifactFiles={localPreviewActive ? undefined : artifactResources?.resultFiles ?? []}
+          onDownloadArtifact={async (file) => {
+            const identity = artifactIdentityFromResourceId(route.projectId, file.id);
+            if (!identity) throw new Error('正式成果文件标识无效。');
+            const currentFile = artifactResources?.resultFiles.find(item => item.id === file.id);
+            if (!currentFile || (file.remoteRevision && file.remoteRevision !== currentFile.remoteRevision)) {
+              throw new Error('文件版本已变化，请从成果目录重新打开最新文件再下载。');
+            }
+            const generation = tenantGuardRef.current.capture();
+            const blob = await backendApi.artifacts.download(identity.projectId, identity.artifactId);
+            if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('登录已切换，下载已取消。');
+            downloadBlob(blob, file.name);
+          }}
           localOfficeEnabled={!localPreviewActive}
           agentRun={generationWorkspaceRun}
           answeringAgentAskId={answeringAgentAskId}
@@ -3141,6 +3289,22 @@ export function App() {
             );
           }}
           onLoadResourcePreview={async (fileId, fileName) => {
+            if (fileId.startsWith('artifact:')) {
+              const identity = artifactIdentityFromResourceId(route.projectId, fileId);
+              if (!identity) throw new Error('成果不属于当前项目。');
+              const generation = tenantGuardRef.current.capture();
+              const artifact = activeData?.artifacts?.find(item => String(item.artifact_id) === identity.artifactId);
+              if (!artifact) throw new Error('成果目录已变化，请刷新后重新打开。');
+              const blob = await backendApi.artifacts.download(identity.projectId, identity.artifactId);
+              if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('登录已切换，预览已取消。');
+              const extension = artifact.filename.split('.').at(-1)?.toLowerCase() ?? '';
+              if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(extension)) {
+                return { kind: 'office', blob, fileName: artifact.filename, mimeType: artifact.mime };
+              }
+              if (extension === 'pdf' || artifact.mime === 'application/pdf') return { kind: 'pdf', blob, mimeType: 'application/pdf' };
+              if (artifact.mime.startsWith('image/')) return { kind: 'image', blob, mimeType: artifact.mime };
+              return { kind: 'unsupported', message: '当前文件格式请下载原件查看。' };
+            }
             if (!fileId.startsWith('enterprise:')) {
               return loadProjectResourcePreview(fileId, fileName);
             }
@@ -3156,7 +3320,25 @@ export function App() {
           }}
           overview={activeData?.overview}
           outcomeReview={projectOutcomeReview}
+          onRefreshProjectResults={async (change) => {
+            if (localPreviewActive) return;
+            const generation = tenantGuardRef.current.capture();
+            if (change.reason === 'office-save') {
+              setProjectData((current) => {
+                const existing = current[route.projectId];
+                return existing ? { ...current, [route.projectId]: {
+                  ...existing, invalidatedScoreId: existing.score?.score_id, localOfficeChanges: true,
+                } } : current;
+              });
+            }
+            await loadProject(route.projectId);
+            if (!tenantGuardRef.current.isCurrent(generation)) throw new Error('登录已切换，请重新打开当前项目。');
+            if (scoreRefreshErrorRef.current[route.projectId]) {
+              throw new Error('评分刷新失败，请重试；当前保留的是上次评分。');
+            }
+          }}
           project={activeProject}
+          onUpdateProjectDetails={(update) => handleUpdateProjectDetails(route.projectId, update)}
           projectId={route.projectId}
           reviewFindings={activeData?.reviewRun.findings ?? []}
           sendingAgentMessage={sendingAgentMessage}
@@ -3208,6 +3390,9 @@ export function App() {
           onUpload={(projectId, files) => handleCurrentTenderUpload(projectId, files).then(() => undefined)}
           projectId={route.projectId}
           projectName={activeProject.title}
+          projectPackageNo={activeProject.packageNo}
+          projectDeadline={activeProject.deadline}
+          onUpdateProjectDetails={(update) => handleUpdateProjectDetails(route.projectId, update)}
           requirements={activeData?.requirements ?? []}
           reviewSidebar={projectReviewSidebar}
           snapshots={activeData?.snapshots ?? []}

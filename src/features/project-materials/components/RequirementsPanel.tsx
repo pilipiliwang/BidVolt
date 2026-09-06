@@ -18,6 +18,8 @@ const requirementTypeLabel: Record<RequirementType, string> = {
 interface RequirementsPanelProps {
   projectId: string;
   requirements: ProjectRequirement[];
+  /** Main workflow: inspect the parsed requirements without a per-item approval step. */
+  readOnly?: boolean;
   onConfirmRequirement?: (projectId: string, requirementId: string) => Promise<void> | void;
   onCorrectRequirement?: (
     projectId: string,
@@ -33,6 +35,7 @@ function confidencePercent(confidence: number) {
 export function RequirementsPanel({
   projectId,
   requirements,
+  readOnly = false,
   onConfirmRequirement,
   onCorrectRequirement,
 }: RequirementsPanelProps) {
@@ -56,7 +59,7 @@ export function RequirementsPanel({
 
   const handleConfirm = async (requirementId: string) => {
     if (
-      !onConfirmRequirement
+      readOnly || !onConfirmRequirement
       || confirmingRequirementIdsRef.current.has(requirementId)
       || correctingRequirementIdsRef.current.has(requirementId)
     ) return;
@@ -88,7 +91,7 @@ export function RequirementsPanel({
 
   const beginCorrection = (requirement: ProjectRequirement) => {
     if (
-      !onCorrectRequirement
+      readOnly || !onCorrectRequirement
       || correctingRequirementIdsRef.current.has(requirement.id)
       || confirmingRequirementIdsRef.current.has(requirement.id)
     ) return;
@@ -121,7 +124,7 @@ export function RequirementsPanel({
 
   const handleCorrect = async (requirementId: string) => {
     if (
-      !onCorrectRequirement
+      readOnly || !onCorrectRequirement
       || correctingRequirementIdsRef.current.has(requirementId)
       || confirmingRequirementIdsRef.current.has(requirementId)
     ) return;
@@ -169,13 +172,16 @@ export function RequirementsPanel({
     <section className="project-requirements" aria-labelledby="project-requirements-title">
       <header className="project-section-heading">
         <div>
-          <p className="project-material-eyebrow">Parsed requirements</p>
-          <h2 id="project-requirements-title">Requirement 基线</h2>
-          <p>每条要求都绑定当前项目材料版本和原文坐标。</p>
+          <p className="project-material-eyebrow">{readOnly ? '招标材料解析结果' : 'Parsed requirements'}</p>
+          <h2 id="project-requirements-title">{readOnly ? '招标要求' : 'Requirement 基线'}</h2>
+          <p>{readOnly
+            ? '可按需查看解析依据，无需逐条审核。需要补充或确认时，BidVolt 会在任务动态中提问。'
+            : '每条要求都绑定当前项目材料版本和原文坐标。'}</p>
         </div>
-        <span className={pendingCount || unavailableCount ? 'project-attention' : 'project-complete'}>
-          {pendingCount || unavailableCount ? <AlertTriangle aria-hidden="true" size={16} /> : <CheckCircle2 aria-hidden="true" size={16} />}
-          {pendingCount
+        <span className={readOnly ? undefined : pendingCount || unavailableCount ? 'project-attention' : 'project-complete'}>
+          {readOnly ? <FileSearch aria-hidden="true" size={16} />
+            : pendingCount || unavailableCount ? <AlertTriangle aria-hidden="true" size={16} /> : <CheckCircle2 aria-hidden="true" size={16} />}
+          {readOnly ? `共 ${requirements.length} 条要求` : pendingCount
             ? `${pendingCount} 条待确认`
             : unavailableCount
               ? '后端未提供确认状态'
@@ -198,7 +204,7 @@ export function RequirementsPanel({
 
           return (
             <article
-              className={`project-requirement${needsConfirmation ? ' project-requirement--attention' : ''}`}
+              className={`project-requirement${!readOnly && needsConfirmation ? ' project-requirement--attention' : ''}`}
               key={requirement.id}
             >
               <div className="project-requirement__type">
@@ -222,7 +228,7 @@ export function RequirementsPanel({
                   </span>
                   <span>Requirement 版本 {requirement.revisionNo}</span>
                 </div>
-                {isEditingCorrection ? (
+                {!readOnly && isEditingCorrection ? (
                   <form
                     className="project-requirement__correction"
                     onSubmit={(event) => {
@@ -272,7 +278,7 @@ export function RequirementsPanel({
                   </form>
                 ) : null}
               </div>
-              <div className="project-requirement__action">
+              {!readOnly ? <div className="project-requirement__action">
                 {needsConfirmation ? (
                   <>
                     <button
@@ -309,14 +315,14 @@ export function RequirementsPanel({
                     纠正内容
                   </button>
                 ) : null}
-              </div>
+              </div> : null}
             </article>
           );
         })}
         {requirements.length === 0 && (
           <div className="project-empty-state">
             <FileSearch aria-hidden="true" size={28} />
-            <h3>尚未生成 Requirement</h3>
+            <h3>{readOnly ? '尚未解析出招标要求' : '尚未生成 Requirement'}</h3>
             <p>材料解析完成后会在此生成资格、评分、技术和报价要求。</p>
           </div>
         )}

@@ -135,6 +135,7 @@ const completedReview = {
   score: {
     business: 88,
     estimatedLift: 7,
+    fullMarks: 100,
     pricing: 91,
     technical: 82,
     total: 86,
@@ -228,6 +229,208 @@ async function renderQuotedWord(initialDraft = '') {
 }
 
 describe('ProjectGenerationWorkspace', () => {
+  it('treats an empty artifact catalog as authoritative instead of showing legacy sample results', () => {
+    renderWorkspace({ agentRun: completeRun, artifactFiles: [], task: completeTask });
+    const rail = screen.getByRole('complementary', { name: '项目资源与标书成果' });
+    expect(within(rail).getByRole('button', { name: /标书成果.*0项/ })).toBeInTheDocument();
+    expect(within(rail).queryByRole('button', { name: /商务文件.*已生成/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '正在整理标书成果' })).toBeInTheDocument();
+  });
+
+  it('keeps same-name artifacts separate and loads and downloads by artifact identity', async () => {
+    const user = userEvent.setup();
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:http://localhost:3000/artifact');
+      static revokeObjectURL = revokeObjectURL;
+    });
+    const onLoadResourcePreview = vi.fn().mockResolvedValue({ kind: 'html', mimeType: 'text/html', blob: new Blob(['<p>真实成果</p>']) });
+    const onLoadDeliverableContent = vi.fn();
+    const onDownloadArtifact = vi.fn().mockResolvedValue(undefined);
+    const artifacts = [
+      { category: 'business' as const, id: 'artifact:207:51', name: '商务说明.html', versionLabel: 'V2' },
+      { category: 'business' as const, id: 'artifact:207:52', name: '商务说明.html', versionLabel: 'V1' },
+    ];
+    const { unmount } = renderWorkspace({ artifactFiles: artifacts, onLoadResourcePreview, onLoadDeliverableContent, onDownloadArtifact });
+    try {
+      const rail = screen.getByRole('complementary', { name: '项目资源与标书成果' });
+      expect(within(rail).getByRole('button', { name: /标书成果.*2项/ })).toBeInTheDocument();
+      await user.click(within(rail).getByRole('button', { name: /商务文件.*已生成/ }));
+      const files = within(rail).getAllByTitle('商务说明.html');
+      expect(files).toHaveLength(2);
+      await user.click(files[1]);
+      expect(await screen.findByTitle('商务说明.html HTML 预览')).toBeInTheDocument();
+      expect(onLoadResourcePreview).toHaveBeenCalledWith('artifact:207:52', '商务说明.html');
+      expect(onLoadDeliverableContent).not.toHaveBeenCalled();
+      await user.click(screen.getByRole('button', { name: '下载文件' }));
+      expect(onDownloadArtifact).toHaveBeenCalledWith(artifacts[1]);
+      expect(within(rail).queryByRole('combobox', { name: '标书成果整包版本' })).not.toBeInTheDocument();
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not expose a raw artifact transport error and retains a download fallback', async () => {
+    const user = userEvent.setup();
+    const artifact = {
+      category: 'business' as const,
+      id: 'artifact:207:71',
+      name: '商务说明.html',
+      versionLabel: 'V1',
+    };
+    const onLoadResourcePreview = vi.fn().mockRejectedValue(new Error('后端请求失败'));
+    const onDownloadArtifact = vi.fn().mockResolvedValue(undefined);
+    renderWorkspace({ artifactFiles: [artifact], onDownloadArtifact, onLoadResourcePreview });
+
+    const rail = screen.getByRole('complementary', { name: '项目资源与标书成果' });
+    await user.click(within(rail).getByRole('button', { name: /商务文件.*已生成/ }));
+    await user.click(within(rail).getByTitle('商务说明.html'));
+
+    expect(await screen.findByText('暂时无法读取该成果原文件。它可能正在同步或服务暂不可用；可下载原文件后查看，或稍后重试。')).toBeInTheDocument();
+    expect(screen.queryByText('后端请求失败')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '下载原文件' }));
+    expect(onDownloadArtifact).toHaveBeenCalledWith(artifact);
+  });
+
+  it('keeps an old artifact preview until the user opens its new revision and reports directory removal', async () => {
+    const user = userEvent.setup();
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn()
+        .mockReturnValueOnce('blob:http://localhost:3000/artifact-old')
+        .mockReturnValueOnce('blob:http://localhost:3000/artifact-new');
+      static revokeObjectURL = revokeObjectURL;
+    });
+    const onLoadResourcePreview = vi.fn().mockResolvedValue({ kind: 'html', mimeType: 'text/html', blob: new Blob(['<p>成果</p>']) });
+    const oldArtifact = { category: 'business' as const, id: 'artifact:207:51', name: '商务说明.html', versionLabel: 'V1', remoteRevision: '1:old:100' };
+    const latestArtifact = { ...oldArtifact, versionLabel: 'V2', remoteRevision: '2:new:200' };
+    const props = { agentRun: activeRun, deliverables, enterpriseMaterials: [], materials: [], outcomeReview, task: activeTask, onLoadResourcePreview };
+    const { rerender, unmount } = render(<ProjectGenerationWorkspace {...props} artifactFiles={[oldArtifact]} />);
+    try {
+      const rail = screen.getByRole('complementary', { name: '项目资源与标书成果' });
+      await user.click(within(rail).getByRole('button', { name: /商务文件.*已生成/ }));
+      await user.click(within(rail).getByTitle('商务说明.html'));
+      expect(await screen.findByTitle('商务说明.html HTML 预览')).toHaveAttribute('src', 'blob:http://localhost:3000/artifact-old');
+      rerender(<ProjectGenerationWorkspace {...props} artifactFiles={[latestArtifact]} />);
+      expect(screen.getByText('后端文件已更新，当前预览为旧版本。')).toBeInTheDocument();
+      expect(screen.getByTitle('商务说明.html HTML 预览')).toHaveAttribute('src', 'blob:http://localhost:3000/artifact-old');
+      expect(onLoadResourcePreview).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      await user.click(screen.getByRole('button', { name: '打开最新版本' }));
+      await waitFor(() => expect(screen.getByTitle('商务说明.html HTML 预览')).toHaveAttribute('src', 'blob:http://localhost:3000/artifact-new'));
+      expect(onLoadResourcePreview).toHaveBeenCalledTimes(2);
+      const tabs = screen.getByRole('navigation', { name: '已打开文件' });
+      expect(within(tabs).getAllByTitle('商务说明.html')).toHaveLength(2);
+      expect(tabs).toHaveTextContent('V1');
+      expect(tabs).toHaveTextContent('V2');
+      expect(screen.queryByText('后端文件已更新，当前预览为旧版本。')).not.toBeInTheDocument();
+      rerender(<ProjectGenerationWorkspace {...props} artifactFiles={[]} />);
+      expect(screen.getByText('该文件已不在当前成果目录中，当前预览不会自动关闭。')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '打开最新版本' })).not.toBeInTheDocument();
+      expect(screen.getByTitle('商务说明.html HTML 预览')).toHaveAttribute('src', 'blob:http://localhost:3000/artifact-new');
+      expect(onLoadResourcePreview).toHaveBeenCalledTimes(2);
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not replace unsaved Office edits when the artifact catalog changes or the user cancels opening the latest file', async () => {
+    const user = userEvent.setup();
+    let markDirty!: (event: { data: boolean }) => void;
+    const editorCreated = vi.fn();
+    window.DocsAPI = { DocEditor: class {
+      constructor(_id: string, config: Record<string, unknown>) {
+        editorCreated();
+        const events = config.events as { onDocumentReady: () => void; onDocumentStateChange: typeof markDirty };
+        markDirty = events.onDocumentStateChange;
+        queueMicrotask(events.onDocumentReady);
+      }
+      destroyEditor() { /* A cancelled switch must leave this editor mounted. */ }
+    } };
+    const importedSourceKeys: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes('/api/imported-files?')) {
+        importedSourceKeys.push(new URL(url).searchParams.get('sourceKey')!);
+        return { ok: true, json: async () => ({ id: `bridge-${importedSourceKeys.length}`, name: '商务响应.docx', relative: 'imported/商务响应.docx', size: 1000 }) };
+      }
+      if (url.endsWith('/api/editor-sessions')) return { ok: true, json: async () => ({ documentServerUrl: 'http://localhost:8080', editorConfig: {}, sessionId: 'test-editor-session' }) };
+      if (url.endsWith('/api/files')) return { ok: true, json: async () => ({ items: [] }) };
+      return { ok: true, json: async () => ({}) };
+    }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const onLoadResourcePreview = vi.fn().mockResolvedValue({ kind: 'office', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', blob: new Blob(['docx']) });
+    const oldArtifact = { category: 'business' as const, id: 'artifact:207:91', name: '商务响应.docx', versionLabel: 'V1', remoteRevision: '1:before:1000' };
+    const latestArtifact = { ...oldArtifact, remoteRevision: '1:after:1200' };
+    const props = { agentRun: activeRun, deliverables, enterpriseMaterials: [], materials: [], outcomeReview, task: activeTask, onLoadResourcePreview };
+    const { rerender, unmount } = render(<ProjectGenerationWorkspace {...props} artifactFiles={[oldArtifact]} />);
+    try {
+      const rail = screen.getByRole('complementary', { name: '项目资源与标书成果' });
+      await user.click(within(rail).getByRole('button', { name: /商务文件.*已生成/ }));
+      await user.click(within(rail).getByTitle('商务响应.docx'));
+      await screen.findByText('已连接');
+      act(() => markDirty({ data: true }));
+      rerender(<ProjectGenerationWorkspace {...props} artifactFiles={[latestArtifact]} />);
+      expect(screen.getByText('有修改，待保存')).toBeInTheDocument();
+      expect(screen.getByText('后端文件已更新，当前预览为旧版本。')).toBeInTheDocument();
+      expect(confirm).not.toHaveBeenCalled();
+      expect(onLoadResourcePreview).toHaveBeenCalledOnce();
+      expect(editorCreated).toHaveBeenCalledOnce();
+      await user.click(screen.getByRole('button', { name: '打开最新版本' }));
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(onLoadResourcePreview).toHaveBeenCalledOnce();
+      expect(editorCreated).toHaveBeenCalledOnce();
+      expect(screen.getByText('有修改，待保存')).toBeInTheDocument();
+      confirm.mockReturnValue(true);
+      await user.click(screen.getByRole('button', { name: '打开最新版本' }));
+      await waitFor(() => expect(editorCreated).toHaveBeenCalledTimes(2));
+      expect(importedSourceKeys).toEqual(['207:artifact:207:91:1:before:1000', '207:artifact:207:91:1:after:1200']);
+      expect(within(screen.getByRole('navigation', { name: '已打开文件' })).getAllByTitle('商务响应.docx')).toHaveLength(2);
+    } finally {
+      unmount();
+      delete window.DocsAPI;
+      confirm.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps scores visible above Agent status while a task is still running', () => {
+    renderWorkspace();
+    const summary = screen.getByRole('region', { name: '成果评分与响应记录' });
+    const scores = within(summary).getByRole('region', { name: '评分结果' });
+    const status = within(summary).getByRole('heading', { name: '成果生成需要您的处理' });
+    expect(within(scores).getByText('等待评审结果')).toBeInTheDocument();
+    expect(scores.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(summary).getByRole('region', { name: '编制逻辑与评分响应记录' })).toBeInTheDocument();
+  });
+
+  it('requests authoritative results after switching versions and reports refresh failures without changing the score', async () => {
+    const user = userEvent.setup();
+    const onRefreshProjectResults = vi.fn()
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(undefined);
+    renderWorkspace({
+      agentRun: completeRun,
+      task: completeTask,
+      outcomeReview: completedReview,
+      onRefreshProjectResults,
+      deliverables: [{ ...deliverables[0], versionId: '2' }],
+      versionOptions: [
+        { deliverableId: 'business', versionId: '1', title: '商务文件 V1' },
+        { deliverableId: 'business', versionId: '2', title: '商务文件 V2', isCurrent: true },
+      ],
+    });
+    await user.selectOptions(screen.getByRole('combobox', { name: '标书成果整包版本' }), '1');
+    expect(onRefreshProjectResults).toHaveBeenCalledWith({ reason: 'version-select', version: '1' });
+    expect(await screen.findByText('成果与评分刷新失败，当前评分可能不是最新结果。')).toBeInTheDocument();
+    expect(screen.getByText('综合评分').parentElement).toHaveTextContent('86 分 / 100');
+    await user.click(screen.getByRole('button', { name: '重试刷新' }));
+    await waitFor(() => expect(screen.queryByText('成果与评分刷新失败，当前评分可能不是最新结果。')).not.toBeInTheDocument());
+    expect(onRefreshProjectResults).toHaveBeenCalledTimes(2);
+  });
+
   it.each(['html', 'htm'])('previews .%s resources as sandboxed HTML and releases their URLs after closing', async (extension) => {
     const createObjectURL = vi.fn()
       .mockReturnValueOnce('blob:http://localhost:3000/notice-one')
@@ -517,7 +720,7 @@ describe('ProjectGenerationWorkspace', () => {
     );
     expect(onAssistantSend.mock.calls[0]?.[0]).toContain('选中内容：分阶段');
     expect(screen.queryByRole('region', { name: '排队消息' })).not.toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: '任务动态' })).getByText('等待回复')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '任务动态' })).getByText('已送达')).toBeInTheDocument();
   });
 
   it('sends the edited quote exactly and does not reuse its context in the next message', async () => {

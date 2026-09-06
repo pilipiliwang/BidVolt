@@ -14,7 +14,8 @@ import type {
 import type { AgentRunViewModel } from '../../shared/task-events';
 import type { ReviewFinding } from '../review/types';
 import type { ProjectSummary } from './project-view-model';
-import { ProjectGenerationWorkspace } from './ProjectGenerationWorkspace';
+import { ProjectGenerationWorkspace, type ProjectResultsChange } from './ProjectGenerationWorkspace';
+import type { ProjectResultFile } from './ProjectResourceRail';
 import {
   ProjectOutcomeReviewPanel,
   type ProjectOutcomeReviewViewModel,
@@ -42,8 +43,10 @@ import {
 import './project-overview-0802.css';
 
 type ProjectOverviewPageProps = {
+  onUpdateProjectDetails?: (update: { title?: string; packageNo?: string; deadline?: string }) => Promise<void>;
   localOfficeEnabled?: boolean;
   agentRun?: AgentRunViewModel;
+  artifactFiles?: readonly ProjectResultFile[];
   answeringAgentAskId?: string | null;
   deliverables?: ProjectDeliverableView[];
   deliverablesRequest?: DeliverablesRequestView;
@@ -76,6 +79,7 @@ type ProjectOverviewPageProps = {
   onStartWorkflow?: () => void;
   onOpenTasks: () => void;
   onDownloadAllResults?: () => void | Promise<void>;
+  onDownloadArtifact?: (file: ProjectResultFile) => void | Promise<void>;
   onSelectVersion?: (option: ProjectOverviewVersionOption) => void;
   onLoadDeliverableContent?: (
     deliverable: ProjectDeliverableView,
@@ -90,6 +94,7 @@ type ProjectOverviewPageProps = {
     fileId: string,
     fileName: string,
   ) => EnterpriseAssetPreview | Promise<EnterpriseAssetPreview>;
+  onRefreshProjectResults?: (change: ProjectResultsChange) => void | Promise<void>;
   overview?: ProjectOverviewView;
   project?: ProjectSummary;
   projectId: string;
@@ -145,6 +150,7 @@ export type ProjectOverviewView = {
 export function ProjectOverviewPage({
   localOfficeEnabled = true,
   agentRun,
+  artifactFiles,
   answeringAgentAskId,
   deliverables,
   deliverablesRequest,
@@ -162,12 +168,15 @@ export function ProjectOverviewPage({
   onStartWorkflow,
   onOpenTasks,
   onDownloadAllResults,
+  onDownloadArtifact,
   onSelectVersion,
   onLoadDeliverableContent,
   onLoadResourcePreview,
+  onRefreshProjectResults,
   overview,
   project: projectOverride,
   projectId,
+  onUpdateProjectDetails,
   outcomeReview,
   reviewFindings,
   sendingAgentMessage,
@@ -220,6 +229,7 @@ export function ProjectOverviewPage({
       <ProjectGenerationWorkspace
         localOfficeEnabled={localOfficeEnabled}
         agentRun={agentRun}
+        artifactFiles={artifactFiles}
         answeringAskId={answeringAgentAskId}
         deliverables={visibleDeliverables ?? []}
         enterpriseCategories={enterpriseCategories}
@@ -231,9 +241,12 @@ export function ProjectOverviewPage({
         onAssistantAddFiles={onAssistantAddFiles}
         onAssistantSend={onAssistantSend}
         onDownloadAllResults={onDownloadAllResults}
+        onDownloadArtifact={onDownloadArtifact}
         onDownloadDeliverable={onDownloadDeliverable}
         onLoadDeliverableContent={onLoadDeliverableContent}
         onLoadResourcePreview={onLoadResourcePreview}
+        onOpenReview={onOpenImprovementSuggestions}
+        onRefreshProjectResults={onRefreshProjectResults}
         outcomeReview={outcomeReview ?? emptyOutcomeReview}
         resultsReady={workflowFacts
           ? Boolean(workflowFacts.hasDeliverables && visibleDeliverables?.length)
@@ -244,7 +257,8 @@ export function ProjectOverviewPage({
       />
     );
     return workflowFacts ? (
-      <ProjectWorkflowFrame facts={workflowFacts} projectTitle={project.title}>
+      <ProjectWorkflowFrame facts={workflowFacts} projectTitle={project.title}
+        projectPackageNo={project.packageNo} projectDeadline={project.deadline} onUpdateProjectDetails={onUpdateProjectDetails}>
         {generationWorkspace}
       </ProjectWorkflowFrame>
     ) : generationWorkspace;
@@ -392,7 +406,8 @@ export function ProjectOverviewPage({
   );
 
   return workflowFacts ? (
-    <ProjectWorkflowFrame facts={workflowFacts} projectTitle={project.title}>
+    <ProjectWorkflowFrame facts={workflowFacts} projectTitle={project.title}
+      projectPackageNo={project.packageNo} projectDeadline={project.deadline} onUpdateProjectDetails={onUpdateProjectDetails}>
       {workbench}
     </ProjectWorkflowFrame>
   ) : workbench;

@@ -1,5 +1,6 @@
 import type { ProjectOverviewView, ProjectDeliverableView } from '../../domains/projects/ProjectOverviewPage';
 import type { ProjectSummary, ProjectStage } from '../../domains/projects/project-view-model';
+import { projectMetadataFields } from '../project-metadata';
 import type { HistoryPriceSample, QuoteCalculationView, QuoteStrategy } from '../../domains/pricing/types';
 import type { ReviewProvider as ReviewProviderView, ReviewRunView } from '../../domains/review/types';
 import type {
@@ -122,6 +123,8 @@ export function adaptBackendProject(
   const riskCount = stats.riskCount ?? project.summary?.missing_count ?? undefined;
   return {
     id: String(project.project_id),
+    ...projectMetadataFields(project),
+    note: project.note ?? undefined,
     code: project.tender_no?.trim() || '招标编号未提供',
     title: project.name,
     buyer: stats.buyer?.trim() || project.buyer?.trim() || '招标人待补充',
@@ -616,6 +619,9 @@ export type BackendScoreSummary = {
   reject_count?: number;
   missing_count: number;
   improvable: number | null;
+  full_marks?: number | null;
+  scale?: string;
+  deliverable_versions?: Record<string, number>;
 };
 
 export function scoreSummaryForOverview(
@@ -624,6 +630,9 @@ export function scoreSummaryForOverview(
     missing_count: number;
     improvable: number | null;
     detail?: JsonObject | null;
+    full_marks?: number | null;
+    scale?: string;
+    deliverable_versions?: Record<string, number>;
   },
 ): BackendScoreSummary {
   const detail = asRecord(score.detail) ?? {};
@@ -635,6 +644,9 @@ export function scoreSummaryForOverview(
     reject_count: asNumber(detail.reject_count) ?? asNumber(detail.rejection_risks),
     missing_count: score.missing_count,
     improvable: score.improvable,
+    full_marks: score.full_marks,
+    scale: score.scale,
+    deliverable_versions: score.deliverable_versions,
   };
 }
 
@@ -654,6 +666,11 @@ export function adaptBackendProjectOverview(
       rejectionRisks: score.reject_count,
       missingMaterials: score.missing_count,
       estimatedLift: score.improvable ?? undefined,
+      fullMarks: score.full_marks ?? undefined,
+      scale: score.scale,
+      versionLabel: score.deliverable_versions && Object.keys(score.deliverable_versions).length
+        ? Object.entries(score.deliverable_versions).map(([id, version]) => `成果 #${id} · V${version}`).join('；')
+        : undefined,
     },
   };
 }

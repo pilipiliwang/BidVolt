@@ -4,13 +4,14 @@ import './FileDownloadButton.css';
 
 /** Keep the request promise alive so a slow package cannot be submitted twice. */
 export function FileDownloadButton({ onDownload, className = '', disabled = false, title,
-  label = '下载文件', pendingLabel = '正在下载…',
+  label = '下载文件', ariaLabel, pendingLabel = '正在下载…',
 }: {
   onDownload: () => void | Promise<void>;
   className?: string;
   disabled?: boolean;
   title?: string;
   label?: string;
+  ariaLabel?: string;
   pendingLabel?: string;
 }) {
   const inFlight = useRef(false);
@@ -33,7 +34,7 @@ export function FileDownloadButton({ onDownload, className = '', disabled = fals
     }
   };
   return <>
-    <button aria-label={label} aria-busy={pending} aria-describedby={error ? errorId : undefined}
+    <button aria-label={ariaLabel ?? label} aria-busy={pending} aria-describedby={error ? errorId : undefined}
       className={`file-download-button ${className}`} disabled={disabled || pending}
       onClick={() => void download()} title={title || label} type="button">
       {pending ? <LoaderCircle aria-hidden="true" size={16} /> : <Download aria-hidden="true" size={16} />}

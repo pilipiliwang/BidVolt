@@ -4,6 +4,10 @@ import { downloadFileUrl, FileDownloadButton } from './FileDownloadButton';
 
 describe('FileDownloadButton', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+  it('supports a short visible label with a descriptive accessible name', () => {
+    render(<FileDownloadButton onDownload={vi.fn()} label="下载" ariaLabel="下载 评分响应记录.docx" />);
+    expect(screen.getByRole('button', { name: '下载 评分响应记录.docx' })).toHaveTextContent(/^下载$/);
+  });
   it('shows loading immediately and accepts only one request until the promise settles', async () => {
     let resolve!: () => void;
     const onDownload = vi.fn(() => new Promise<void>((done) => { resolve = done; }));

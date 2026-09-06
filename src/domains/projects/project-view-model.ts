@@ -1,11 +1,14 @@
 export type ProjectStage = '材料解析' | '方案编制' | '内部评审' | '待提交' | '状态未知';
 
 export type ProjectSummary = {
+  authorName?: string;
   buyer: string;
   code: string;
   deadline: string;
   id: string;
   materialCount?: number;
+  note?: string;
+  packageNo?: string;
   progress?: number;
   riskCount?: number;
   stage: ProjectStage;

@@ -164,6 +164,10 @@ describe('ProjectResourceRail', () => {
     expect(screen.queryByText('招标文件.pdf')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '上传企业资料' })).not.toBeInTheDocument();
     PROJECT_RESULT_CATEGORIES.forEach((category) => {
+      if (category === 'unclassified') {
+        expect(screen.queryByRole('button', { name: /待分类成果/ })).not.toBeInTheDocument();
+        return;
+      }
       const label = {
         business: '商务文件',
         technical: '技术文件',

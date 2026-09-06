@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Archive, CalendarDays, CircleAlert, Hourglass, Plus, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Archive, CircleAlert, Hourglass, Plus, Search, X } from 'lucide-react';
 
 import { AppLink } from '../../app/router';
 import type { ProjectSummary } from './project-view-model';
@@ -26,16 +26,12 @@ type ProjectListPageProps = {
 };
 
 type NewProjectDraft = {
-  buyer: string;
-  code: string;
-  deadline: string;
+  authorName: string;
   title: string;
 };
 
 const emptyDraft: NewProjectDraft = {
-  buyer: '',
-  code: '',
-  deadline: '',
+  authorName: '',
   title: '',
 };
 
@@ -52,17 +48,6 @@ function getFocusableElements(container: HTMLElement) {
   return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
     (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
   );
-}
-
-function toDateTimeLocalValue(date: Date) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function getMinimumDeadline() {
-  const minimum = new Date(Date.now() + 5 * 60_000);
-  minimum.setSeconds(0, 0);
-  return toDateTimeLocalValue(minimum);
 }
 
 export function formatDateOnly(value: string) {
@@ -99,21 +84,18 @@ export function ProjectListPage({
   const [archiveErrors, setArchiveErrors] = useState<Record<string, string>>({});
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const creationPendingRef = useRef(false);
   const [draft, setDraft] = useState<NewProjectDraft>(emptyDraft);
   const [formError, setFormError] = useState('');
-  const [minimumDeadline, setMinimumDeadline] = useState(getMinimumDeadline);
   const createButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
-  const deadlineInputRef = useRef<HTMLInputElement>(null);
   const searchTouchedRef = useRef(false);
-  const deadlineInputId = useId();
-  const deadlineHelpId = useId();
 
   const projectRows = useMemo<ProjectTableRow[]>(
     () => projects.map((project) => ({
         ...project,
-        deadline: formatDateOnly(project.deadline),
+        deadline: formatDateOnly(project.deadline) || '待解析',
         deadlineHint: deadlineState(project.deadline).hint,
         executionStatus: !enterpriseReady
           ? '上传企业资料'
@@ -186,19 +168,6 @@ export function ProjectListPage({
     setFormError('');
   };
 
-  const openDeadlinePicker = () => {
-    const input = deadlineInputRef.current;
-    if (!input) return;
-
-    input.focus();
-    try {
-      input.showPicker?.();
-    } catch {
-      // Some embedded browsers expose showPicker but reject it. The focused,
-      // keyboard-editable input remains a complete fallback.
-    }
-  };
-
   useEffect(() => {
     if (!isCreateOpen) return undefined;
     firstInputRef.current?.focus();
@@ -206,7 +175,7 @@ export function ProjectListPage({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        closeCreateDialog();
+        if (!creationPendingRef.current) closeCreateDialog();
         return;
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
@@ -233,41 +202,30 @@ export function ProjectListPage({
 
   const submitProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isCreating) return;
+    if (creationPendingRef.current) return;
     const normalized = {
-      buyer: draft.buyer.trim(),
-      code: draft.code.trim(),
-      deadline: draft.deadline.trim(),
+      authorName: draft.authorName.trim(),
       title: draft.title.trim(),
     };
-    if (!normalized.title || !normalized.code || !normalized.buyer || !normalized.deadline) {
-      setFormError('请完整填写项目名称、招标编号、招标人和截止时间。');
-      return;
-    }
-    if (
-      projects.some(
-        (project) => project.code.toLocaleLowerCase() === normalized.code.toLocaleLowerCase(),
-      )
-    ) {
-      setFormError('该招标编号已存在，请检查后重新填写。');
-      return;
-    }
-    const deadline = new Date(normalized.deadline);
-    if (Number.isNaN(deadline.getTime()) || deadline.getTime() <= Date.now()) {
-      setFormError('截止时间必须是晚于当前时间的有效日期。');
+    if (!normalized.title || !normalized.authorName) {
+      setFormError('请填写项目名称和编写负责人。');
       return;
     }
 
     try {
+      creationPendingRef.current = true;
       setIsCreating(true);
       await onCreateProject({
-        id: normalized.code,
-        code: normalized.code,
+        // The create API supplies the persisted identity; tender numbers are not IDs.
+        id: '',
+        code: '',
+        authorName: normalized.authorName,
+        packageNo: '',
         title: normalized.title,
-        buyer: normalized.buyer,
+        buyer: '',
         stage: '材料解析',
         progress: 0,
-        deadline: normalized.deadline.replace('T', ' '),
+        deadline: '',
         materialCount: 0,
         riskCount: 0,
         updatedAt: '刚刚',
@@ -278,6 +236,7 @@ export function ProjectListPage({
         creationError instanceof Error ? creationError.message : '项目创建失败，请稍后重试。',
       );
     } finally {
+      creationPendingRef.current = false;
       setIsCreating(false);
     }
   };
@@ -342,7 +301,6 @@ export function ProjectListPage({
           className="ui0802-create-project"
           type="button"
           onClick={() => {
-            setMinimumDeadline(getMinimumDeadline());
             setCreateOpen(true);
           }}
         >
@@ -391,7 +349,7 @@ export function ProjectListPage({
                         <span className="ui0802-project-buyer" title={project.buyer}>{project.buyer}</span>
                       </div>
                     </td>
-                    <td data-label="招标编号"><div className="ui0802-project-cell-value ui0802-project-code">{project.code}</div></td>
+                    <td data-label="招标编号"><div className="ui0802-project-cell-value ui0802-project-code">{project.code || '待解析'}</div></td>
                     <td data-label="截止时间">
                       <div className="ui0802-project-cell-value">
                         <time>{project.deadline}</time>
@@ -474,7 +432,7 @@ export function ProjectListPage({
               <div>
                 <span>投标工作台</span>
                 <h2 id="create-project-title">新增项目</h2>
-                <p>创建独立项目域，随后进入材料页上传本次招标文件。</p>
+                <p>填写名称和负责人，其余项目信息在上传招标材料后由系统解析补全。</p>
               </div>
               <button disabled={isCreating} type="button" aria-label="关闭新增项目窗口" onClick={closeCreateDialog}>
                 <X aria-hidden="true" size={20} />
@@ -486,56 +444,43 @@ export function ProjectListPage({
                 <input
                   ref={firstInputRef}
                   name="title"
+                  disabled={isCreating}
+                  required
+                  maxLength={200}
                   value={draft.title}
                   placeholder="例如：新能源升压站设备采购"
                   onChange={(event) => updateDraft('title', event.target.value)}
                 />
               </label>
               <label>
-                招标编号
+                编写负责人
                 <input
-                  name="code"
-                  value={draft.code}
-                  placeholder="例如：BV-2026-021"
-                  onChange={(event) => updateDraft('code', event.target.value)}
+                  name="authorName"
+                  disabled={isCreating}
+                  required
+                  maxLength={100}
+                  value={draft.authorName}
+                  placeholder="请输入编写负责人姓名"
+                  onChange={(event) => updateDraft('authorName', event.target.value)}
                 />
               </label>
-              <label>
-                招标人
-                <input
-                  name="buyer"
-                  value={draft.buyer}
-                  placeholder="请输入招标单位名称"
-                  onChange={(event) => updateDraft('buyer', event.target.value)}
-                />
-              </label>
-              <div className="ui0802-deadline-control">
-                <label htmlFor={deadlineInputId}>截止时间</label>
-                <div className="ui0802-deadline-field">
+              {[
+                ['code', '招标编号'],
+                ['buyer', '招标人'],
+                ['packageNo', '包号'],
+                ['deadline', '截止时间'],
+              ].map(([name, label]) => (
+                <label className="ui0802-project-auto-field" key={name}>
+                  {label}
                   <input
-                    ref={deadlineInputRef}
-                    id={deadlineInputId}
-                    name="deadline"
-                    type="datetime-local"
-                    min={minimumDeadline}
-                    value={draft.deadline}
-                    aria-describedby={deadlineHelpId}
-                    onChange={(event) => updateDraft('deadline', event.target.value)}
+                    disabled
+                    name={name}
+                    placeholder="系统解析后填写"
+                    value=""
+                    readOnly
                   />
-                  <button
-                    className="ui0802-deadline-picker"
-                    type="button"
-                    aria-label="选择截止日期与时间"
-                    onClick={openDeadlinePicker}
-                  >
-                    <CalendarDays aria-hidden="true" size={18} />
-                    <span>选择</span>
-                  </button>
-                </div>
-                <small id={deadlineHelpId} className="ui0802-deadline-help">
-                  请选择晚于当前时间的日期和时间，也可使用键盘直接输入。
-                </small>
-              </div>
+                </label>
+              ))}
               {formError ? <p className="ui0802-project-form-error" role="alert">{formError}</p> : null}
               <footer>
                 <button disabled={isCreating} type="button" onClick={closeCreateDialog}>取消</button>

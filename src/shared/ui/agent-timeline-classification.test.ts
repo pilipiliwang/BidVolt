@@ -618,6 +618,20 @@ describe('runtime presentation helpers', () => {
     expect(sanitizeRuntimeText(input)).toBe('  Review \r\n\t  complete  ');
   });
 
+  it('drops terminal sizing diagnostics while preserving ordinary progress, replies and user quotations', () => {
+    const result = classifyAgentConversation([
+      { seq: 1, kind: 'system', content: 'Window too small...\n正在整理商务文件。' },
+      { seq: 2, kind: 'final', content: 'Window too small...\n已完成，请查看成果。' },
+      { seq: 3, kind: 'user', content: 'Window too small...' },
+    ]);
+    expect(result.filter((part) => part.kind !== 'user').map((part) => part.content).join('\n')).not.toContain('Window too small');
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'log', content: '正在整理商务文件。' }),
+      expect.objectContaining({ kind: 'agent', content: '已完成，请查看成果。' }),
+      expect.objectContaining({ kind: 'user', content: 'Window too small...' }),
+    ]));
+  });
+
   it.each([
     ['┌─ Reasoning\n内部运行片段', '运行分析'],
     ['tool_call: fetch material', '工具调用'],

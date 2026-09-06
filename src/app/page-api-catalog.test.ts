@@ -39,6 +39,8 @@ describe('page API catalog', () => {
       'bootstrap-enterprise-assets',
       'image-describe-progress',
       'project-detail',
+      'project-update',
+      'project-artifacts',
       'project-materials',
       'project-task-history',
       'project-task-detail',
@@ -85,7 +87,8 @@ describe('page API catalog', () => {
       'task-create',
       'task-stream',
     ]));
-    expect(catalog.some((item) => item.path.includes('/assembly/'))).toBe(false);
+    expect(catalog.filter((item) => item.path.includes('/assembly/')).map((item) => item.id))
+      .toEqual(['project-artifacts']);
     expect(catalog.some((item) => item.path.includes('/completed-bids'))).toBe(false);
     expect(catalog.some((item) => item.path.includes('/check/latest'))).toBe(false);
     expect(catalog.some((item) => item.path.includes('document_role='))).toBe(false);
@@ -106,11 +109,12 @@ describe('page API catalog', () => {
       'project-export',
       'project-export-status',
       'project-delivery-package',
-      'agent-artifact-download',
       'project-archive',
       'project-enterprise-ingest',
       'requirement-detail',
       'requirements-upsert',
+      'requirement-confirm',
+      'requirement-correct',
     ]) {
       expect(catalog.find((item) => item.id === id)?.notIntegratedReason).toBeTruthy();
     }
@@ -138,11 +142,68 @@ describe('page API catalog', () => {
     expect(pageApiOperationMatches(taskDetail, { method: 'GET', path: '/tasks/41' })).toBe(true);
     expect(pageApiOperationMatches(taskStream, { method: 'GET', path: '/tasks/41/stream' })).toBe(true);
     expect(pageApiOperationMatches(artifact, { method: 'GET', path: '/projects/7/agent-artifact/52/download' })).toBe(true);
-    expect(artifact.notIntegratedReason).toContain('单项成果清单');
+    expect(artifact.notIntegratedReason).toBeUndefined();
+    expect(artifact.trigger).toContain('artifactId');
+    expect(artifact.feature).toContain('预览或下载');
     expect(catalog.find((item) => item.id === 'project-response-package')).toMatchObject({
       method: 'GET',
       path: '/projects/7/response-package',
     });
+  });
+
+  it('tracks every formal artifact directory page without claiming inspect or save as page integration', () => {
+    const catalog = pageApiCatalog({ name: 'project-overview', projectId: '7' });
+    const listing = catalog.find((item) => item.id === 'project-artifacts')!;
+    expect(listing).toMatchObject({
+      method: 'GET', path: '/projects/7/assembly/artifacts?page={page}&size=100', trackRuntime: true,
+    });
+    expect(listing.notIntegratedReason).toBeUndefined();
+    expect(listing.trigger).toContain('全量分页');
+    for (const path of [
+      '/projects/7/assembly/artifacts?page=1&size=100',
+      '/projects/7/assembly/artifacts?page=2&size=100',
+      '/projects/7/assembly/artifacts?task_id=31&page=3&size=100',
+    ]) expect(pageApiOperationMatches(listing, { method: 'GET', path })).toBe(true);
+    for (const path of [
+      '/projects/8/assembly/artifacts?page=1&size=100',
+      '/projects/7/assembly/artifacts/91/inspect',
+      '/projects/7/assembly/artifacts/91/save',
+    ]) expect(pageApiOperationMatches(listing, { method: 'GET', path })).toBe(false);
+    expect(catalog.filter((item) => item.path.includes('/assembly/')).map((item) => item.id))
+      .toEqual(['project-artifacts']);
+  });
+
+  it('records real project PATCH integration and the server-note metadata compatibility boundary', () => {
+    const catalog = pageApiCatalog({ name: 'project-materials', projectId: 'project/7' });
+    const update = catalog.find((item) => item.id === 'project-update')!;
+    expect(update).toMatchObject({ method: 'PATCH', path: '/projects/project%2F7', trackRuntime: true });
+    expect(update.notIntegratedReason).toBeUndefined();
+    expect(update.trigger).toContain('名称与截止时间使用原生字段');
+    expect(update.trigger).toContain('服务端 note');
+    expect(pageApiOperationMatches(update, { method: 'PATCH', path: '/projects/project%2F7' })).toBe(true);
+    expect(pageApiOperationMatches(update, { method: 'GET', path: '/projects/project%2F7' })).toBe(false);
+    expect(pageApiOperationMatches(update, { method: 'PATCH', path: '/projects/project%2F8' })).toBe(false);
+    const create = pageApiCatalog({ name: 'projects' }).find((item) => item.id === 'projects-create')!;
+    expect(create.trigger).toContain('项目名称和编写负责人');
+    expect(create.trigger).toContain('其余信息等待材料解析');
+  });
+
+  it('keeps requirements read-only in the materials workflow and does not imply mandatory confirmation', () => {
+    const catalog = pageApiCatalog({ name: 'project-materials', projectId: '7' });
+    const requirements = catalog.find((item) => item.id === 'project-requirements')!;
+    expect(requirements.notIntegratedReason).toBeUndefined();
+    expect(requirements.trigger).toContain('仅查看');
+    for (const id of ['requirement-confirm', 'requirement-correct']) {
+      const item = catalog.find((entry) => entry.id === id)!;
+      expect(item.feature).toContain('可选能力');
+      expect(item.trigger).toContain('非当前主流程');
+      expect(item.notIntegratedReason).toContain('已有请求封装');
+    }
+    expect(catalog.find((item) => item.id === 'requirements-upsert')?.notIntegratedReason)
+      .not.toContain('前端现有人工操作使用 confirm/correct');
+    const score = catalog.find((item) => item.id === 'project-latest-score')!;
+    expect(score.trigger).toContain('成果版本变化');
+    expect(score.trigger).toContain('不把刷新等同重新评分');
   });
 
   it('documents and matches dynamic deliverable version-list requests on the overview', () => {

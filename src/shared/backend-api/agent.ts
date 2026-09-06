@@ -1,4 +1,4 @@
-import { consumeAgentRunStream, type AgentRunStreamEnd, type AgentRunStreamMessage } from './agent-stream';
+import { AgentRunStreamProtocolError, consumeAgentRunStream, type AgentRunStreamEnd, type AgentRunStreamMessage } from './agent-stream';
 import { idPath, queryString, type BackendApiClient } from './client';
 import type {
   AgentAnswerResponse, AgentChatResponse, AgentCreateAskRequest, AgentCreateAskResponse,
@@ -62,11 +62,32 @@ export const createAgentApi = (client: BackendApiClient) => {
       projectId: BackendId,
       taskId: BackendId,
       { since = 0, signal, onMessage }: AgentRunStreamOptions,
-    ): Promise<AgentRunStreamEnd> => client.requestStream(
-        `${base(projectId)}/agent-run/${idPath(taskId)}/stream${queryString({ since })}`,
-        { headers: { Accept: 'text/event-stream' }, signal },
-        (response) => consumeAgentRunStream(response, { signal, onMessage }),
-      ),
+    ): Promise<AgentRunStreamEnd> => {
+      let cursor = since;
+      // A terminal task currently emits at most 200 persisted events before
+      // `end`, even if more history remains. Drain full pages with the cursor
+      // before reporting completion; never replay already delivered messages.
+      for (let page = 0; page < 100; page += 1) {
+        signal?.throwIfAborted();
+        const previousCursor = cursor;
+        let received = 0;
+        const end = await client.requestStream(
+          `${base(projectId)}/agent-run/${idPath(taskId)}/stream${queryString({ since: cursor })}`,
+          { headers: { Accept: 'text/event-stream' }, signal },
+          (response) => consumeAgentRunStream(response, { signal, onMessage: (event) => {
+            received += 1;
+            if (event.seq <= cursor) return;
+            cursor = event.seq;
+            onMessage(event);
+          } }),
+        );
+        if (received < 200) return end;
+        if (cursor <= previousCursor) {
+          throw new AgentRunStreamProtocolError('历史记录读取未能继续，请刷新后重试。');
+        }
+      }
+      throw new AgentRunStreamProtocolError('历史记录较多，已保留读取进度，请刷新后继续加载。');
+    },
     streamUrl: (
       projectId: BackendId,
       taskId: BackendId,

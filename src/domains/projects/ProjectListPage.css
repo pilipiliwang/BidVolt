@@ -367,3 +367,12 @@
     width: 100%;
   }
 }
+.ui0802-project-modal .ui0802-project-auto-field { color: #87958e; }
+.ui0802-project-modal .ui0802-project-auto-field input:disabled {
+  border-color: #e4e9e6;
+  color: #87958e;
+  background: #f3f6f4;
+  opacity: 1;
+  cursor: not-allowed;
+}
+.ui0802-project-modal .ui0802-project-auto-field input::placeholder { color: #8b9992; }

@@ -32,14 +32,18 @@ describe('App API test panel integration', () => {
 
     await user.click(screen.getByRole('button', { name: '进入本地只读预览' }));
     const previewNavigation = await screen.findByRole('navigation', { name: '预览页面快速导航' });
-    await user.click(within(previewNavigation).getByRole('link', { name: '招标材料' }));
-    await user.click(await screen.findByRole('button', { name: /Requirement/ }));
-    await user.click(await screen.findByRole('button', { name: '确认原文' }));
-
-    const feedback = await screen.findByText(
-      '本地只读预览已阻止“确认招标要求”：没有连接真实后端，也不会伪造成功结果。',
+    await user.click(within(previewNavigation).getByRole('link', { name: '企业资料' }));
+    await user.click(await screen.findByRole('button', { name: /上传资料/ }));
+    await user.upload(
+      await screen.findByLabelText(/选择文件或拖拽到此处/),
+      new File(['preview'], 'preview.pdf', { type: 'application/pdf' }),
     );
-    expect(feedback.closest('.integration-status')).toHaveAttribute('role', 'alert');
+
+    const feedback = await screen.findAllByText(
+      '本地只读预览已阻止“上传企业资料”：没有连接真实后端，也不会伪造成功结果。',
+    );
+    expect(feedback.some((element) => element.closest('.integration-status')?.getAttribute('role') === 'alert'))
+      .toBe(true);
     expect(screen.queryByRole('region', { name: 'API 联调测试框' })).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });

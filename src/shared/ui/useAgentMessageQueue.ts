@@ -6,6 +6,7 @@ export type AgentMessageQueueResponse = {
   reply?: string | null;
   returncode?: number;
   message?: string;
+  status?: string;
 } | void;
 export type AgentMessageQueueLocalMessage = {
   id: string;
@@ -14,7 +15,7 @@ export type AgentMessageQueueLocalMessage = {
   replyToMessageId?: string;
   createdAt: string;
   role: 'user' | 'agent';
-  status: 'waiting' | 'unconfirmed' | 'accepted' | 'sent' | 'failed';
+  status: 'waiting' | 'unconfirmed' | 'accepted' | 'no-reply' | 'sent' | 'failed';
   /** Informational waiting state, distinct from an actual request failure. */
   notice?: string | null;
   error?: string | null;
@@ -66,7 +67,7 @@ function newState(scopeKey: string | number): QueueState {
   };
 }
 
-function isUnconfirmedRequestError(error: unknown) {
+export function isUnconfirmedAgentRequestError(error: unknown) {
   if (typeof error !== 'object' || error === null) return false;
   if ('status' in error && typeof error.status === 'number') {
     return error.status === 0 || error.status === 408 || error.status >= 500;
@@ -79,7 +80,7 @@ function isUnconfirmedRequestError(error: unknown) {
 function requestErrorDetail(error: unknown, fallback: string) {
   return typeof error === 'object' && error !== null
     && 'message' in error && typeof error.message === 'string' && error.message.trim()
-    ? error.message
+    ? publicAgentReply(error.message) || fallback
     : fallback;
 }
 
@@ -162,7 +163,7 @@ export function useAgentMessageQueue({ scopeKey, onSend, timeoutMs = 30_000 }: A
     const finish = (response: AgentMessageQueueResponse, failure?: { error: unknown }) => {
       if (!isCurrent(state)) return;
       if (!failure && response?.returncode !== undefined && response.returncode !== 0) {
-        failure = { error: new Error(response.message || response.reply || '后端未能完成本次消息请求。') };
+        failure = { error: new Error(publicAgentReply(response.message || response.reply || '') || 'BidVolt 未能完成本次请求，请稍后重试。') };
       }
       clearTimeout(state.timers.get(job.localId));
       state.timers.delete(job.localId);
@@ -170,7 +171,7 @@ export function useAgentMessageQueue({ scopeKey, onSend, timeoutMs = 30_000 }: A
       state.jobs.delete(job.localId);
       if (failure) {
         const error = failure.error;
-        if (isUnconfirmedRequestError(error)) {
+        if (isUnconfirmedAgentRequestError(error)) {
           // A lost receipt is not proof that the server rejected the message.
           // This promise settled, so later distinct jobs can proceed, but this
           // submitted job must never be retried or have its attachments restored.
@@ -180,7 +181,7 @@ export function useAgentMessageQueue({ scopeKey, onSend, timeoutMs = 30_000 }: A
             '连接已中断，结果待确认；请勿重复发送。',
           );
         } else {
-          updateMessage('failed', error instanceof Error && error.message ? error.message : '消息发送失败，请检查连接后重试。');
+          updateMessage('failed', requestErrorDetail(error, '消息发送失败，请检查连接后重试。'));
           // A consumer's attachment recovery must never prevent the queue draining.
           try { job.onFailure?.(error); } catch { /* The request failure is already visible. */ }
         }
@@ -188,7 +189,10 @@ export function useAgentMessageQueue({ scopeKey, onSend, timeoutMs = 30_000 }: A
         const reply = typeof response?.reply === 'string' ? publicAgentReply(response.reply) : '';
         // HTTP success / queued acknowledgement is not a completed Agent reply.
         // Keep that distinction even when the server returns an empty body.
-        updateMessage(reply?.trim() ? 'sent' : 'accepted');
+        const processedWithoutReply = !reply && !response?.queued
+          && (response?.status === 'processed' || response?.returncode === 0);
+        updateMessage(reply ? 'sent' : processedWithoutReply ? 'no-reply' : 'accepted', null,
+          processedWithoutReply ? '本次请求已结束，但未返回有效回复。可继续发送新的问题。' : null);
         if (reply?.trim()) state.messages.push({
           id: `${job.localId}:reply`, replyToMessageId: job.localId,
           content: reply, createdAt: new Date().toISOString(),

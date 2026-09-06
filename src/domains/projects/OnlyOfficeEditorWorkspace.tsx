@@ -96,6 +96,8 @@ export function OnlyOfficeEditorWorkspace({
   onDirtyChange,
   onSendContextToAgent,
   onSaved,
+  onDownloadOriginal,
+  localCopyOnly = false,
   contextBase,
   toolbarContainer,
   user = { id: 'local-tester', name: 'BidVolt 测试用户' },
@@ -110,6 +112,8 @@ export function OnlyOfficeEditorWorkspace({
   onDirtyChange?: (dirty: boolean) => void;
   onSendContextToAgent?: (context: OutcomeFileAgentContext) => void;
   onSaved?: (version: number) => void;
+  onDownloadOriginal?: () => void | Promise<void>;
+  localCopyOnly?: boolean;
   toolbarContainer?: HTMLElement | null;
   user?: { id: string; name: string };
 }) {
@@ -311,7 +315,7 @@ export function OnlyOfficeEditorWorkspace({
       <p className="onlyoffice-workspace__status" role="status">
         {state === 'connecting' ? <><LoaderCircle aria-hidden="true" size={14} />正在连接…</>
           : state === 'dirty' ? <><Save aria-hidden="true" size={14} />有修改，待保存</>
-            : state === 'saved' ? <><CheckCircle2 aria-hidden="true" size={14} />已保存 · {officeVersionLabel(lastSavedVersionRef.current ?? 0)}</>
+            : state === 'saved' ? <><CheckCircle2 aria-hidden="true" size={14} />{localCopyOnly ? '本机已保存' : '已保存'} · {officeVersionLabel(lastSavedVersionRef.current ?? 0)}</>
               : state === 'ready' ? '已连接' : '连接失败'}
       </p>
       {preparationNote ? <span className="onlyoffice-workspace__preparation" tabIndex={0} aria-label={preparationNote} title={preparationNote}><Info size={15} aria-hidden="true" /></span> : null}
@@ -345,7 +349,12 @@ export function OnlyOfficeEditorWorkspace({
           {quoting ? '正在读取选区…' : '引用到对话框'}
         </button>
       ) : null}
-      {localOnlyOfficeBridgeUrl() ? <FileDownloadButton
+      {onDownloadOriginal ? <FileDownloadButton
+        className="onlyoffice-workspace__download"
+        label="下载后端原件"
+        title="下载后端保存的原文件，不包含本机工作副本的修改"
+        onDownload={onDownloadOriginal}
+      /> : localOnlyOfficeBridgeUrl() ? <FileDownloadButton
         key={`${bridgeFile.id}:${selectedVersion ?? 'latest'}`}
         className="onlyoffice-workspace__download"
         disabled={state === 'connecting' || state === 'error' || state === 'dirty'}
@@ -372,7 +381,10 @@ export function OnlyOfficeEditorWorkspace({
         {toolbarActions}
         <button aria-label="关闭文件预览" onClick={closeEditor} type="button"><X aria-hidden="true" size={18} /></button>
       </header>}
-      {error || quoteError ? <div className="onlyoffice-workspace__error" role="alert">{error || quoteError}</div> : null}
+      {error || quoteError || localCopyOnly ? <div className="onlyoffice-workspace__notices">
+        {localCopyOnly ? <p className="onlyoffice-workspace__local-copy" role="status">本机工作副本：保存的修改尚未同步后端，下载后端原件不包含这些修改。</p> : null}
+        {error || quoteError ? <div className="onlyoffice-workspace__error" role="alert">{error || quoteError}</div> : null}
+      </div> : null}
       <div className="onlyoffice-workspace__editor">
         <div id={elementId} />
       </div>
