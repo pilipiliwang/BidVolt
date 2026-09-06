@@ -49,7 +49,8 @@ describe('ProjectResultWorkspace', () => {
     expect(screen.getByText('已保留的任务动态')).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
     expect(screen.queryByRole('main')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /BidVolt 上下文/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收起资料目录' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button', { name: /^(收起|展开) BidVolt 上下文$/ })).not.toBeInTheDocument();
   });
 
   it('选中成果文件后插入中间预览区并保留右侧上下文', () => {
@@ -73,26 +74,102 @@ describe('ProjectResultWorkspace', () => {
     expect(screen.getByRole('complementary', { name: 'BidVolt 区域' })).toContainElement(context);
   });
 
-  it('预览时左右区域都可独立收起，预览关闭后恢复完整双栏', async () => {
+  it('没有预览时仅左侧目录可收起，右侧任务上下文始终展开', async () => {
     const user = userEvent.setup();
-    const { container, rerender } = render(
+    const { container } = render(
       <ProjectResultWorkspace
         {...workspaceContent()}
-        fileWorkspace={<div>商务文件预览</div>}
         run={baseRun}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: '收起资料目录' }));
-    await user.click(screen.getByRole('button', { name: '收起 BidVolt 上下文' }));
     expect(container.firstElementChild).toHaveClass('project-result-workspace--rail-collapsed');
-    expect(container.firstElementChild).toHaveClass('project-result-workspace--context-collapsed');
-    expect(screen.getByRole('button', { name: '展开资料目录' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '展开 BidVolt 上下文' })).toBeInTheDocument();
+    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--context-collapsed');
+    expect(screen.getByRole('button', { name: '展开资料目录' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /^(收起|展开) BidVolt 上下文$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'BidVolt 任务上下文' })).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByRole('textbox')).toBeVisible();
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '展开资料目录' }));
+    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--rail-collapsed');
+    expect(screen.getByRole('button', { name: '收起资料目录' })).toHaveAttribute('aria-expanded', 'true');
+    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--context-collapsed');
+    expect(screen.queryByRole('button', { name: /^(收起|展开) BidVolt 上下文$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeVisible();
+  });
+
+  it('切换预览保持两侧选择，关闭后恢复右侧并保留左侧选择和输入草稿', async () => {
+    const user = userEvent.setup();
+    const { container, rerender } = render(
+      <ProjectResultWorkspace {...workspaceContent()} run={baseRun} />,
+    );
+    const textbox = screen.getByRole('textbox');
+    const activity = screen.getByText('已保留的任务动态');
+    const navigation = screen.getByRole('navigation', { name: '项目资源' });
+    await user.type(textbox, '继续检查商务文件，尚未发送');
+    await user.click(screen.getByRole('button', { name: '收起资料目录' }));
+
+    for (const preview of ['商务文件预览', '技术文件预览']) {
+      rerender(
+        <ProjectResultWorkspace
+          {...workspaceContent()}
+          fileWorkspace={<div>{preview}</div>}
+          run={baseRun}
+        />,
+      );
+      if (preview === '商务文件预览') {
+        expect(screen.getByRole('button', { name: '收起 BidVolt 上下文' })).toHaveAttribute('aria-expanded', 'true');
+        await user.click(screen.getByRole('button', { name: '收起 BidVolt 上下文' }));
+      }
+      expect(container.firstElementChild).toHaveClass('project-result-workspace--rail-collapsed');
+      expect(container.firstElementChild).toHaveClass('project-result-workspace--context-collapsed');
+      expect(screen.getByRole('button', { name: '展开资料目录' })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByRole('button', { name: '展开 BidVolt 上下文' })).toHaveAttribute('aria-expanded', 'false');
+      expect(container.querySelector('.project-result-workspace__context')).toHaveAttribute('data-collapsed', 'true');
+      expect(within(screen.getByRole('main')).getByText(preview)).toBeInTheDocument();
+      expect(screen.getByText('已保留的任务动态')).toBe(activity);
+      expect(screen.getByRole('textbox', { hidden: true })).toBe(textbox);
+      expect(screen.getByRole('navigation', { hidden: true })).toBe(navigation);
+      expect(textbox).toHaveValue('继续检查商务文件，尚未发送');
+    }
 
     rerender(<ProjectResultWorkspace {...workspaceContent()} run={baseRun} />);
-    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--rail-collapsed');
+    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--preview');
+    expect(container.firstElementChild).toHaveClass('project-result-workspace--rail-collapsed');
     expect(container.firstElementChild).not.toHaveClass('project-result-workspace--context-collapsed');
+    expect(container.querySelector('.project-result-workspace__context')).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByRole('button', { name: '展开资料目录' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /^(收起|展开) BidVolt 上下文$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
+    expect(screen.queryByText('从左侧选择文件预览')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBe(textbox);
+    expect(textbox).toBeVisible();
+    expect(textbox).toHaveValue('继续检查商务文件，尚未发送');
+    expect(screen.getByText('已保留的任务动态')).toBe(activity);
+
+    rerender(
+      <ProjectResultWorkspace
+        {...workspaceContent()}
+        fileWorkspace={<div>重新打开商务文件预览</div>}
+        run={baseRun}
+      />,
+    );
+    expect(container.firstElementChild).toHaveClass('project-result-workspace--preview');
+    expect(container.firstElementChild).toHaveClass('project-result-workspace--rail-collapsed');
+    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--context-collapsed');
+    expect(screen.getByRole('button', { name: '收起 BidVolt 上下文' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: '展开资料目录' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(screen.getByRole('main')).getByText('重新打开商务文件预览')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '展开资料目录' }));
+    expect(container.firstElementChild).not.toHaveClass('project-result-workspace--rail-collapsed');
+    expect(screen.getByRole('navigation', { name: '项目资源' })).toBe(navigation);
+    expect(screen.getByRole('textbox')).toBe(textbox);
+    expect(textbox).toHaveValue('继续检查商务文件，尚未发送');
+    expect(screen.getByText('已保留的任务动态')).toBe(activity);
   });
 
   it('完成态标记固定摘要布局，并把输入区保留在独立滚动区之外', () => {
@@ -214,7 +291,7 @@ describe('ProjectResultWorkspace', () => {
     );
   });
 
-  it('可收起右侧上下文，但不卸载原有动态和输入内容', async () => {
+  it('预览开启时可收起右侧上下文，但不卸载原有动态和输入内容', async () => {
     const user = userEvent.setup();
     const run: AgentRunViewModel = {
       ...baseRun,

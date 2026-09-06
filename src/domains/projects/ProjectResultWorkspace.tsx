@@ -147,7 +147,7 @@ export function ProjectResultWorkspace({
   const layoutClass = [
     'project-result-workspace',
     previewOpen ? 'project-result-workspace--preview' : '',
-    previewOpen && railCollapsed ? 'project-result-workspace--rail-collapsed' : '',
+    railCollapsed ? 'project-result-workspace--rail-collapsed' : '',
     previewOpen && contextCollapsed ? 'project-result-workspace--context-collapsed' : '',
     summaryCollapsed ? 'project-result-workspace--summary-collapsed' : '',
     integratedSummary ? 'project-result-workspace--integrated-summary' : '',
@@ -162,23 +162,8 @@ export function ProjectResultWorkspace({
   );
 
   useEffect(() => {
-    if (previewOpen) return;
-    setRailCollapsed(false);
-    setContextCollapsed(false);
+    if (!previewOpen) setContextCollapsed(false);
   }, [previewOpen]);
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return undefined;
-    const compactLayout = window.matchMedia('(max-width: 1180px)');
-    const restorePanels = () => {
-      if (!compactLayout.matches) return;
-      setRailCollapsed(false);
-      setContextCollapsed(false);
-    };
-    restorePanels();
-    compactLayout.addEventListener('change', restorePanels);
-    return () => compactLayout.removeEventListener('change', restorePanels);
-  }, []);
 
   const beginResize = (
     event: ReactPointerEvent<HTMLDivElement>,
@@ -258,20 +243,18 @@ export function ProjectResultWorkspace({
     >
       <div className="project-result-workspace__rail">
         <div className="project-result-workspace__rail-content">{rail}</div>
-        {previewOpen ? (
-          <button
-            aria-expanded={!railCollapsed}
-            aria-label={railCollapsed ? '展开资料目录' : '收起资料目录'}
-            className="project-result-workspace__panel-toggle project-result-workspace__panel-toggle--rail"
-            onClick={() => setRailCollapsed((value) => !value)}
-            title={railCollapsed ? '展开资料目录' : '收起资料目录'}
-            type="button"
-          >
-            {railCollapsed
-              ? <PanelLeftOpen aria-hidden="true" size={19} />
-              : <PanelLeftClose aria-hidden="true" size={18} />}
-          </button>
-        ) : null}
+        <button
+          aria-expanded={!railCollapsed}
+          aria-label={railCollapsed ? '展开资料目录' : '收起资料目录'}
+          className="project-result-workspace__panel-toggle project-result-workspace__panel-toggle--rail"
+          onClick={() => setRailCollapsed((value) => !value)}
+          title={railCollapsed ? '展开资料目录' : '收起资料目录'}
+          type="button"
+        >
+          {railCollapsed
+            ? <PanelLeftOpen aria-hidden="true" size={19} />
+            : <PanelLeftClose aria-hidden="true" size={18} />}
+        </button>
       </div>
 
       {previewOpen && !railCollapsed ? (

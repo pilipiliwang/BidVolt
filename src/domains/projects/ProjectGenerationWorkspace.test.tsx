@@ -1073,8 +1073,10 @@ describe('ProjectGenerationWorkspace', () => {
     await user.click(screen.getByRole('button', { name: '关闭预览编辑区域' }));
     expect(screen.queryByRole('navigation', { name: '已打开文件' })).not.toBeInTheDocument();
     expect(container.querySelector('.project-result-workspace')).not.toHaveClass('project-result-workspace--preview');
-    expect(container.querySelector('.project-result-workspace')).not.toHaveClass('project-result-workspace--rail-collapsed');
+    expect(container.querySelector('.project-result-workspace')).toHaveClass('project-result-workspace--rail-collapsed');
     expect(container.querySelector('.project-result-workspace')).not.toHaveClass('project-result-workspace--context-collapsed');
+    expect(screen.queryByRole('button', { name: /BidVolt 上下文/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '展开资料目录' }));
     expect(screen.getByRole('textbox', { name: '向 BidVolt 发送消息' })).toBeInTheDocument();
   });
 
